@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
+
 import '../models/audio_stream_status.dart';
+import 'audio_capture_service.dart';
 import 'audio_playback_service.dart';
-import 'audio_tone_generator.dart';
 
 abstract class AudioStreamService {
   Stream<AudioStreamStatus> get statusChanges;
@@ -20,30 +22,38 @@ abstract class AudioStreamService {
 }
 
 class UdpAudioService implements AudioStreamService {
-  UdpAudioService({required this.playbackService});
+  UdpAudioService({
+    required this.playbackService,
+    required this.captureService,
+  });
 
   final AudioPlaybackService playbackService;
+  final AudioCaptureService captureService;
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   RawDatagramSocket? _socket;
   StreamSubscription<RawSocketEvent>? _socketSubscription;
-  Timer? _toneTimer;
+  StreamSubscription<Uint8List>? _captureSubscription;
   Future<void> _playbackQueue = Future<void>.value();
   AudioStreamStatus _status = AudioStreamStatus.idle;
   bool _streaming = false;
   bool _receiving = false;
   InternetAddress? _destination;
   int _destinationPort = 0;
-  AudioToneGenerator? _toneGenerator;
+  int _packetSequence = 0;
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
+
   @override
   Stream<String> get errors => _errorsController.stream;
+
   @override
   AudioStreamStatus get status => _status;
+
   @override
   bool get isStreaming => _streaming;
+
   @override
   bool get isReceiving => _receiving;
 
@@ -53,53 +63,66 @@ class UdpAudioService implements AudioStreamService {
     required int port,
   }) async {
     if (_streaming) {
-      _emitError('The test tone is already streaming.');
+      _emitError('Microphone streaming is already running.');
       return;
     }
     _setStatus(AudioStreamStatus.starting);
     try {
       _destination = InternetAddress(ipAddress);
       _destinationPort = port;
+      _packetSequence = 0;
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      _toneGenerator = AudioToneGenerator();
-      _streaming = true;
-      _setStatus(AudioStreamStatus.streaming);
-      final interval = Duration(
-        microseconds:
-            (AudioToneGenerator().framesPerPacket /
-                    AudioToneGenerator().sampleRate *
-                    1000000)
-                .round(),
+      _captureSubscription = captureService.pcmChunks.listen(
+        _sendPcmPacket,
+        onError: (_) {
+          _emitError('Microphone audio capture failed.');
+          _setStatus(AudioStreamStatus.error);
+        },
       );
-      _toneTimer = Timer.periodic(interval, (_) => _sendTonePacket());
-      _sendTonePacket();
+      _streaming = true;
+      await captureService.start();
+      _setStatus(AudioStreamStatus.streaming);
     } on SocketException {
       await stopStreaming();
       _emitError('Unable to start UDP audio. Check the network connection.');
       _setStatus(AudioStreamStatus.error);
+    } on PlatformException catch (error) {
+      await stopStreaming();
+      final message = error.code == 'MICROPHONE_PERMISSION_DENIED'
+          ? 'Microphone permission is required to start audio capture.'
+          : 'Unable to start microphone capture.';
+      _emitError(message);
+      _setStatus(AudioStreamStatus.error);
+    } catch (_) {
+      await stopStreaming();
+      _emitError('Unable to start microphone capture.');
+      _setStatus(AudioStreamStatus.error);
     }
   }
 
-  void _sendTonePacket() {
+  void _sendPcmPacket(Uint8List pcm) {
     final socket = _socket;
     final destination = _destination;
-    final generator = _toneGenerator;
-    if (!_streaming ||
-        socket == null ||
-        destination == null ||
-        generator == null) {
-      return;
-    }
-    socket.send(generator.nextPacket(), destination, _destinationPort);
+    if (!_streaming) return;
+    if (socket == null || destination == null || pcm.isEmpty) return;
+
+    final packet = Uint8List(4 + pcm.length);
+    final data = ByteData.sublistView(packet);
+    data.setUint32(0, _packetSequence++, Endian.big);
+    packet.setRange(4, packet.length, pcm);
+    socket.send(packet, destination, _destinationPort);
   }
 
   @override
   Future<void> stopStreaming() async {
-    _toneTimer?.cancel();
-    _toneTimer = null;
+    await _captureSubscription?.cancel();
+    _captureSubscription = null;
+    await captureService.stop();
     _streaming = false;
-    if (!_receiving) _socket?.close();
-    if (!_receiving) _socket = null;
+    if (!_receiving) {
+      _socket?.close();
+      _socket = null;
+    }
     _setStatus(AudioStreamStatus.stopped);
   }
 
@@ -148,8 +171,10 @@ class UdpAudioService implements AudioStreamService {
     _receiving = false;
     await _socketSubscription?.cancel();
     _socketSubscription = null;
-    if (!_streaming) _socket?.close();
-    if (!_streaming) _socket = null;
+    if (!_streaming) {
+      _socket?.close();
+      _socket = null;
+    }
     await playbackService.stop();
     _setStatus(AudioStreamStatus.stopped);
   }

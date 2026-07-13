@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sync_audio/services/audio_capture_service.dart';
 import 'package:sync_audio/services/audio_playback_service.dart';
-import 'package:sync_audio/services/audio_tone_generator.dart';
 import 'package:sync_audio/services/udp_audio_service.dart';
 
 class FakeAudioPlaybackService implements AudioPlaybackService {
@@ -25,29 +25,47 @@ class FakeAudioPlaybackService implements AudioPlaybackService {
   Future<void> dispose() => packets.close();
 }
 
+class FakeAudioCaptureService implements AudioCaptureService {
+  final chunks = StreamController<Uint8List>.broadcast();
+  bool _isCapturing = false;
+
+  @override
+  Stream<Uint8List> get pcmChunks => chunks.stream;
+
+  @override
+  bool get isCapturing => _isCapturing;
+
+  @override
+  Future<void> start() async => _isCapturing = true;
+
+  @override
+  Future<void> stop() async => _isCapturing = false;
+
+  void emit(Uint8List pcm) => chunks.add(pcm);
+
+  Future<void> dispose() => chunks.close();
+}
+
 void main() {
-  test('tone generator creates sequenced 16-bit mono PCM packets', () {
-    final generator = AudioToneGenerator();
-    final first = generator.nextPacket();
-    final second = generator.nextPacket();
-
-    expect(first.length, 4 + 1024 * 2);
-    expect(second.length, first.length);
-    expect(ByteData.sublistView(first).getUint32(0), 0);
-    expect(ByteData.sublistView(second).getUint32(0), 1);
-    expect(first.sublist(4).any((byte) => byte != 0), isTrue);
-  });
-
   test(
     'UDP audio service delivers PCM to the receiver playback service',
     () async {
       final playback = FakeAudioPlaybackService();
-      final receiver = UdpAudioService(playbackService: playback);
-      final host = UdpAudioService(playbackService: playback);
+      final receiverCapture = FakeAudioCaptureService();
+      final hostCapture = FakeAudioCaptureService();
+      final receiver = UdpAudioService(
+        playbackService: playback,
+        captureService: receiverCapture,
+      );
+      final host = UdpAudioService(
+        playbackService: playback,
+        captureService: hostCapture,
+      );
       final packet = playback.packets.stream.first;
 
       await receiver.startReceiver(port: 5052);
       await host.startStreaming(ipAddress: '127.0.0.1', port: 5052);
+      hostCapture.emit(Uint8List(1024 * 2));
 
       final pcm = await packet.timeout(const Duration(seconds: 2));
       expect(pcm.length, 1024 * 2);
@@ -56,6 +74,8 @@ void main() {
       await host.dispose();
       await receiver.dispose();
       await playback.dispose();
+      await receiverCapture.dispose();
+      await hostCapture.dispose();
     },
   );
 }

@@ -99,14 +99,14 @@ class HostView extends GetView<HostController> {
             ),
             const SizedBox(height: 28),
             Text(
-              'PCM test tone',
+              'Microphone audio',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              'Generate a 440 Hz mono PCM tone and send it to the receiver over UDP.',
+              'Capture mono PCM microphone audio and send it to the receiver over UDP.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -131,22 +131,22 @@ class HostView extends GetView<HostController> {
             const SizedBox(height: 12),
             Obx(
               () => AppPrimaryButton(
-                label: 'Start Test Tone',
+                label: 'Start Microphone Stream',
                 icon: Icons.graphic_eq_rounded,
                 onPressed:
                     controller.audioStatus.value == AudioStreamStatus.streaming
                     ? null
-                    : controller.startTestTone,
+                    : controller.startMicrophoneStream,
               ),
             ),
             const SizedBox(height: 12),
             Obx(
               () => AppPrimaryButton(
-                label: 'Stop Test Tone',
+                label: 'Stop Microphone Stream',
                 icon: Icons.stop_circle_outlined,
                 onPressed:
                     controller.audioStatus.value == AudioStreamStatus.streaming
-                    ? controller.stopTestTone
+                    ? controller.stopMicrophoneStream
                     : null,
               ),
             ),
@@ -167,7 +167,7 @@ class HostView extends GetView<HostController> {
             const SizedBox(height: 12),
             const _InfoMessage(
               text:
-                  'Phase 2 sends line-delimited test text over a local Wi-Fi TCP connection. Audio is not included yet.',
+                  'Phase 4 captures microphone PCM on Android and forwards it over the existing local Wi-Fi UDP audio path.',
             ),
           ],
         ),

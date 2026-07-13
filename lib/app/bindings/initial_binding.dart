@@ -12,7 +12,7 @@ class InitialBinding extends Bindings {
   void dependencies() {
     Get.lazyPut<ConnectionService>(TcpConnectionService.new, fenix: true);
     Get.lazyPut<AudioCaptureService>(
-      PlaceholderAudioCaptureService.new,
+      AndroidAudioRecordCaptureService.new,
       fenix: true,
     );
     Get.lazyPut<AudioPlaybackService>(
@@ -20,7 +20,10 @@ class InitialBinding extends Bindings {
       fenix: true,
     );
     Get.lazyPut<AudioStreamService>(
-      () => UdpAudioService(playbackService: Get.find<AudioPlaybackService>()),
+      () => UdpAudioService(
+        playbackService: Get.find<AudioPlaybackService>(),
+        captureService: Get.find<AudioCaptureService>(),
+      ),
       fenix: true,
     );
     Get.lazyPut<DeviceDiscoveryService>(

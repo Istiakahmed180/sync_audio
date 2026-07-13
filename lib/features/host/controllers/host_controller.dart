@@ -94,7 +94,7 @@ class HostController extends GetxController {
     lastSentMessage.value = message;
   }
 
-  Future<void> startTestTone() async {
+  Future<void> startMicrophoneStream() async {
     errorMessage.value = null;
     final audioService = _audioService;
     final ip = receiverIpController.text.trim();
@@ -113,7 +113,7 @@ class HostController extends GetxController {
     await audioService.startStreaming(ipAddress: ip, port: port);
   }
 
-  Future<void> stopTestTone() async {
+  Future<void> stopMicrophoneStream() async {
     errorMessage.value = null;
     await _audioService?.stopStreaming();
   }
