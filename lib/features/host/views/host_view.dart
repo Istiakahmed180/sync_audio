@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -93,6 +94,59 @@ class HostView extends GetView<HostController> {
                 icon: Icons.send_rounded,
                 onPressed: controller.isConnected
                     ? controller.sendTestMessage
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'PCM test tone',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Generate a 440 Hz mono PCM tone and send it to the receiver over UDP.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller.audioPortController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Audio UDP port',
+                hintText: '5051',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Audio status'),
+                  StatusBadge(label: controller.audioStatus.value.label),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => AppPrimaryButton(
+                label: 'Start Test Tone',
+                icon: Icons.graphic_eq_rounded,
+                onPressed:
+                    controller.audioStatus.value == AudioStreamStatus.streaming
+                    ? null
+                    : controller.startTestTone,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => AppPrimaryButton(
+                label: 'Stop Test Tone',
+                icon: Icons.stop_circle_outlined,
+                onPressed:
+                    controller.audioStatus.value == AudioStreamStatus.streaming
+                    ? controller.stopTestTone
                     : null,
               ),
             ),

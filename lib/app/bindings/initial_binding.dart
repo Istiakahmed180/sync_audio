@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../../services/audio_capture_service.dart';
 import '../../services/audio_playback_service.dart';
+import '../../services/udp_audio_service.dart';
 import '../../services/connection_service.dart';
 import '../../services/device_discovery_service.dart';
 import '../../services/synchronization_service.dart';
@@ -15,7 +16,11 @@ class InitialBinding extends Bindings {
       fenix: true,
     );
     Get.lazyPut<AudioPlaybackService>(
-      PlaceholderAudioPlaybackService.new,
+      AndroidAudioTrackPlaybackService.new,
+      fenix: true,
+    );
+    Get.lazyPut<AudioStreamService>(
+      () => UdpAudioService(playbackService: Get.find<AudioPlaybackService>()),
       fenix: true,
     );
     Get.lazyPut<DeviceDiscoveryService>(

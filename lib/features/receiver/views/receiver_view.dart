@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../app/constants/app_constants.dart';
+import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -59,6 +61,53 @@ class ReceiverView extends GetView<ReceiverController> {
                 icon: Icons.stop_rounded,
                 onPressed: controller.isServerRunning.value
                     ? controller.stopServer
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'PCM audio receiver',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Receive mono PCM packets over UDP and play them through Android AudioTrack.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            const _DetailRow(
+              label: 'Audio UDP port',
+              value: '${AppConstants.audioPort}',
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Audio status'),
+                  StatusBadge(label: controller.audioStatus.value.label),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => AppPrimaryButton(
+                label: 'Start Audio Receiver',
+                icon: Icons.volume_up_rounded,
+                onPressed: controller.isAudioReceiverRunning.value
+                    ? null
+                    : controller.startAudioReceiver,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => AppPrimaryButton(
+                label: 'Stop Audio Receiver',
+                icon: Icons.volume_off_rounded,
+                onPressed: controller.isAudioReceiverRunning.value
+                    ? controller.stopAudioReceiver
                     : null,
               ),
             ),
