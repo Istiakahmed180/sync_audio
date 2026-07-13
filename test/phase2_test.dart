@@ -5,21 +5,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_audio/features/host/controllers/host_controller.dart';
 import 'package:sync_audio/features/receiver/controllers/receiver_controller.dart';
 import 'package:sync_audio/models/connection_status.dart';
+import 'package:sync_audio/models/receiver_session.dart';
 import 'package:sync_audio/services/connection_service.dart';
 
 class FakeConnectionService implements ConnectionService {
   final _messages = StreamController<String>.broadcast();
   final _statuses = StreamController<ConnectionStatus>.broadcast();
+  final _controlSessions = StreamController<ReceiverSession>.broadcast();
   final _errors = StreamController<String>.broadcast();
   ConnectionStatus _status = ConnectionStatus.disconnected;
   bool _connected = false;
   bool _serverRunning = false;
   String? sentMessage;
+  final List<ReceiverSession> _sessions = [];
 
   @override
   Stream<String> get receivedMessages => _messages.stream;
   @override
   Stream<ConnectionStatus> get statusChanges => _statuses.stream;
+  @override
+  Stream<ReceiverSession> get controlSessionChanges => _controlSessions.stream;
   @override
   Stream<String> get errors => _errors.stream;
   @override
@@ -28,6 +33,8 @@ class FakeConnectionService implements ConnectionService {
   bool get isConnected => _connected;
   @override
   bool get isServerRunning => _serverRunning;
+  @override
+  List<ReceiverSession> get controlSessions => List.unmodifiable(_sessions);
 
   void _emit(ConnectionStatus status) {
     _status = status;
@@ -56,19 +63,52 @@ class FakeConnectionService implements ConnectionService {
   }
 
   @override
+  Future<void> connectToReceivers({
+    required List<ReceiverSession> receivers,
+  }) async {
+    _sessions
+      ..clear()
+      ..addAll(
+        receivers.map(
+          (receiver) => receiver.copyWith(
+            controlStatus: ControlConnectionStatus.connected,
+          ),
+        ),
+      );
+    for (final session in _sessions) {
+      _controlSessions.add(session);
+    }
+    _connected = _sessions.isNotEmpty;
+    _emit(ConnectionStatus.connected);
+  }
+
+  @override
   Future<void> disconnect() async {
     _connected = false;
     _emit(ConnectionStatus.disconnected);
   }
 
   @override
+  Future<void> disconnectFrom(String receiverId) async {
+    _sessions.removeWhere((session) => session.id == receiverId);
+    _connected = _sessions.isNotEmpty;
+  }
+
+  @override
   Future<void> sendMessage(String message) async => sentMessage = message;
+
+  @override
+  Future<void> sendMessageTo({
+    required String receiverId,
+    required String message,
+  }) async => sentMessage = message;
 
   void emitMessage(String message) => _messages.add(message);
 
   Future<void> dispose() async {
     await _messages.close();
     await _statuses.close();
+    await _controlSessions.close();
     await _errors.close();
   }
 }

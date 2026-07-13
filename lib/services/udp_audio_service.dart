@@ -24,6 +24,10 @@ abstract class AudioStreamService {
   Future<void> stopStreaming();
   Future<void> startReceiver({required int port});
   Future<void> stopReceiver();
+  Future<void> setReceiverCalibration({
+    required String receiverId,
+    required int calibrationMicros,
+  });
 }
 
 class UdpAudioService implements AudioStreamService {
@@ -105,21 +109,25 @@ class UdpAudioService implements AudioStreamService {
       _packetSequence = 0;
       _clockSequence = 0;
       _streamClock = Stopwatch()..start();
-      _sessions
-        ..clear()
-        ..addEntries(
-          _destinations.map((address) {
-            final id = _sessionId(address.address, port);
-            final session = ReceiverSession(
-              id: id,
-              ipAddress: address.address,
-              port: port,
-              status: ReceiverSessionStatus.synchronizing,
-            );
-            _emitSession(session);
-            return MapEntry(id, session);
-          }),
-        );
+      final activeIds = <String>{};
+      for (final address in _destinations) {
+        final id = _sessionId(address.address, port);
+        activeIds.add(id);
+        final session =
+            (_sessions[id] ??
+                    ReceiverSession(
+                      id: id,
+                      ipAddress: address.address,
+                      port: port,
+                    ))
+                .copyWith(
+                  ipAddress: address.address,
+                  port: port,
+                  status: ReceiverSessionStatus.synchronizing,
+                );
+        _updateSession(session);
+      }
+      _sessions.removeWhere((id, _) => !activeIds.contains(id));
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       _udpSubscription = _socket!.listen(_handleHostSocketEvent);
       _streaming = true;
@@ -216,16 +224,7 @@ class UdpAudioService implements AudioStreamService {
         reconnectAttempt: 0,
       );
       _updateSession(updated);
-      final address = InternetAddress(updated.ipAddress);
-      _socket!.send(
-        AudioPacketCodec.encode(
-          type: AudioPacketType.clockOffset,
-          sequence: packet.sequence,
-          timestampMicros: offset,
-        ),
-        address,
-        updated.port,
-      );
+      _sendClockOffset(updated, packet.sequence);
     }
   }
 
@@ -278,6 +277,37 @@ class UdpAudioService implements AudioStreamService {
       _socket = null;
     }
     _setStatus(AudioStreamStatus.stopped);
+  }
+
+  @override
+  Future<void> setReceiverCalibration({
+    required String receiverId,
+    required int calibrationMicros,
+  }) async {
+    final session = _sessions[receiverId];
+    if (session == null) return;
+    final updated = session.copyWith(
+      playbackCalibrationMicros: calibrationMicros,
+    );
+    _updateSession(updated);
+    if (_streaming) {
+      _sendClockOffset(updated, _clockSequence++);
+    }
+  }
+
+  void _sendClockOffset(ReceiverSession session, int sequence) {
+    final socket = _socket;
+    if (socket == null) return;
+    socket.send(
+      AudioPacketCodec.encode(
+        type: AudioPacketType.clockOffset,
+        sequence: sequence,
+        timestampMicros:
+            session.clockOffsetMicros + session.playbackCalibrationMicros,
+      ),
+      InternetAddress(session.ipAddress),
+      session.port,
+    );
   }
 
   @override
@@ -408,7 +438,7 @@ class UdpAudioService implements AudioStreamService {
     if (!_sessionController.isClosed) _sessionController.add(session);
   }
 
-  String _sessionId(String ipAddress, int port) => '$ipAddress:$port';
+  String _sessionId(String ipAddress, int port) => ipAddress;
 
   void _setStatus(AudioStreamStatus value) {
     _status = value;

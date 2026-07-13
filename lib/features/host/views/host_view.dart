@@ -173,7 +173,11 @@ class HostView extends GetView<HostController> {
                     .map(
                       (session) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: _ReceiverSessionCard(session: session),
+                        child: _ReceiverSessionCard(
+                          session: session,
+                          onAdjust: (delta) => controller
+                              .adjustReceiverCalibration(session, delta),
+                        ),
                       ),
                     )
                     .toList(),
@@ -249,9 +253,10 @@ class _MessageCard extends StatelessWidget {
 }
 
 class _ReceiverSessionCard extends StatelessWidget {
-  const _ReceiverSessionCard({required this.session});
+  const _ReceiverSessionCard({required this.session, required this.onAdjust});
 
   final ReceiverSession session;
+  final ValueChanged<int> onAdjust;
 
   @override
   Widget build(BuildContext context) {
@@ -271,11 +276,36 @@ class _ReceiverSessionCard extends StatelessWidget {
                     session.ipAddress,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  Text('RTT ${session.roundTripTimeMicros ~/ 1000} ms'),
+                  Text(
+                    '${session.controlStatus.label} · RTT ${session.roundTripTimeMicros ~/ 1000} ms · offset ${session.clockOffsetMicros ~/ 1000} ms',
+                  ),
                 ],
               ),
             ),
-            StatusBadge(label: session.status.label),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                StatusBadge(label: session.status.label),
+                Text('cal ${session.playbackCalibrationMicros ~/ 1000} ms'),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Make receiver earlier',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onAdjust(-5),
+                      icon: const Icon(Icons.remove_circle_outline, size: 18),
+                    ),
+                    IconButton(
+                      tooltip: 'Make receiver later',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onAdjust(5),
+                      icon: const Icon(Icons.add_circle_outline, size: 18),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ],
         ),
       ),
