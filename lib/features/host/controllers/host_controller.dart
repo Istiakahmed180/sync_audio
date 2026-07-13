@@ -5,24 +5,42 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../models/connection_status.dart';
+import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/connection_service.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../services/udp_audio_service.dart';
+import '../../../services/calibration_store.dart';
+import '../../../services/device_discovery_service.dart';
 
 class HostController extends GetxController {
   HostController({
     ConnectionService? connectionService,
     AudioStreamService? audioService,
+    CalibrationStore? calibrationStore,
+    DeviceDiscoveryService? discoveryService,
   }) : _service = connectionService ?? Get.find<ConnectionService>(),
        _audioService =
            audioService ??
            (Get.isRegistered<AudioStreamService>()
                ? Get.find<AudioStreamService>()
-               : null);
+               : null),
+       _calibrationStore =
+           calibrationStore ??
+           (Get.isRegistered<CalibrationStore>()
+               ? Get.find<CalibrationStore>()
+               : AndroidCalibrationStore()),
+       _discoveryService =
+           discoveryService ??
+           (Get.isRegistered<DeviceDiscoveryService>()
+               ? Get.find<DeviceDiscoveryService>()
+               : PlaceholderDeviceDiscoveryService());
 
   final ConnectionService _service;
   final AudioStreamService? _audioService;
+  final CalibrationStore _calibrationStore;
+  final DeviceDiscoveryService _discoveryService;
+  final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
   final receiverIpInputController = TextEditingController();
   final portController = TextEditingController(text: '5050');
@@ -35,6 +53,7 @@ class HostController extends GetxController {
   final receiverCount = 0.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
+  final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   late final StreamSubscription<String> _errorSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
@@ -86,18 +105,31 @@ class HostController extends GetxController {
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter a port between 1 and 65535.');
     }
-    await _service.connectToReceivers(
-      receivers: addresses
-          .map(
-            (address) => ReceiverSession(
-              id: address,
-              ipAddress: address,
-              port: port,
-              controlStatus: ControlConnectionStatus.connecting,
-            ),
-          )
-          .toList(growable: false),
-    );
+    _service.setPairingToken(pairingTokenController.text);
+    final perReceiverTokens = <String, String>{};
+    for (final entry in pairingTokenController.text.split(',')) {
+      final parts = entry.split('=').map((part) => part.trim()).toList();
+      if (parts.length == 2 && addresses.contains(parts.first)) {
+        perReceiverTokens[parts.first] = parts.last;
+      }
+    }
+    if (perReceiverTokens.isNotEmpty) {
+      _service.setPairingTokens(perReceiverTokens);
+    }
+    final receivers = <ReceiverSession>[];
+    for (final address in addresses) {
+      final calibration = await _calibrationStore.read(address) ?? 0;
+      receivers.add(
+        ReceiverSession(
+          id: address,
+          ipAddress: address,
+          port: port,
+          controlStatus: ControlConnectionStatus.connecting,
+          playbackCalibrationMicros: calibration,
+        ),
+      );
+    }
+    await _service.connectToReceivers(receivers: receivers);
   }
 
   Future<void> disconnect() async {
@@ -139,14 +171,40 @@ class HostController extends GetxController {
       return _showError('Enter an audio port between 1 and 65535.');
     }
     receiverCount.value = addresses.length;
+    await _sendControlCommand(addresses, ControlCommandType.streamPrepare, [
+      _streamSessionId,
+      '0',
+    ]);
     await audioService.startStreaming(ipAddresses: addresses, port: port);
+    await _sendControlCommand(addresses, ControlCommandType.streamStart, [
+      _streamSessionId,
+      '0',
+    ]);
   }
 
   Future<void> stopSystemAudioStream() async {
     errorMessage.value = null;
+    await _sendControlCommand(
+      _receiverAddresses(),
+      ControlCommandType.streamStop,
+      [_streamSessionId],
+    );
     await _audioService?.stopStreaming();
     receiverCount.value = 0;
     receiverSessions.clear();
+  }
+
+  Future<void> _sendControlCommand(
+    List<String> addresses,
+    ControlCommandType type,
+    List<String> arguments,
+  ) async {
+    for (final address in addresses) {
+      await _service.sendControlCommand(
+        receiverId: address,
+        command: ControlCommand(type: type, arguments: arguments),
+      );
+    }
   }
 
   List<String> _receiverAddresses() {
@@ -177,6 +235,20 @@ class HostController extends GetxController {
   void removeReceiverIp(String address) =>
       configuredReceiverIps.remove(address);
 
+  Future<void> discoverReceivers() async {
+    errorMessage.value = null;
+    final devices = await _discoveryService.discover();
+    if (devices.isEmpty) {
+      _showError('No receivers were found on this Wi-Fi network.');
+      return;
+    }
+    for (final device in devices) {
+      if (!configuredReceiverIps.contains(device.ipAddress)) {
+        configuredReceiverIps.add(device.ipAddress);
+      }
+    }
+  }
+
   Future<void> adjustReceiverCalibration(
     ReceiverSession session,
     int deltaMilliseconds,
@@ -187,6 +259,16 @@ class HostController extends GetxController {
       receiverId: session.id,
       calibrationMicros:
           session.playbackCalibrationMicros + deltaMilliseconds * 1000,
+    );
+    final calibrationMicros =
+        session.playbackCalibrationMicros + deltaMilliseconds * 1000;
+    await _calibrationStore.write(session.id, calibrationMicros);
+    await _service.sendControlCommand(
+      receiverId: session.id,
+      command: ControlCommand(
+        type: ControlCommandType.setPlaybackOffset,
+        arguments: ['${session.clockOffsetMicros + calibrationMicros}'],
+      ),
     );
   }
 
@@ -216,6 +298,7 @@ class HostController extends GetxController {
     portController.dispose();
     audioPortController.dispose();
     testMessageController.dispose();
+    pairingTokenController.dispose();
     super.onClose();
   }
 }

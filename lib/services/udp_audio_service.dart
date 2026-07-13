@@ -16,6 +16,9 @@ abstract class AudioStreamService {
   bool get isStreaming;
   bool get isReceiving;
   List<ReceiverSession> get receiverSessions;
+  int get bufferedPackets;
+  int get bufferedDurationMicros;
+  int get droppedPacketCount;
 
   Future<void> startStreaming({
     required List<String> ipAddresses,
@@ -28,6 +31,8 @@ abstract class AudioStreamService {
     required String receiverId,
     required int calibrationMicros,
   });
+
+  Future<void> applyPlaybackOffset(int offsetMicros);
 }
 
 class UdpAudioService implements AudioStreamService {
@@ -67,6 +72,8 @@ class UdpAudioService implements AudioStreamService {
   final Map<int, _ReceivedAudioPacket> _pendingPackets =
       <int, _ReceivedAudioPacket>{};
   int? _nextSequence;
+  int? _missingSequenceSinceMicros;
+  int _droppedPackets = 0;
   int _hostToLocalOffsetMicros = 0;
   bool _clockSynchronized = false;
 
@@ -85,6 +92,18 @@ class UdpAudioService implements AudioStreamService {
   @override
   List<ReceiverSession> get receiverSessions =>
       List.unmodifiable(_sessions.values);
+  @override
+  int get bufferedPackets => _pendingPackets.length;
+  @override
+  int get bufferedDurationMicros {
+    if (_pendingPackets.isEmpty) return 0;
+    final packets = _pendingPackets.values.toList()
+      ..sort((a, b) => a.timestampMicros.compareTo(b.timestampMicros));
+    return packets.last.timestampMicros - packets.first.timestampMicros;
+  }
+
+  @override
+  int get droppedPacketCount => _droppedPackets;
 
   @override
   Future<void> startStreaming({
@@ -108,6 +127,7 @@ class UdpAudioService implements AudioStreamService {
       _destinationPort = port;
       _packetSequence = 0;
       _clockSequence = 0;
+      _droppedPackets = 0;
       _streamClock = Stopwatch()..start();
       final activeIds = <String>{};
       for (final address in _destinations) {
@@ -295,6 +315,13 @@ class UdpAudioService implements AudioStreamService {
     }
   }
 
+  @override
+  Future<void> applyPlaybackOffset(int offsetMicros) async {
+    if (!_receiving) return;
+    _hostToLocalOffsetMicros = offsetMicros;
+    _clockSynchronized = true;
+  }
+
   void _sendClockOffset(ReceiverSession session, int sequence) {
     final socket = _socket;
     if (socket == null) return;
@@ -367,6 +394,11 @@ class UdpAudioService implements AudioStreamService {
           _clockSynchronized = true;
         case AudioPacketType.pcmAudio:
           _nextSequence ??= packet.sequence;
+          if (_pendingPackets.length > 256) {
+            final oldest = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
+            _pendingPackets.remove(oldest);
+            _droppedPackets++;
+          }
           _pendingPackets.putIfAbsent(
             packet.sequence,
             () => _ReceivedAudioPacket(
@@ -392,7 +424,14 @@ class UdpAudioService implements AudioStreamService {
     final packet = _pendingPackets[sequence];
     if (packet == null) {
       if (_pendingPackets.isNotEmpty) {
-        _nextSequence = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
+        final now = _receiverClock.elapsedMicroseconds;
+        _missingSequenceSinceMicros ??= now;
+        if (now - _missingSequenceSinceMicros! >=
+            const Duration(milliseconds: 40).inMicroseconds) {
+          _droppedPackets++;
+          _nextSequence = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
+          _missingSequenceSinceMicros = null;
+        }
       }
       return;
     }
@@ -402,6 +441,7 @@ class UdpAudioService implements AudioStreamService {
     }
     _pendingPackets.remove(sequence);
     _nextSequence = (sequence + 1) & 0xFFFFFFFF;
+    _missingSequenceSinceMicros = null;
     _playbackQueue = _playbackQueue
         .then((_) => playbackService.writePcm(packet.pcm))
         .catchError((_) {
@@ -417,6 +457,7 @@ class UdpAudioService implements AudioStreamService {
     _playbackTimer = null;
     _pendingPackets.clear();
     _nextSequence = null;
+    _missingSequenceSinceMicros = null;
     _clockSynchronized = false;
     _receiverClock.stop();
     await _udpSubscription?.cancel();

@@ -37,6 +37,13 @@ class ReceiverView extends GetView<ReceiverController> {
             ),
             const SizedBox(height: 20),
             Obx(() => _DetailCard(ipAddress: controller.localIpAddress.value)),
+            const SizedBox(height: 12),
+            Obx(
+              () => _MessageCard(
+                label: 'Pairing code',
+                value: controller.pairingToken.value,
+              ),
+            ),
             const SizedBox(height: 16),
             Obx(
               () => AppPrimaryButton(

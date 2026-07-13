@@ -98,6 +98,15 @@ class HostView extends GetView<HostController> {
                     : null,
               ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller.pairingTokenController,
+              keyboardType: TextInputType.text,
+              decoration: const InputDecoration(
+                labelText: 'Receiver pairing code(s) (optional)',
+                hintText: '123456 or 192.168.1.10=123456',
+              ),
+            ),
             const SizedBox(height: 28),
             Text(
               'System audio',
@@ -126,6 +135,15 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: controller.discoverReceivers,
+                icon: const Icon(Icons.wifi_find_rounded),
+                label: const Text('Discover receivers on Wi-Fi'),
+              ),
+            ),
+            const SizedBox(height: 4),
             Obx(
               () => Wrap(
                 spacing: 8,

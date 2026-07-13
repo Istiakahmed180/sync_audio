@@ -6,6 +6,8 @@ import '../../services/udp_audio_service.dart';
 import '../../services/connection_service.dart';
 import '../../services/device_discovery_service.dart';
 import '../../services/synchronization_service.dart';
+import '../../services/calibration_store.dart';
+import '../../services/pairing_store.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -27,12 +29,14 @@ class InitialBinding extends Bindings {
       fenix: true,
     );
     Get.lazyPut<DeviceDiscoveryService>(
-      PlaceholderDeviceDiscoveryService.new,
+      UdpDeviceDiscoveryService.new,
       fenix: true,
     );
     Get.lazyPut<SynchronizationService>(
       PlaceholderSynchronizationService.new,
       fenix: true,
     );
+    Get.lazyPut<CalibrationStore>(AndroidCalibrationStore.new, fenix: true);
+    Get.lazyPut<PairingStore>(AndroidPairingStore.new, fenix: true);
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/connection_status.dart';
+import '../models/control_command.dart';
 import '../models/receiver_session.dart';
 import 'ip_address_service.dart';
 
@@ -12,6 +13,8 @@ abstract class ConnectionService {
   Stream<ConnectionStatus> get statusChanges;
 
   Stream<ReceiverSession> get controlSessionChanges;
+
+  Stream<ControlEvent> get controlEvents;
 
   Stream<String> get errors;
 
@@ -41,6 +44,15 @@ abstract class ConnectionService {
     required String receiverId,
     required String message,
   });
+
+  Future<void> sendControlCommand({
+    required String receiverId,
+    required ControlCommand command,
+  });
+
+  void setPairingToken(String? token);
+
+  void setPairingTokens(Map<String, String> tokens);
 }
 
 class TcpConnectionService implements ConnectionService {
@@ -51,6 +63,7 @@ class TcpConnectionService implements ConnectionService {
   final _receivedMessagesController = StreamController<String>.broadcast();
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
+  final _controlEventController = StreamController<ControlEvent>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final Map<String, Socket> _sockets = <String, Socket>{};
   final Map<String, StreamSubscription<String>> _socketSubscriptions =
@@ -60,6 +73,14 @@ class TcpConnectionService implements ConnectionService {
       <String, _ControlTarget>{};
   final Map<String, Timer> _reconnectTimers = <String, Timer>{};
   final Set<String> _connecting = <String>{};
+  final Map<String, Timer> _pingTimers = <String, Timer>{};
+  final Map<int, _PingRequest> _pendingPings = <int, _PingRequest>{};
+  final Stopwatch _controlClock = Stopwatch()..start();
+  final String _localSessionId =
+      'sync-${DateTime.now().microsecondsSinceEpoch}';
+  int _pingSequence = 0;
+  String? _pairingToken;
+  final Map<String, String> _pairingTokens = <String, String>{};
 
   ServerSocket? _server;
   ConnectionStatus _status = ConnectionStatus.disconnected;
@@ -74,6 +95,9 @@ class TcpConnectionService implements ConnectionService {
   @override
   Stream<ReceiverSession> get controlSessionChanges =>
       _sessionController.stream;
+
+  @override
+  Stream<ControlEvent> get controlEvents => _controlEventController.stream;
 
   @override
   Stream<String> get errors => _errorsController.stream;
@@ -155,17 +179,35 @@ class TcpConnectionService implements ConnectionService {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen(
-          _receivedMessagesController.add,
+          (line) => _handleLine(id, line),
           onError: (_) => _handleSocketClosed(id, socket),
           onDone: () => _handleSocketClosed(id, socket),
         );
     _setGlobalStatus(ConnectionStatus.connected);
+    if (desired) {
+      Timer.run(() {
+        unawaited(
+          sendControlCommand(
+            receiverId: id,
+            command: ControlCommand(
+              type: ControlCommandType.hello,
+              arguments: [
+                _localSessionId,
+                ?(_pairingTokens[id] ?? _pairingToken),
+              ],
+            ),
+          ),
+        );
+      });
+      _startPingTimer(id);
+    }
   }
 
   @override
   Future<void> stopServer() async {
     _desiredReceivers.clear();
     _cancelReconnectTimers();
+    _cancelPingTimers();
     await _closeAllSockets();
     await _server?.close();
     _server = null;
@@ -292,6 +334,7 @@ class TcpConnectionService implements ConnectionService {
   Future<void> disconnect() async {
     _desiredReceivers.clear();
     _cancelReconnectTimers();
+    _cancelPingTimers();
     await _closeAllSockets();
     for (final session in _sessions.values) {
       _emitSession(
@@ -335,6 +378,134 @@ class TcpConnectionService implements ConnectionService {
     }
   }
 
+  @override
+  Future<void> sendControlCommand({
+    required String receiverId,
+    required ControlCommand command,
+  }) => sendMessageTo(receiverId: receiverId, message: command.line);
+
+  void _handleLine(String sourceId, String line) {
+    if (!_receivedMessagesController.isClosed) {
+      _receivedMessagesController.add(line);
+    }
+    final command = ControlCommand.parse(line);
+    if (command == null) return;
+    if (!_controlEventController.isClosed) {
+      _controlEventController.add(
+        ControlEvent(sourceId: sourceId, command: command),
+      );
+    }
+    switch (command.type) {
+      case ControlCommandType.hello:
+        if (_pairingToken != null &&
+            (command.arguments.length != 2 ||
+                command.arguments[1] != _pairingToken)) {
+          unawaited(
+            sendControlCommand(
+              receiverId: sourceId,
+              command: const ControlCommand(
+                type: ControlCommandType.error,
+                arguments: ['PAIRING_REQUIRED', 'Pairing token rejected'],
+              ),
+            ),
+          );
+          unawaited(disconnectFrom(sourceId));
+          return;
+        }
+        unawaited(
+          sendControlCommand(
+            receiverId: sourceId,
+            command: ControlCommand(
+              type: ControlCommandType.helloAck,
+              arguments: [command.arguments.first],
+            ),
+          ),
+        );
+      case ControlCommandType.ping:
+        final receivedAt = _controlClock.elapsedMicroseconds;
+        final sentAt = _controlClock.elapsedMicroseconds;
+        unawaited(
+          sendControlCommand(
+            receiverId: sourceId,
+            command: ControlCommand(
+              type: ControlCommandType.pong,
+              arguments: [command.arguments.first, '$receivedAt', '$sentAt'],
+            ),
+          ),
+        );
+      case ControlCommandType.pong:
+        _handlePong(sourceId, command);
+      default:
+        break;
+    }
+  }
+
+  @override
+  void setPairingToken(String? token) {
+    _pairingToken = token?.trim().isEmpty == true ? null : token?.trim();
+  }
+
+  @override
+  void setPairingTokens(Map<String, String> tokens) {
+    _pairingTokens
+      ..clear()
+      ..addAll(tokens.map((key, value) => MapEntry(key, value.trim())));
+  }
+
+  void _handlePong(String sourceId, ControlCommand command) {
+    final requestId = int.tryParse(command.arguments[0]);
+    final receiverReceived = int.tryParse(command.arguments[1]);
+    final receiverSent = int.tryParse(command.arguments[2]);
+    final request = requestId == null ? null : _pendingPings.remove(requestId);
+    if (request == null || receiverReceived == null || receiverSent == null) {
+      return;
+    }
+    final hostReceived = _controlClock.elapsedMicroseconds;
+    final session = _sessions[sourceId];
+    if (session == null) return;
+    _updateSession(
+      session.copyWith(
+        clockOffsetMicros:
+            ((receiverReceived - request.sentAtMicros) +
+                (receiverSent - hostReceived)) ~/
+            2,
+        roundTripTimeMicros:
+            (hostReceived - request.sentAtMicros) -
+            (receiverSent - receiverReceived),
+        lastSyncMicros: hostReceived,
+        controlStatus: ControlConnectionStatus.connected,
+        reconnectAttempt: 0,
+      ),
+    );
+  }
+
+  void _startPingTimer(String id) {
+    _pingTimers.remove(id)?.cancel();
+    _pingTimers[id] = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _sendPing(id),
+    );
+  }
+
+  void _sendPing(String id) {
+    if (!_sockets.containsKey(id)) return;
+    final requestId = _pingSequence++;
+    final sentAt = _controlClock.elapsedMicroseconds;
+    _pendingPings[requestId] = _PingRequest(
+      sessionId: id,
+      sentAtMicros: sentAt,
+    );
+    unawaited(
+      sendControlCommand(
+        receiverId: id,
+        command: ControlCommand(
+          type: ControlCommandType.ping,
+          arguments: ['$requestId', '$sentAt'],
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleSocketClosed(String id, Socket socket) async {
     if (!identical(_sockets[id], socket)) return;
     await _socketSubscriptions.remove(id)?.cancel();
@@ -359,6 +530,7 @@ class TcpConnectionService implements ConnectionService {
   Future<void> _closeSocket(String id) async {
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id)?.destroy();
+    _pingTimers.remove(id)?.cancel();
   }
 
   Future<void> _closeAllSockets() async {
@@ -372,6 +544,14 @@ class TcpConnectionService implements ConnectionService {
       timer.cancel();
     }
     _reconnectTimers.clear();
+  }
+
+  void _cancelPingTimers() {
+    for (final timer in _pingTimers.values) {
+      timer.cancel();
+    }
+    _pingTimers.clear();
+    _pendingPings.clear();
   }
 
   void _handleServerError(Object error) =>
@@ -433,6 +613,7 @@ class TcpConnectionService implements ConnectionService {
     await _receivedMessagesController.close();
     await _statusController.close();
     await _sessionController.close();
+    await _controlEventController.close();
     await _errorsController.close();
   }
 }
@@ -442,4 +623,11 @@ class _ControlTarget {
 
   final String ipAddress;
   final int port;
+}
+
+class _PingRequest {
+  const _PingRequest({required this.sessionId, required this.sentAtMicros});
+
+  final String sessionId;
+  final int sentAtMicros;
 }

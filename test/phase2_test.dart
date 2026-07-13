@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_audio/features/host/controllers/host_controller.dart';
 import 'package:sync_audio/features/receiver/controllers/receiver_controller.dart';
 import 'package:sync_audio/models/connection_status.dart';
+import 'package:sync_audio/models/control_command.dart';
 import 'package:sync_audio/models/receiver_session.dart';
 import 'package:sync_audio/services/connection_service.dart';
 
@@ -12,12 +13,15 @@ class FakeConnectionService implements ConnectionService {
   final _messages = StreamController<String>.broadcast();
   final _statuses = StreamController<ConnectionStatus>.broadcast();
   final _controlSessions = StreamController<ReceiverSession>.broadcast();
+  final _controlEvents = StreamController<ControlEvent>.broadcast();
   final _errors = StreamController<String>.broadcast();
   ConnectionStatus _status = ConnectionStatus.disconnected;
   bool _connected = false;
   bool _serverRunning = false;
   String? sentMessage;
+  ControlCommand? sentCommand;
   final List<ReceiverSession> _sessions = [];
+  String? pairingToken;
 
   @override
   Stream<String> get receivedMessages => _messages.stream;
@@ -25,6 +29,8 @@ class FakeConnectionService implements ConnectionService {
   Stream<ConnectionStatus> get statusChanges => _statuses.stream;
   @override
   Stream<ReceiverSession> get controlSessionChanges => _controlSessions.stream;
+  @override
+  Stream<ControlEvent> get controlEvents => _controlEvents.stream;
   @override
   Stream<String> get errors => _errors.stream;
   @override
@@ -103,12 +109,28 @@ class FakeConnectionService implements ConnectionService {
     required String message,
   }) async => sentMessage = message;
 
+  @override
+  Future<void> sendControlCommand({
+    required String receiverId,
+    required ControlCommand command,
+  }) async {
+    sentCommand = command;
+    sentMessage = command.line;
+  }
+
+  @override
+  void setPairingToken(String? token) => pairingToken = token;
+
+  @override
+  void setPairingTokens(Map<String, String> tokens) {}
+
   void emitMessage(String message) => _messages.add(message);
 
   Future<void> dispose() async {
     await _messages.close();
     await _statuses.close();
     await _controlSessions.close();
+    await _controlEvents.close();
     await _errors.close();
   }
 }

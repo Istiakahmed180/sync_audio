@@ -19,6 +19,8 @@ class MainActivity : FlutterActivity() {
     private val playbackChannelName = "sync_audio/audio_track"
     private val systemAudioChannelName = "sync_audio/system_audio_capture"
     private val systemAudioStreamChannelName = "sync_audio/system_audio_stream"
+    private val calibrationChannelName = "sync_audio/calibration"
+    private val pairingChannelName = "sync_audio/pairing"
     private val projectionRequestCode = 7002
     private val microphonePermissionRequestCode = 7003
     private val audioExecutor = Executors.newSingleThreadExecutor()
@@ -78,6 +80,53 @@ class MainActivity : FlutterActivity() {
                     "stop" -> {
                         stopService(Intent(this, SystemAudioCaptureService::class.java))
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, calibrationChannelName)
+            .setMethodCallHandler { call, result ->
+                val preferences = getSharedPreferences("sync_audio", MODE_PRIVATE)
+                when (call.method) {
+                    "read" -> {
+                        val receiverId = call.arguments as? String
+                        if (receiverId == null) {
+                            result.error("INVALID_RECEIVER", "Receiver ID is missing", null)
+                        } else {
+                            val value = preferences.getLong("calibration_$receiverId", 0L)
+                            result.success(value.toInt())
+                        }
+                    }
+                    "write" -> {
+                        val receiverId = call.argument<String>("receiverId")
+                        val calibration = call.argument<Number>("calibrationMicros")
+                        if (receiverId == null || calibration == null) {
+                            result.error("INVALID_CALIBRATION", "Calibration data is missing", null)
+                        } else {
+                            preferences.edit()
+                                .putLong("calibration_$receiverId", calibration.toLong())
+                                .apply()
+                            result.success(null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, pairingChannelName)
+            .setMethodCallHandler { call, result ->
+                val preferences = getSharedPreferences("sync_audio", MODE_PRIVATE)
+                when (call.method) {
+                    "read" -> result.success(preferences.getString("pairing_token", null))
+                    "write" -> {
+                        val token = call.arguments as? String
+                        if (token == null || token.length < 6) {
+                            result.error("INVALID_PAIRING_TOKEN", "Pairing token is invalid", null)
+                        } else {
+                            preferences.edit().putString("pairing_token", token).apply()
+                            result.success(null)
+                        }
                     }
                     else -> result.notImplemented()
                 }
