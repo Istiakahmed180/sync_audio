@@ -30,6 +30,7 @@ class HostController extends GetxController {
   final lastSentMessage = ''.obs;
   final errorMessage = RxnString();
   final audioStatus = AudioStreamStatus.idle.obs;
+  final receiverCount = 0.obs;
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   late final StreamSubscription<String> _errorSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
@@ -94,28 +95,38 @@ class HostController extends GetxController {
     lastSentMessage.value = message;
   }
 
-  Future<void> startMicrophoneStream() async {
+  Future<void> startSystemAudioStream() async {
     errorMessage.value = null;
     final audioService = _audioService;
-    final ip = receiverIpController.text.trim();
+    final addresses = receiverIpController.text
+        .split(RegExp(r'[\s,;]+'))
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
     final port = int.tryParse(audioPortController.text.trim());
-    final parsedIp = InternetAddress.tryParse(ip);
     if (audioService == null) {
       return _showError('Audio service is unavailable.');
     }
-    if (ip.isEmpty) return _showError('Enter the receiver IP address.');
-    if (parsedIp == null || parsedIp.type != InternetAddressType.IPv4) {
-      return _showError('Enter a valid IPv4 address.');
+    if (addresses.isEmpty) {
+      return _showError('Enter at least one receiver IP address.');
+    }
+    for (final address in addresses) {
+      final parsedIp = InternetAddress.tryParse(address);
+      if (parsedIp == null || parsedIp.type != InternetAddressType.IPv4) {
+        return _showError('Enter valid IPv4 receiver addresses.');
+      }
     }
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter an audio port between 1 and 65535.');
     }
-    await audioService.startStreaming(ipAddress: ip, port: port);
+    receiverCount.value = addresses.length;
+    await audioService.startStreaming(ipAddresses: addresses, port: port);
   }
 
-  Future<void> stopMicrophoneStream() async {
+  Future<void> stopSystemAudioStream() async {
     errorMessage.value = null;
     await _audioService?.stopStreaming();
+    receiverCount.value = 0;
   }
 
   void _showError(String message) => errorMessage.value = message;

@@ -64,7 +64,7 @@ void main() {
       final packet = playback.packets.stream.first;
 
       await receiver.startReceiver(port: 5052);
-      await host.startStreaming(ipAddress: '127.0.0.1', port: 5052);
+      await host.startStreaming(ipAddresses: ['127.0.0.1'], port: 5052);
       hostCapture.emit(Uint8List(1024 * 2));
 
       final pcm = await packet.timeout(const Duration(seconds: 2));

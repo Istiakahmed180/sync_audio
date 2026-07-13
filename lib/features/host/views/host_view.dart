@@ -40,7 +40,7 @@ class HostView extends GetView<HostController> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Receiver IP address',
-                hintText: '192.168.1.10',
+                hintText: '192.168.1.10, 192.168.1.11',
               ),
             ),
             const SizedBox(height: 12),
@@ -99,14 +99,14 @@ class HostView extends GetView<HostController> {
             ),
             const SizedBox(height: 28),
             Text(
-              'Microphone audio',
+              'System audio',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              'Capture mono PCM microphone audio and send it to the receiver over UDP.',
+              'Capture supported app playback through Android MediaProjection and send it over UDP.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -123,30 +123,37 @@ class HostView extends GetView<HostController> {
               () => Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Audio status'),
-                  StatusBadge(label: controller.audioStatus.value.label),
+                  Text('Audio status'),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${controller.receiverCount.value} receivers'),
+                      const SizedBox(width: 10),
+                      StatusBadge(label: controller.audioStatus.value.label),
+                    ],
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             Obx(
               () => AppPrimaryButton(
-                label: 'Start Microphone Stream',
+                label: 'Start System Audio',
                 icon: Icons.graphic_eq_rounded,
                 onPressed:
                     controller.audioStatus.value == AudioStreamStatus.streaming
                     ? null
-                    : controller.startMicrophoneStream,
+                    : controller.startSystemAudioStream,
               ),
             ),
             const SizedBox(height: 12),
             Obx(
               () => AppPrimaryButton(
-                label: 'Stop Microphone Stream',
+                label: 'Stop System Audio',
                 icon: Icons.stop_circle_outlined,
                 onPressed:
                     controller.audioStatus.value == AudioStreamStatus.streaming
-                    ? controller.stopMicrophoneStream
+                    ? controller.stopSystemAudioStream
                     : null,
               ),
             ),

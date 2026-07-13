@@ -1,36 +1,34 @@
 package com.example.sync_audio
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioRecord
 import android.media.AudioTrack
-import android.media.MediaRecorder
+import android.media.projection.MediaProjectionManager
 import android.os.Build
-import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
-    private val channelName = "sync_audio/audio_track"
+    private val playbackChannelName = "sync_audio/audio_track"
+    private val systemAudioChannelName = "sync_audio/system_audio_capture"
+    private val systemAudioStreamChannelName = "sync_audio/system_audio_stream"
+    private val projectionRequestCode = 7002
+    private val microphonePermissionRequestCode = 7003
     private val audioExecutor = Executors.newSingleThreadExecutor()
     private val audioLock = Any()
     private var audioTrack: AudioTrack? = null
-    private val recordChannelName = "sync_audio/audio_record"
-    private val recordStreamChannelName = "sync_audio/audio_record_stream"
-    private val microphonePermissionRequestCode = 7001
-    private var audioEventSink: EventChannel.EventSink? = null
-    @Volatile private var audioRecording = false
-    private var audioRecord: AudioRecord? = null
-    private var audioRecordThread: Thread? = null
-    private var pendingAudioStartResult: MethodChannel.Result? = null
+    private var pendingSystemAudioStartResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, playbackChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "initialize" -> {
@@ -62,24 +60,23 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, recordStreamChannelName)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, systemAudioStreamChannelName)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    audioEventSink = events
+                    SystemAudioPcmBus.sink = events
                 }
 
                 override fun onCancel(arguments: Any?) {
-                    audioEventSink = null
-                    stopAudioRecord()
+                    SystemAudioPcmBus.sink = null
                 }
             })
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, recordChannelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, systemAudioChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "start" -> startMicrophoneCapture(result)
+                    "start" -> requestSystemAudioCapture(result)
                     "stop" -> {
-                        stopAudioRecord()
+                        stopService(Intent(this, SystemAudioCaptureService::class.java))
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -87,80 +84,51 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    private fun startMicrophoneCapture(result: MethodChannel.Result) {
-        if (audioRecording) {
-            result.success(null)
+    private fun requestSystemAudioCapture(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.error("SYSTEM_AUDIO_UNSUPPORTED", "System audio capture requires Android 10 or newer", null)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
         ) {
-            pendingAudioStartResult = result
+            pendingSystemAudioStartResult = result
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), microphonePermissionRequestCode)
             return
         }
+        launchProjectionConsent(result)
+    }
+
+    private fun launchProjectionConsent(result: MethodChannel.Result) {
+        pendingSystemAudioStartResult = result
+        val manager = getSystemService(MediaProjectionManager::class.java)
+        startActivityForResult(manager.createScreenCaptureIntent(), projectionRequestCode)
+    }
+
+    @Deprecated("Deprecated in Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != projectionRequestCode) return
+        val result = pendingSystemAudioStartResult
+        pendingSystemAudioStartResult = null
+        if (result == null) return
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            result.error("MEDIA_PROJECTION_DENIED", "System audio capture permission was denied", null)
+            return
+        }
         try {
-            startAudioRecord()
+            val serviceIntent = Intent(this, SystemAudioCaptureService::class.java)
+                .putExtra(SystemAudioCaptureService.EXTRA_RESULT_CODE, resultCode)
+                .putExtra(SystemAudioCaptureService.EXTRA_PROJECTION_DATA, data)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
             result.success(null)
         } catch (_: Exception) {
-            result.error("AUDIO_RECORD_INIT_FAILED", "Unable to initialize microphone capture", null)
+            result.error("SYSTEM_AUDIO_START_FAILED", "Unable to start system audio capture", null)
         }
-    }
-
-    private fun startAudioRecord() {
-        synchronized(audioLock) {
-            if (audioRecording) return
-            val sampleRate = 44100
-            val minBufferSize = AudioRecord.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-            )
-            require(minBufferSize > 0) { "Invalid AudioRecord buffer size" }
-            val record = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                (minBufferSize * 2).coerceAtLeast(4096),
-            )
-            check(record.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord failed to initialize" }
-            record.startRecording()
-            audioRecord = record
-            audioRecording = true
-            audioRecordThread = Thread({
-                val buffer = ByteArray(2048)
-                while (audioRecording) {
-                    val read = record.read(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        val chunk = buffer.copyOf(read)
-                        runOnUiThread {
-                            if (audioRecording) audioEventSink?.success(chunk)
-                        }
-                    } else if (read < 0) {
-                        runOnUiThread {
-                            audioEventSink?.error("AUDIO_READ_FAILED", "Microphone read failed", null)
-                        }
-                        break
-                    }
-                }
-            }, "sync-audio-record").also { it.start() }
-        }
-    }
-
-    private fun stopAudioRecord() {
-        val record: AudioRecord?
-        synchronized(audioLock) {
-            audioRecording = false
-            record = audioRecord
-            audioRecord = null
-            audioRecordThread = null
-        }
-        try {
-            record?.stop()
-        } catch (_: IllegalStateException) {
-        }
-        record?.release()
     }
 
     override fun onRequestPermissionsResult(
@@ -170,18 +138,13 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != microphonePermissionRequestCode) return
-        val result = pendingAudioStartResult
-        pendingAudioStartResult = null
+        val result = pendingSystemAudioStartResult
+        pendingSystemAudioStartResult = null
         if (result == null) return
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            try {
-                startAudioRecord()
-                result.success(null)
-            } catch (_: Exception) {
-                result.error("AUDIO_RECORD_INIT_FAILED", "Unable to initialize microphone capture", null)
-            }
+            launchProjectionConsent(result)
         } else {
-            result.error("MICROPHONE_PERMISSION_DENIED", "Microphone permission was denied", null)
+            result.error("MICROPHONE_PERMISSION_DENIED", "Audio capture permission was denied", null)
         }
     }
 
@@ -227,7 +190,6 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        stopAudioRecord()
         stopAudioTrack()
         audioExecutor.shutdownNow()
         super.onDestroy()

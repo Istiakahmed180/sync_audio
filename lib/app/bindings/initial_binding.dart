@@ -12,7 +12,7 @@ class InitialBinding extends Bindings {
   void dependencies() {
     Get.lazyPut<ConnectionService>(TcpConnectionService.new, fenix: true);
     Get.lazyPut<AudioCaptureService>(
-      AndroidAudioRecordCaptureService.new,
+      AndroidSystemAudioCaptureService.new,
       fenix: true,
     );
     Get.lazyPut<AudioPlaybackService>(

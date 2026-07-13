@@ -8,9 +8,11 @@ abstract class AudioCaptureService {
   Future<void> stop();
 }
 
-class AndroidAudioRecordCaptureService implements AudioCaptureService {
-  static const _controlChannel = MethodChannel('sync_audio/audio_record');
-  static const _streamChannel = EventChannel('sync_audio/audio_record_stream');
+class AndroidSystemAudioCaptureService implements AudioCaptureService {
+  static const _controlChannel = MethodChannel(
+    'sync_audio/system_audio_capture',
+  );
+  static const _streamChannel = EventChannel('sync_audio/system_audio_stream');
 
   @override
   Stream<Uint8List> get pcmChunks =>
