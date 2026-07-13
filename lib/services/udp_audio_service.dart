@@ -1,52 +1,85 @@
 import 'dart:async';
 import 'dart:io';
+
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/services.dart';
 
 import '../models/audio_stream_status.dart';
 import '../models/receiver_session.dart';
 import 'audio_capture_service.dart';
+import 'audio_codec.dart';
 import 'audio_packet_codec.dart';
 import 'audio_playback_service.dart';
+import 'secure_transport.dart';
 
 abstract class AudioStreamService {
   Stream<AudioStreamStatus> get statusChanges;
+
   Stream<String> get errors;
+
   Stream<ReceiverSession> get sessionChanges;
+
   AudioStreamStatus get status;
+
   bool get isStreaming;
+
   bool get isReceiving;
+
   List<ReceiverSession> get receiverSessions;
+
   int get bufferedPackets;
+
   int get bufferedDurationMicros;
+
   int get droppedPacketCount;
 
   Future<void> startStreaming({
     required List<String> ipAddresses,
     required int port,
   });
+
   Future<void> stopStreaming();
+
   Future<void> startReceiver({required int port});
+
   Future<void> stopReceiver();
+
   Future<void> setReceiverCalibration({
     required String receiverId,
     required int calibrationMicros,
   });
 
   Future<void> applyPlaybackOffset(int offsetMicros);
+
+  Future<void> selectCodec(AudioCodecPreference preference);
+
+  AudioCodecType get activeCodecType;
+
+  bool get encryptionEnabled;
+
+  Future<void> setSessionSecurity({
+    required String pairingToken,
+    required String sessionId,
+  });
 }
 
 class UdpAudioService implements AudioStreamService {
   UdpAudioService({
     required this.playbackService,
     required this.captureService,
+    AudioEncoder? encoder,
+    AudioDecoder? decoder,
     this.jitterBuffer = const Duration(milliseconds: 120),
     this.syncInterval = const Duration(seconds: 2),
-  });
+  }) : encoder = encoder ?? Pcm16AudioEncoder(),
+       decoder = decoder ?? Pcm16AudioDecoder();
 
   static const futurePlaybackDelay = Duration(milliseconds: 120);
 
   final AudioPlaybackService playbackService;
   final AudioCaptureService captureService;
+  AudioEncoder encoder;
+  AudioDecoder decoder;
   final Duration jitterBuffer;
   final Duration syncInterval;
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
@@ -58,6 +91,10 @@ class UdpAudioService implements AudioStreamService {
   Timer? _playbackTimer;
   Timer? _clockSyncTimer;
   Future<void> _playbackQueue = Future<void>.value();
+  Future<void> _encodeQueue = Future<void>.value();
+  int _encodeQueueDepth = 0;
+  static const _maxEncodeQueueDepth = 8;
+  Uint8List _pendingEncoderPcm = Uint8List(0);
   AudioStreamStatus _status = AudioStreamStatus.idle;
   bool _streaming = false;
   bool _receiving = false;
@@ -74,26 +111,38 @@ class UdpAudioService implements AudioStreamService {
   int? _nextSequence;
   int? _missingSequenceSinceMicros;
   int _droppedPackets = 0;
+  SecretKey? _sessionKey;
+  String? _securitySessionId;
+  final _sessionKeyService = SessionKeyService();
+  final _replayGuard = ReplayGuard();
   int _hostToLocalOffsetMicros = 0;
   bool _clockSynchronized = false;
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
+
   @override
   Stream<String> get errors => _errorsController.stream;
+
   @override
   Stream<ReceiverSession> get sessionChanges => _sessionController.stream;
+
   @override
   AudioStreamStatus get status => _status;
+
   @override
   bool get isStreaming => _streaming;
+
   @override
   bool get isReceiving => _receiving;
+
   @override
   List<ReceiverSession> get receiverSessions =>
       List.unmodifiable(_sessions.values);
+
   @override
   int get bufferedPackets => _pendingPackets.length;
+
   @override
   int get bufferedDurationMicros {
     if (_pendingPackets.isEmpty) return 0;
@@ -104,6 +153,49 @@ class UdpAudioService implements AudioStreamService {
 
   @override
   int get droppedPacketCount => _droppedPackets;
+
+  @override
+  AudioCodecType get activeCodecType => encoder.codecType;
+
+  @override
+  bool get encryptionEnabled => _sessionKey != null;
+
+  @override
+  Future<void> setSessionSecurity({
+    required String pairingToken,
+    required String sessionId,
+  }) async {
+    _sessionKey = await _sessionKeyService.derive(
+      pairingToken: pairingToken,
+      sessionId: sessionId,
+    );
+    _securitySessionId = sessionId;
+  }
+
+  @override
+  Future<void> selectCodec(AudioCodecPreference preference) async {
+    if (_streaming || _receiving) {
+      _emitError('Stop the current audio stream before changing codec.');
+      return;
+    }
+    // Auto stays on PCM until both peers have explicitly negotiated Opus.
+    // This keeps mixed-version devices compatible while retaining an explicit
+    // Opus opt-in for installations where both sides are known to support it.
+    final useOpus = preference == AudioCodecPreference.opus;
+    if (useOpus && OpusRuntime.isAvailable) {
+      try {
+        encoder = NativeOpusAudioEncoder();
+        decoder = NativeOpusAudioDecoder();
+        return;
+      } catch (_) {
+        if (preference == AudioCodecPreference.opus) {
+          _emitError('Opus is unavailable; falling back to PCM.');
+        }
+      }
+    }
+    encoder = Pcm16AudioEncoder();
+    decoder = Pcm16AudioDecoder();
+  }
 
   @override
   Future<void> startStreaming({
@@ -128,6 +220,8 @@ class UdpAudioService implements AudioStreamService {
       _packetSequence = 0;
       _clockSequence = 0;
       _droppedPackets = 0;
+      _pendingEncoderPcm = Uint8List(0);
+      await encoder.reset();
       _streamClock = Stopwatch()..start();
       final activeIds = <String>{};
       for (final address in _destinations) {
@@ -230,16 +324,31 @@ class UdpAudioService implements AudioStreamService {
       final request = _clockRequests.remove(packet!.sequence);
       if (request == null || _streamClock == null) continue;
       final receivedAt = _streamClock!.elapsedMicroseconds;
-      final offset =
+      final session = _sessions[request.sessionId];
+      if (session == null) continue;
+      final roundTripTime = receivedAt - request.sentAtMicros;
+      final sampleOffset =
           ((packet.timestampMicros - request.sentAtMicros) +
               (packet.timestampMicros - receivedAt)) ~/
           2;
-      final session = _sessions[request.sessionId];
-      if (session == null) continue;
+      final alpha = session.lastSyncMicros == null
+          ? 1.0
+          : (roundTripTime <= session.roundTripTimeMicros ? 0.35 : 0.15);
+      final filteredOffset =
+          session.clockOffsetMicros +
+          ((sampleOffset - session.clockOffsetMicros) * alpha).round();
+      final elapsed = session.lastSyncMicros == null
+          ? 0
+          : receivedAt - session.lastSyncMicros!;
+      final driftPpm = elapsed <= 0
+          ? session.clockDriftPpm
+          : (((filteredOffset - session.clockOffsetMicros) * 1000000) / elapsed)
+                .round();
       final updated = session.copyWith(
         status: ReceiverSessionStatus.connected,
-        clockOffsetMicros: offset,
-        roundTripTimeMicros: receivedAt - request.sentAtMicros,
+        clockOffsetMicros: filteredOffset,
+        clockDriftPpm: driftPpm.clamp(-5000, 5000),
+        roundTripTimeMicros: roundTripTime,
         lastSyncMicros: receivedAt,
         reconnectAttempt: 0,
       );
@@ -255,18 +364,77 @@ class UdpAudioService implements AudioStreamService {
   }
 
   void _sendPcmPacket(Uint8List pcm) {
+    if (encoder.codecType == AudioCodecType.opus) {
+      final combined = Uint8List(_pendingEncoderPcm.length + pcm.length)
+        ..setRange(0, _pendingEncoderPcm.length, _pendingEncoderPcm)
+        ..setRange(
+          _pendingEncoderPcm.length,
+          _pendingEncoderPcm.length + pcm.length,
+          pcm,
+        );
+      final frameBytes = encoder.config.frameBytes;
+      var offset = 0;
+      while (combined.length - offset >= frameBytes) {
+        _enqueuePcmFrame(
+          Uint8List.fromList(combined.sublist(offset, offset + frameBytes)),
+        );
+        offset += frameBytes;
+      }
+      _pendingEncoderPcm = Uint8List.fromList(combined.sublist(offset));
+      return;
+    }
+    _enqueuePcmFrame(pcm);
+  }
+
+  void _enqueuePcmFrame(Uint8List pcm) {
+    if (_encodeQueueDepth >= _maxEncodeQueueDepth) {
+      _emitError('Audio encoder is behind; dropping a capture frame.');
+      return;
+    }
+    _encodeQueueDepth++;
+    _encodeQueue = _encodeQueue
+        .then((_) async {
+          try {
+            await _encodeAndSendPcm(pcm);
+          } catch (_) {
+            await _handleEncodingError();
+          }
+        })
+        .whenComplete(() => _encodeQueueDepth--);
+  }
+
+  Future<void> _handleEncodingError() async {
+    if (!_streaming) return;
+    await stopStreaming();
+    _emitError(
+      'Audio encoding failed. PCM fallback remains available when selected.',
+    );
+    _setStatus(AudioStreamStatus.error);
+  }
+
+  Future<void> _encodeAndSendPcm(Uint8List pcm) async {
     final socket = _socket;
     final clock = _streamClock;
     if (!_streaming || socket == null || clock == null || pcm.isEmpty) return;
+    final encoded = await encoder.encode(pcm);
+    if (!_streaming || encoded.isEmpty) return;
     final packet = AudioPacketCodec.encode(
       type: AudioPacketType.pcmAudio,
       sequence: _packetSequence++,
       timestampMicros:
           clock.elapsedMicroseconds + futurePlaybackDelay.inMicroseconds,
-      payload: pcm,
+      codecType: encoder.codecType,
+      payload: encoded,
     );
+    final wirePacket = _sessionKey == null
+        ? packet
+        : await EncryptedAudioPacketCodec.encrypt(
+            packet: packet,
+            key: _sessionKey!,
+            sessionId: _securitySessionId!,
+          );
     for (final destination in _destinations) {
-      socket.send(packet, destination, _destinationPort);
+      socket.send(wirePacket, destination, _destinationPort);
     }
     for (final session in _sessions.values.where(
       (value) => value.status == ReceiverSessionStatus.connected,
@@ -284,8 +452,12 @@ class UdpAudioService implements AudioStreamService {
     _clockSyncTimer?.cancel();
     _clockSyncTimer = null;
     _clockRequests.clear();
+    _pendingEncoderPcm = Uint8List(0);
+    await decoder.reset();
     _streamClock?.stop();
     _streamClock = null;
+    _sessionKey = null;
+    _securitySessionId = null;
     for (final session in _sessions.values) {
       _emitSession(
         session.copyWith(status: ReceiverSessionStatus.disconnected),
@@ -375,41 +547,63 @@ class UdpAudioService implements AudioStreamService {
     Datagram? datagram;
     while ((datagram = _socket?.receive()) != null) {
       final source = datagram!;
-      final packet = AudioPacketCodec.decode(source.data);
-      if (packet == null) continue;
-      switch (packet.type) {
-        case AudioPacketType.clockSyncRequest:
-          final now = _receiverClock.elapsedMicroseconds;
-          _socket!.send(
-            AudioPacketCodec.encode(
-              type: AudioPacketType.clockSyncResponse,
-              sequence: packet.sequence,
-              timestampMicros: now,
-            ),
-            source.address,
-            source.port,
-          );
-        case AudioPacketType.clockOffset:
-          _hostToLocalOffsetMicros = packet.timestampMicros;
-          _clockSynchronized = true;
-        case AudioPacketType.pcmAudio:
-          _nextSequence ??= packet.sequence;
-          if (_pendingPackets.length > 256) {
-            final oldest = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
-            _pendingPackets.remove(oldest);
-            _droppedPackets++;
-          }
-          _pendingPackets.putIfAbsent(
-            packet.sequence,
-            () => _ReceivedAudioPacket(
-              sequence: packet.sequence,
-              timestampMicros: packet.timestampMicros,
-              pcm: packet.payload,
-            ),
-          );
-        case AudioPacketType.clockSyncResponse:
-          break;
+      unawaited(_handleReceiverDatagram(source));
+    }
+  }
+
+  Future<void> _handleReceiverDatagram(Datagram source) async {
+    Uint8List data = source.data;
+    if (EncryptedAudioPacketCodec.isEncrypted(data)) {
+      final key = _sessionKey;
+      final sessionId = _securitySessionId;
+      if (key == null || sessionId == null) return;
+      try {
+        data = await EncryptedAudioPacketCodec.decrypt(
+          packet: data,
+          key: key,
+          sessionId: sessionId,
+          replayGuard: _replayGuard,
+        );
+      } catch (_) {
+        _emitError('Encrypted audio packet rejected.');
+        return;
       }
+    }
+    final packet = AudioPacketCodec.decode(data);
+    if (packet == null) return;
+    switch (packet.type) {
+      case AudioPacketType.clockSyncRequest:
+        final now = _receiverClock.elapsedMicroseconds;
+        _socket!.send(
+          AudioPacketCodec.encode(
+            type: AudioPacketType.clockSyncResponse,
+            sequence: packet.sequence,
+            timestampMicros: now,
+          ),
+          source.address,
+          source.port,
+        );
+      case AudioPacketType.clockOffset:
+        _hostToLocalOffsetMicros = packet.timestampMicros;
+        _clockSynchronized = true;
+      case AudioPacketType.pcmAudio:
+        if (packet.codecType != decoder.codecType) return;
+        _nextSequence ??= packet.sequence;
+        if (_pendingPackets.length > 256) {
+          final oldest = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
+          _pendingPackets.remove(oldest);
+          _droppedPackets++;
+        }
+        _pendingPackets.putIfAbsent(
+          packet.sequence,
+          () => _ReceivedAudioPacket(
+            sequence: packet.sequence,
+            timestampMicros: packet.timestampMicros,
+            pcm: packet.payload,
+          ),
+        );
+      case AudioPacketType.clockSyncResponse:
+        break;
     }
   }
 
@@ -443,7 +637,10 @@ class UdpAudioService implements AudioStreamService {
     _nextSequence = (sequence + 1) & 0xFFFFFFFF;
     _missingSequenceSinceMicros = null;
     _playbackQueue = _playbackQueue
-        .then((_) => playbackService.writePcm(packet.pcm))
+        .then((_) async {
+          final pcm = await decoder.decode(packet.pcm);
+          await playbackService.writePcm(pcm);
+        })
         .catchError((_) {
           _emitError('Audio playback failed on the receiver.');
           _setStatus(AudioStreamStatus.error);
@@ -501,6 +698,7 @@ class UdpAudioService implements AudioStreamService {
 
 class _ClockRequest {
   const _ClockRequest({required this.sessionId, required this.sentAtMicros});
+
   final String sessionId;
   final int sentAtMicros;
 }
@@ -511,6 +709,7 @@ class _ReceivedAudioPacket {
     required this.timestampMicros,
     required this.pcm,
   });
+
   final int sequence;
   final int timestampMicros;
   final Uint8List pcm;

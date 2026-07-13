@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_audio/models/receiver_session.dart';
+import 'package:sync_audio/services/audio_codec.dart';
 import 'package:sync_audio/services/audio_packet_codec.dart';
 import 'package:sync_audio/services/connection_service.dart';
 
@@ -19,6 +20,7 @@ void main() {
     expect(decoded?.sequence, 12);
     expect(decoded?.timestampMicros, -1234);
     expect(decoded?.payload, [1, 2, 3]);
+    expect(decoded?.codecType, AudioCodecType.pcm16);
   });
 
   test('TCP control service accepts multiple host connections', () async {

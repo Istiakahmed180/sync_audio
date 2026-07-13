@@ -9,11 +9,18 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import java.security.KeyStore
 
 class MainActivity : FlutterActivity() {
     private val playbackChannelName = "sync_audio/audio_track"
@@ -118,19 +125,73 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 val preferences = getSharedPreferences("sync_audio", MODE_PRIVATE)
                 when (call.method) {
-                    "read" -> result.success(preferences.getString("pairing_token", null))
+                    "read" -> result.success(readEncryptedPairingToken(preferences))
                     "write" -> {
                         val token = call.arguments as? String
                         if (token == null || token.length < 6) {
                             result.error("INVALID_PAIRING_TOKEN", "Pairing token is invalid", null)
                         } else {
-                            preferences.edit().putString("pairing_token", token).apply()
+                            writeEncryptedPairingToken(preferences, token)
                             result.success(null)
                         }
                     }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun pairingKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val existing = keyStore.getKey(PAIRING_KEY_ALIAS, null) as? SecretKey
+        if (existing != null) return existing
+        val generator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            "AndroidKeyStore",
+        )
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                PAIRING_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build(),
+        )
+        return generator.generateKey()
+    }
+
+    private fun writeEncryptedPairingToken(
+        preferences: android.content.SharedPreferences,
+        token: String,
+    ) {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, pairingKey())
+        val nonce = cipher.iv
+        val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+        val value = "${Base64.encodeToString(nonce, Base64.NO_WRAP)}:${Base64.encodeToString(encrypted, Base64.NO_WRAP)}"
+        preferences.edit().putString(PAIRING_VALUE_KEY, value).remove("pairing_token").apply()
+    }
+
+    private fun readEncryptedPairingToken(
+        preferences: android.content.SharedPreferences,
+    ): String? {
+        val stored = preferences.getString(PAIRING_VALUE_KEY, null) ?: run {
+            // Legacy plaintext values are intentionally not migrated in place.
+            preferences.edit().remove("pairing_token").apply()
+            return null
+        }
+        return try {
+            val parts = stored.split(':', limit = 2)
+            if (parts.size != 2) return null
+            val nonce = Base64.decode(parts[0], Base64.NO_WRAP)
+            val encrypted = Base64.decode(parts[1], Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, pairingKey(), javax.crypto.spec.GCMParameterSpec(128, nonce))
+            String(cipher.doFinal(encrypted), Charsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun requestSystemAudioCapture(result: MethodChannel.Result) {
@@ -200,7 +261,7 @@ class MainActivity : FlutterActivity() {
     private fun initializeAudioTrack() {
         synchronized(audioLock) {
             if (audioTrack != null) return
-            val sampleRate = 44100
+            val sampleRate = 48000
             val minBufferSize = AudioTrack.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_MONO,
@@ -242,5 +303,10 @@ class MainActivity : FlutterActivity() {
         stopAudioTrack()
         audioExecutor.shutdownNow()
         super.onDestroy()
+    }
+
+    companion object {
+        private const val PAIRING_KEY_ALIAS = "sync_audio_pairing_key"
+        private const val PAIRING_VALUE_KEY = "pairing_token_v2"
     }
 }

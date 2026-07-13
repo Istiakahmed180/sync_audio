@@ -71,7 +71,7 @@ class SystemAudioCaptureService : Service() {
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                 .addMatchingUsage(AudioAttributes.USAGE_GAME)
                 .build()
-            val sampleRate = 44100
+            val sampleRate = 48000
             val minBufferSize = AudioRecord.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,

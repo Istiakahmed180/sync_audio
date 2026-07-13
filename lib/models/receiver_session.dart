@@ -46,6 +46,7 @@ class ReceiverSession {
     this.status = ReceiverSessionStatus.configured,
     this.controlStatus = ControlConnectionStatus.disconnected,
     this.clockOffsetMicros = 0,
+    this.clockDriftPpm = 0,
     this.playbackCalibrationMicros = 0,
     this.roundTripTimeMicros = 0,
     this.lastSyncMicros,
@@ -58,6 +59,7 @@ class ReceiverSession {
   final ReceiverSessionStatus status;
   final ControlConnectionStatus controlStatus;
   final int clockOffsetMicros;
+  final int clockDriftPpm;
   final int playbackCalibrationMicros;
   final int roundTripTimeMicros;
   final int? lastSyncMicros;
@@ -70,6 +72,7 @@ class ReceiverSession {
     ReceiverSessionStatus? status,
     ControlConnectionStatus? controlStatus,
     int? clockOffsetMicros,
+    int? clockDriftPpm,
     int? playbackCalibrationMicros,
     int? roundTripTimeMicros,
     int? lastSyncMicros,
@@ -81,6 +84,7 @@ class ReceiverSession {
     status: status ?? this.status,
     controlStatus: controlStatus ?? this.controlStatus,
     clockOffsetMicros: clockOffsetMicros ?? this.clockOffsetMicros,
+    clockDriftPpm: clockDriftPpm ?? this.clockDriftPpm,
     playbackCalibrationMicros:
         playbackCalibrationMicros ?? this.playbackCalibrationMicros,
     roundTripTimeMicros: roundTripTimeMicros ?? this.roundTripTimeMicros,
@@ -97,6 +101,7 @@ class ReceiverSession {
       status == other.status &&
       controlStatus == other.controlStatus &&
       clockOffsetMicros == other.clockOffsetMicros &&
+      clockDriftPpm == other.clockDriftPpm &&
       playbackCalibrationMicros == other.playbackCalibrationMicros &&
       roundTripTimeMicros == other.roundTripTimeMicros &&
       lastSyncMicros == other.lastSyncMicros &&
@@ -110,6 +115,7 @@ class ReceiverSession {
     status,
     controlStatus,
     clockOffsetMicros,
+    clockDriftPpm,
     playbackCalibrationMicros,
     roundTripTimeMicros,
     lastSyncMicros,

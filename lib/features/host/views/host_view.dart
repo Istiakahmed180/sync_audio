@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
+import '../../../services/audio_codec.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
@@ -113,6 +114,30 @@ class HostView extends GetView<HostController> {
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => DropdownButtonFormField<AudioCodecPreference>(
+                initialValue: controller.codecPreference.value,
+                decoration: const InputDecoration(labelText: 'Audio codec'),
+                items: const [
+                  DropdownMenuItem(
+                    value: AudioCodecPreference.auto,
+                    child: Text('Auto'),
+                  ),
+                  DropdownMenuItem(
+                    value: AudioCodecPreference.pcm,
+                    child: Text('PCM'),
+                  ),
+                  DropdownMenuItem(
+                    value: AudioCodecPreference.opus,
+                    child: Text('Opus'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) controller.selectCodec(value);
+                },
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -295,7 +320,7 @@ class _ReceiverSessionCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Text(
-                    '${session.controlStatus.label} · RTT ${session.roundTripTimeMicros ~/ 1000} ms · offset ${session.clockOffsetMicros ~/ 1000} ms',
+                    '${session.controlStatus.label} · RTT ${session.roundTripTimeMicros ~/ 1000} ms · offset ${session.clockOffsetMicros ~/ 1000} ms · drift ${session.clockDriftPpm} ppm',
                   ),
                 ],
               ),

@@ -10,6 +10,7 @@ import '../../../models/audio_stream_status.dart';
 import '../../../services/connection_service.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../services/device_discovery_service.dart';
+import '../../../services/audio_codec.dart';
 import '../../../services/pairing_store.dart';
 
 class ReceiverController extends GetxController {
@@ -58,6 +59,7 @@ class ReceiverController extends GetxController {
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
   String? _hostSessionId;
+  String? _pairingTokenValue;
   late Future<void> _pairingReady;
 
   @override
@@ -104,6 +106,7 @@ class ReceiverController extends GetxController {
     final existing = await _pairingStore.readToken();
     final token = existing ?? AndroidPairingStore.generateToken();
     pairingToken.value = token;
+    _pairingTokenValue = token;
     if (existing == null) await _pairingStore.writeToken(token);
     _service.setPairingToken(token);
   }
@@ -159,7 +162,7 @@ class ReceiverController extends GetxController {
     isAudioReceiverRunning.value = false;
   }
 
-  void _handleControlEvent(ControlEvent event) {
+  Future<void> _handleControlEvent(ControlEvent event) async {
     _hostSessionId = event.sourceId;
     _bufferStatusTimer ??= Timer.periodic(
       const Duration(seconds: 2),
@@ -168,6 +171,22 @@ class ReceiverController extends GetxController {
     switch (event.command.type) {
       case ControlCommandType.streamPrepare:
       case ControlCommandType.streamStart:
+        final sessionId = event.command.arguments.first;
+        final token = _pairingTokenValue;
+        if (token != null) {
+          await _audioService?.setSessionSecurity(
+            pairingToken: token,
+            sessionId: sessionId,
+          );
+        }
+        if (event.command.arguments.length == 3) {
+          final requested = event.command.arguments[2];
+          await _audioService?.selectCodec(
+            requested == AudioCodecType.opus.name
+                ? AudioCodecPreference.opus
+                : AudioCodecPreference.pcm,
+          );
+        }
         if (isServerRunning.value && !(_audioService?.isReceiving ?? false)) {
           unawaited(startAudioReceiver());
         }

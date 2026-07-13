@@ -6,6 +6,7 @@ import '../models/connection_status.dart';
 import '../models/control_command.dart';
 import '../models/receiver_session.dart';
 import 'ip_address_service.dart';
+import 'secure_transport.dart';
 
 abstract class ConnectionService {
   Stream<String> get receivedMessages;
@@ -74,6 +75,8 @@ class TcpConnectionService implements ConnectionService {
   final Map<String, Timer> _reconnectTimers = <String, Timer>{};
   final Set<String> _connecting = <String>{};
   final Map<String, Timer> _pingTimers = <String, Timer>{};
+  final Map<String, EncryptedControlChannel> _secureChannels =
+      <String, EncryptedControlChannel>{};
   final Map<int, _PingRequest> _pendingPings = <int, _PingRequest>{};
   final Stopwatch _controlClock = Stopwatch()..start();
   final String _localSessionId =
@@ -179,7 +182,7 @@ class TcpConnectionService implements ConnectionService {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen(
-          (line) => _handleLine(id, line),
+          (line) => unawaited(_handleLine(id, line)),
           onError: (_) => _handleSocketClosed(id, socket),
           onDone: () => _handleSocketClosed(id, socket),
         );
@@ -187,15 +190,9 @@ class TcpConnectionService implements ConnectionService {
     if (desired) {
       Timer.run(() {
         unawaited(
-          sendControlCommand(
+          _sendHello(
             receiverId: id,
-            command: ControlCommand(
-              type: ControlCommandType.hello,
-              arguments: [
-                _localSessionId,
-                ?(_pairingTokens[id] ?? _pairingToken),
-              ],
-            ),
+            token: _pairingTokens[id] ?? _pairingToken,
           ),
         );
       });
@@ -382,9 +379,30 @@ class TcpConnectionService implements ConnectionService {
   Future<void> sendControlCommand({
     required String receiverId,
     required ControlCommand command,
-  }) => sendMessageTo(receiverId: receiverId, message: command.line);
+  }) async {
+    final channel = _secureChannels[receiverId];
+    await sendMessageTo(
+      receiverId: receiverId,
+      message: channel == null
+          ? command.line
+          : await channel.encrypt(command.line),
+    );
+  }
 
-  void _handleLine(String sourceId, String line) {
+  Future<void> _handleLine(String sourceId, String line) async {
+    if (line.startsWith('ENC:')) {
+      final channel = _secureChannels[sourceId];
+      if (channel == null) {
+        _emitError('Encrypted control packet received before pairing.');
+        return;
+      }
+      try {
+        line = await channel.decrypt(line);
+      } catch (_) {
+        _emitError('Encrypted control packet rejected.');
+        return;
+      }
+    }
     if (!_receivedMessagesController.isClosed) {
       _receivedMessagesController.add(line);
     }
@@ -401,26 +419,32 @@ class TcpConnectionService implements ConnectionService {
             (command.arguments.length != 2 ||
                 command.arguments[1] != _pairingToken)) {
           unawaited(
-            sendControlCommand(
+            sendMessageTo(
               receiverId: sourceId,
-              command: const ControlCommand(
+              message: const ControlCommand(
                 type: ControlCommandType.error,
                 arguments: ['PAIRING_REQUIRED', 'Pairing token rejected'],
-              ),
+              ).line,
             ),
           );
           unawaited(disconnectFrom(sourceId));
           return;
         }
-        unawaited(
-          sendControlCommand(
-            receiverId: sourceId,
-            command: ControlCommand(
-              type: ControlCommandType.helloAck,
-              arguments: [command.arguments.first],
-            ),
-          ),
+        await sendMessageTo(
+          receiverId: sourceId,
+          message: ControlCommand(
+            type: ControlCommandType.helloAck,
+            arguments: [command.arguments.first],
+          ).line,
         );
+        if (command.arguments.length == 2 && _pairingToken != null) {
+          await _establishSecureChannel(
+            sourceId,
+            _pairingToken!,
+            command.arguments.first,
+            'receiver',
+          );
+        }
       case ControlCommandType.ping:
         final receivedAt = _controlClock.elapsedMicroseconds;
         final sentAt = _controlClock.elapsedMicroseconds;
@@ -438,6 +462,39 @@ class TcpConnectionService implements ConnectionService {
       default:
         break;
     }
+  }
+
+  Future<void> _sendHello({
+    required String receiverId,
+    required String? token,
+  }) async {
+    await sendMessageTo(
+      receiverId: receiverId,
+      message: ControlCommand(
+        type: ControlCommandType.hello,
+        arguments: [_localSessionId, ?token],
+      ).line,
+    );
+    if (token != null) {
+      await _establishSecureChannel(receiverId, token, _localSessionId, 'host');
+    }
+  }
+
+  Future<void> _establishSecureChannel(
+    String id,
+    String token,
+    String sessionId,
+    String role,
+  ) async {
+    final key = await SessionKeyService().derive(
+      pairingToken: token,
+      sessionId: sessionId,
+    );
+    _secureChannels[id] = EncryptedControlChannel(
+      key: key,
+      sessionId: sessionId,
+      role: role,
+    );
   }
 
   @override
@@ -530,6 +587,7 @@ class TcpConnectionService implements ConnectionService {
   Future<void> _closeSocket(String id) async {
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id)?.destroy();
+    _secureChannels.remove(id);
     _pingTimers.remove(id)?.cancel();
   }
 

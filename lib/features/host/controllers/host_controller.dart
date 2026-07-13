@@ -10,6 +10,7 @@ import '../../../models/receiver_session.dart';
 import '../../../services/connection_service.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../services/udp_audio_service.dart';
+import '../../../services/audio_codec.dart';
 import '../../../services/calibration_store.dart';
 import '../../../services/device_discovery_service.dart';
 
@@ -53,6 +54,7 @@ class HostController extends GetxController {
   final receiverCount = 0.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
+  final codecPreference = AudioCodecPreference.auto.obs;
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   late final StreamSubscription<String> _errorSubscription;
@@ -171,15 +173,30 @@ class HostController extends GetxController {
       return _showError('Enter an audio port between 1 and 65535.');
     }
     receiverCount.value = addresses.length;
+    await audioService.selectCodec(codecPreference.value);
+    final pairingText = pairingTokenController.text.trim();
+    if (pairingText.isNotEmpty && !pairingText.contains('=')) {
+      await audioService.setSessionSecurity(
+        pairingToken: pairingText,
+        sessionId: _streamSessionId,
+      );
+    }
     await _sendControlCommand(addresses, ControlCommandType.streamPrepare, [
       _streamSessionId,
       '0',
+      audioService.activeCodecType.name,
     ]);
     await audioService.startStreaming(ipAddresses: addresses, port: port);
     await _sendControlCommand(addresses, ControlCommandType.streamStart, [
       _streamSessionId,
       '0',
+      audioService.activeCodecType.name,
     ]);
+  }
+
+  Future<void> selectCodec(AudioCodecPreference preference) async {
+    codecPreference.value = preference;
+    await _audioService?.selectCodec(preference);
   }
 
   Future<void> stopSystemAudioStream() async {

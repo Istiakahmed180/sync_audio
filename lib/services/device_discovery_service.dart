@@ -40,13 +40,18 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     socket.broadcastEnabled = true;
     final devices = <String, AudioDevice>{};
+    final nonce = DateTime.now().microsecondsSinceEpoch.toString();
     final completer = Completer<void>();
     final subscription = socket.listen((event) {
       if (event != RawSocketEvent.read) return;
       Datagram? datagram;
       while ((datagram = socket.receive()) != null) {
         final fields = utf8.decode(datagram!.data).trim().split('|');
-        if (fields.length != 5 || fields.first != _response) continue;
+        if (fields.length != 6 ||
+            fields.first != _response ||
+            fields[5] != nonce) {
+          continue;
+        }
         final port = int.tryParse(fields[4]);
         if (port == null || port < 1 || port > 65535) continue;
         final address = fields[3].isEmpty
@@ -64,7 +69,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       if (!completer.isCompleted) completer.complete();
     });
     socket.send(
-      utf8.encode(_request),
+      utf8.encode('$_request|$nonce'),
       InternetAddress('255.255.255.255'),
       discoveryPort,
     );
@@ -96,13 +101,15 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       if (event != RawSocketEvent.read) return;
       Datagram? datagram;
       while ((datagram = socket.receive()) != null) {
-        if (utf8.decode(datagram!.data).trim() != _request) continue;
+        final request = utf8.decode(datagram!.data).trim().split('|');
+        if (request.length != 2 || request.first != _request) continue;
         final response = [
           _response,
           _deviceId,
           _deviceName,
           address,
           '$_controlPort',
+          request[1],
         ].join('|');
         socket.send(utf8.encode(response), datagram.address, datagram.port);
       }
