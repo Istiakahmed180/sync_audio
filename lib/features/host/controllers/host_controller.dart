@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../models/connection_status.dart';
+import '../../../models/receiver_session.dart';
 import '../../../services/connection_service.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../services/udp_audio_service.dart';
@@ -23,6 +24,7 @@ class HostController extends GetxController {
   final ConnectionService _service;
   final AudioStreamService? _audioService;
   final receiverIpController = TextEditingController();
+  final receiverIpInputController = TextEditingController();
   final portController = TextEditingController(text: '5050');
   final audioPortController = TextEditingController(text: '5051');
   final testMessageController = TextEditingController(text: 'Hello Receiver');
@@ -31,10 +33,13 @@ class HostController extends GetxController {
   final errorMessage = RxnString();
   final audioStatus = AudioStreamStatus.idle.obs;
   final receiverCount = 0.obs;
+  final receiverSessions = <ReceiverSession>[].obs;
+  final configuredReceiverIps = <String>[].obs;
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   late final StreamSubscription<String> _errorSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
   StreamSubscription<String>? _audioErrorSubscription;
+  StreamSubscription<ReceiverSession>? _sessionSubscription;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
   bool get isConnecting =>
@@ -57,6 +62,7 @@ class HostController extends GetxController {
       _audioErrorSubscription = audioService.errors.listen(
         (message) => errorMessage.value = message,
       );
+      _sessionSubscription = audioService.sessionChanges.listen(_updateSession);
     }
   }
 
@@ -98,11 +104,13 @@ class HostController extends GetxController {
   Future<void> startSystemAudioStream() async {
     errorMessage.value = null;
     final audioService = _audioService;
-    final addresses = receiverIpController.text
-        .split(RegExp(r'[\s,;]+'))
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList(growable: false);
+    final addresses = configuredReceiverIps.isNotEmpty
+        ? configuredReceiverIps.toList(growable: false)
+        : receiverIpController.text
+              .split(RegExp(r'[\s,;]+'))
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false);
     final port = int.tryParse(audioPortController.text.trim());
     if (audioService == null) {
       return _showError('Audio service is unavailable.');
@@ -120,6 +128,16 @@ class HostController extends GetxController {
       return _showError('Enter an audio port between 1 and 65535.');
     }
     receiverCount.value = addresses.length;
+    receiverSessions.assignAll(
+      addresses.map(
+        (address) => ReceiverSession(
+          id: '$address:$port',
+          ipAddress: address,
+          port: port,
+          status: ReceiverSessionStatus.synchronizing,
+        ),
+      ),
+    );
     await audioService.startStreaming(ipAddresses: addresses, port: port);
   }
 
@@ -127,6 +145,34 @@ class HostController extends GetxController {
     errorMessage.value = null;
     await _audioService?.stopStreaming();
     receiverCount.value = 0;
+    receiverSessions.clear();
+  }
+
+  void addReceiverIp() {
+    final address = receiverIpInputController.text.trim();
+    final parsed = InternetAddress.tryParse(address);
+    if (parsed == null || parsed.type != InternetAddressType.IPv4) {
+      return _showError('Enter a valid IPv4 receiver address.');
+    }
+    if (configuredReceiverIps.contains(address)) {
+      return _showError('That receiver is already in the list.');
+    }
+    configuredReceiverIps.add(address);
+    receiverIpInputController.clear();
+    errorMessage.value = null;
+  }
+
+  void removeReceiverIp(String address) =>
+      configuredReceiverIps.remove(address);
+
+  void _updateSession(ReceiverSession session) {
+    final index = receiverSessions.indexWhere((item) => item.id == session.id);
+    if (index == -1) {
+      receiverSessions.add(session);
+    } else {
+      receiverSessions[index] = session;
+      receiverSessions.refresh();
+    }
   }
 
   void _showError(String message) => errorMessage.value = message;
@@ -138,7 +184,9 @@ class HostController extends GetxController {
     _errorSubscription.cancel();
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();
+    _sessionSubscription?.cancel();
     receiverIpController.dispose();
+    receiverIpInputController.dispose();
     portController.dispose();
     audioPortController.dispose();
     testMessageController.dispose();

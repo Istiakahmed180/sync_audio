@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
+import '../../../models/receiver_session.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
@@ -111,6 +112,36 @@ class HostView extends GetView<HostController> {
             ),
             const SizedBox(height: 12),
             TextField(
+              controller: controller.receiverIpInputController,
+              keyboardType: TextInputType.number,
+              onSubmitted: (_) => controller.addReceiverIp(),
+              decoration: InputDecoration(
+                labelText: 'Add receiver IP',
+                hintText: '192.168.1.11',
+                suffixIcon: IconButton(
+                  tooltip: 'Add receiver',
+                  onPressed: controller.addReceiverIp,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: controller.configuredReceiverIps
+                    .map(
+                      (address) => InputChip(
+                        label: Text(address),
+                        onDeleted: () => controller.removeReceiverIp(address),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
               controller: controller.audioPortController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
@@ -133,6 +164,19 @@ class HostView extends GetView<HostController> {
                     ],
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => Column(
+                children: controller.receiverSessions
+                    .map(
+                      (session) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _ReceiverSessionCard(session: session),
+                      ),
+                    )
+                    .toList(),
               ),
             ),
             const SizedBox(height: 12),
@@ -174,7 +218,7 @@ class HostView extends GetView<HostController> {
             const SizedBox(height: 12),
             const _InfoMessage(
               text:
-                  'Phase 4 captures microphone PCM on Android and forwards it over the existing local Wi-Fi UDP audio path.',
+                  'Supported system audio is captured on Android and sent to each receiver with timestamped packets and clock-offset compensation.',
             ),
           ],
         ),
@@ -202,6 +246,41 @@ class _MessageCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _ReceiverSessionCard extends StatelessWidget {
+  const _ReceiverSessionCard({required this.session});
+
+  final ReceiverSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.speaker_group_outlined),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.ipAddress,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text('RTT ${session.roundTripTimeMicros ~/ 1000} ms'),
+                ],
+              ),
+            ),
+            StatusBadge(label: session.status.label),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ErrorCard extends StatelessWidget {

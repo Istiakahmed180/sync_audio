@@ -67,11 +67,17 @@ class ReceiverController extends GetxController {
     final address = await _service.startServer(port: defaultPort);
     localIpAddress.value = address ?? 'Not available';
     isServerRunning.value = _service.isServerRunning;
+    if (_audioService != null && !_audioService.isReceiving) {
+      await startAudioReceiver();
+    }
   }
 
   Future<void> stopServer() async {
     errorMessage.value = null;
     await _service.stopServer();
+    if (_audioService?.isReceiving ?? false) {
+      await stopAudioReceiver();
+    }
     isServerRunning.value = false;
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;

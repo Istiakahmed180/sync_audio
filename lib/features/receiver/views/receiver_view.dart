@@ -137,7 +137,7 @@ class ReceiverView extends GetView<ReceiverController> {
             const SizedBox(height: 12),
             const _InfoMessage(
               text:
-                  'The receiver accepts one host connection and displays line-delimited test messages over TCP.',
+                  'Start Receiver also starts the timestamped UDP audio receiver. The host synchronizes this device before playback begins.',
             ),
           ],
         ),
