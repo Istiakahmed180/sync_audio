@@ -10,6 +10,8 @@ import 'audio_capture_service.dart';
 import 'audio_codec.dart';
 import 'audio_packet_codec.dart';
 import 'audio_playback_service.dart';
+import 'adaptive_jitter_buffer.dart';
+import 'latency_metrics.dart';
 import 'secure_transport.dart';
 
 abstract class AudioStreamService {
@@ -33,6 +35,18 @@ abstract class AudioStreamService {
 
   int get droppedPacketCount;
 
+  LatencyMetricsSnapshot get latencyMetrics;
+
+  Map<String, Object> get diagnosticsSnapshot;
+
+  LatencyMode get latencyMode;
+
+  bool get adaptiveJitterEnabled;
+
+  bool get driftCorrectionEnabled;
+
+  int get maximumDriftCorrectionPpm;
+
   Future<void> startStreaming({
     required List<String> ipAddresses,
     required int port,
@@ -52,6 +66,13 @@ abstract class AudioStreamService {
   Future<void> applyPlaybackOffset(int offsetMicros);
 
   Future<void> selectCodec(AudioCodecPreference preference);
+
+  Future<void> configureLatency({
+    required LatencyMode mode,
+    required bool adaptiveJitter,
+    required bool driftCorrection,
+    required int maximumDriftCorrectionPpm,
+  });
 
   AudioCodecType get activeCodecType;
 
@@ -74,14 +95,18 @@ class UdpAudioService implements AudioStreamService {
   }) : encoder = encoder ?? Pcm16AudioEncoder(),
        decoder = decoder ?? Pcm16AudioDecoder();
 
-  static const futurePlaybackDelay = Duration(milliseconds: 120);
-
   final AudioPlaybackService playbackService;
   final AudioCaptureService captureService;
   AudioEncoder encoder;
   AudioDecoder decoder;
   final Duration jitterBuffer;
   final Duration syncInterval;
+  LatencyMode _latencyMode = LatencyMode.balanced;
+  bool _adaptiveJitterEnabled = true;
+  bool _driftCorrectionEnabled = true;
+  int _maximumDriftCorrectionPpm = 200;
+  final _metrics = LatencyMetricsTracker();
+  final _jitter = AdaptiveJitterBuffer();
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
@@ -106,10 +131,6 @@ class UdpAudioService implements AudioStreamService {
   int _clockSequence = 0;
   Stopwatch? _streamClock;
   final Stopwatch _receiverClock = Stopwatch();
-  final Map<int, _ReceivedAudioPacket> _pendingPackets =
-      <int, _ReceivedAudioPacket>{};
-  int? _nextSequence;
-  int? _missingSequenceSinceMicros;
   int _droppedPackets = 0;
   SecretKey? _sessionKey;
   String? _securitySessionId;
@@ -117,6 +138,8 @@ class UdpAudioService implements AudioStreamService {
   final _replayGuard = ReplayGuard();
   int _hostToLocalOffsetMicros = 0;
   bool _clockSynchronized = false;
+  int _driftCorrectionPpm = 0;
+  int _lastDriftUpdateMicros = 0;
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
@@ -141,18 +164,33 @@ class UdpAudioService implements AudioStreamService {
       List.unmodifiable(_sessions.values);
 
   @override
-  int get bufferedPackets => _pendingPackets.length;
+  int get bufferedPackets => _jitter.length;
 
   @override
   int get bufferedDurationMicros {
-    if (_pendingPackets.isEmpty) return 0;
-    final packets = _pendingPackets.values.toList()
-      ..sort((a, b) => a.timestampMicros.compareTo(b.timestampMicros));
-    return packets.last.timestampMicros - packets.first.timestampMicros;
+    return _jitter.bufferedDurationMicros;
   }
 
   @override
   int get droppedPacketCount => _droppedPackets;
+
+  @override
+  LatencyMetricsSnapshot get latencyMetrics => _metrics.snapshot();
+
+  @override
+  Map<String, Object> get diagnosticsSnapshot => latencyMetrics.toRedactedMap();
+
+  @override
+  LatencyMode get latencyMode => _latencyMode;
+
+  @override
+  bool get adaptiveJitterEnabled => _adaptiveJitterEnabled;
+
+  @override
+  bool get driftCorrectionEnabled => _driftCorrectionEnabled;
+
+  @override
+  int get maximumDriftCorrectionPpm => _maximumDriftCorrectionPpm;
 
   @override
   AudioCodecType get activeCodecType => encoder.codecType;
@@ -198,6 +236,26 @@ class UdpAudioService implements AudioStreamService {
   }
 
   @override
+  Future<void> configureLatency({
+    required LatencyMode mode,
+    required bool adaptiveJitter,
+    required bool driftCorrection,
+    required int maximumDriftCorrectionPpm,
+  }) async {
+    if (_streaming || _receiving) {
+      _emitError(
+        'Stop the current audio stream before changing latency settings.',
+      );
+      return;
+    }
+    _latencyMode = mode;
+    _adaptiveJitterEnabled = adaptiveJitter;
+    _driftCorrectionEnabled = driftCorrection;
+    _maximumDriftCorrectionPpm = maximumDriftCorrectionPpm.clamp(0, 300);
+    _jitter.configure(mode: mode, enabled: adaptiveJitter);
+  }
+
+  @override
   Future<void> startStreaming({
     required List<String> ipAddresses,
     required int port,
@@ -221,6 +279,7 @@ class UdpAudioService implements AudioStreamService {
       _clockSequence = 0;
       _droppedPackets = 0;
       _pendingEncoderPcm = Uint8List(0);
+      _jitter.reset();
       await encoder.reset();
       _streamClock = Stopwatch()..start();
       final activeIds = <String>{};
@@ -353,7 +412,19 @@ class UdpAudioService implements AudioStreamService {
         reconnectAttempt: 0,
       );
       _updateSession(updated);
+      _metrics.clockSample(
+        rttMicros: roundTripTime,
+        offsetMicros: filteredOffset,
+      );
+      final appliedDrift = _driftCorrectionEnabled
+          ? driftPpm.clamp(
+              -_maximumDriftCorrectionPpm,
+              _maximumDriftCorrectionPpm,
+            )
+          : 0;
+      _metrics.setDrift(estimatedPpm: driftPpm, appliedPpm: appliedDrift);
       _sendClockOffset(updated, packet.sequence);
+      _sendClockDrift(updated, packet.sequence, appliedDrift);
     }
   }
 
@@ -364,6 +435,7 @@ class UdpAudioService implements AudioStreamService {
   }
 
   void _sendPcmPacket(Uint8List pcm) {
+    _metrics.captureStarted();
     if (encoder.codecType == AudioCodecType.opus) {
       final combined = Uint8List(_pendingEncoderPcm.length + pcm.length)
         ..setRange(0, _pendingEncoderPcm.length, _pendingEncoderPcm)
@@ -416,13 +488,16 @@ class UdpAudioService implements AudioStreamService {
     final socket = _socket;
     final clock = _streamClock;
     if (!_streaming || socket == null || clock == null || pcm.isEmpty) return;
+    final encodeClock = Stopwatch()..start();
     final encoded = await encoder.encode(pcm);
+    _metrics.encoded(encodeClock.elapsed);
     if (!_streaming || encoded.isEmpty) return;
     final packet = AudioPacketCodec.encode(
       type: AudioPacketType.pcmAudio,
       sequence: _packetSequence++,
       timestampMicros:
-          clock.elapsedMicroseconds + futurePlaybackDelay.inMicroseconds,
+          clock.elapsedMicroseconds +
+          LatencyModeConfig.forMode(_latencyMode).normalMicros,
       codecType: encoder.codecType,
       payload: encoded,
     );
@@ -436,6 +511,7 @@ class UdpAudioService implements AudioStreamService {
     for (final destination in _destinations) {
       socket.send(wirePacket, destination, _destinationPort);
     }
+    _metrics.packetSent();
     for (final session in _sessions.values.where(
       (value) => value.status == ReceiverSessionStatus.connected,
     )) {
@@ -509,6 +585,24 @@ class UdpAudioService implements AudioStreamService {
     );
   }
 
+  void _sendClockDrift(
+    ReceiverSession session,
+    int sequence,
+    int appliedDriftPpm,
+  ) {
+    final socket = _socket;
+    if (socket == null) return;
+    socket.send(
+      AudioPacketCodec.encode(
+        type: AudioPacketType.clockDrift,
+        sequence: sequence,
+        timestampMicros: appliedDriftPpm,
+      ),
+      InternetAddress(session.ipAddress),
+      session.port,
+    );
+  }
+
   @override
   Future<void> startReceiver({required int port}) async {
     if (_receiving) {
@@ -522,6 +616,9 @@ class UdpAudioService implements AudioStreamService {
       _receiving = true;
       _clockSynchronized = false;
       _hostToLocalOffsetMicros = 0;
+      _driftCorrectionPpm = 0;
+      _lastDriftUpdateMicros = 0;
+      _jitter.reset();
       _receiverClock
         ..reset()
         ..start();
@@ -553,10 +650,12 @@ class UdpAudioService implements AudioStreamService {
 
   Future<void> _handleReceiverDatagram(Datagram source) async {
     Uint8List data = source.data;
+    _metrics.packetArrived();
     if (EncryptedAudioPacketCodec.isEncrypted(data)) {
       final key = _sessionKey;
       final sessionId = _securitySessionId;
       if (key == null || sessionId == null) return;
+      final decryptClock = Stopwatch()..start();
       try {
         data = await EncryptedAudioPacketCodec.decrypt(
           packet: data,
@@ -564,6 +663,7 @@ class UdpAudioService implements AudioStreamService {
           sessionId: sessionId,
           replayGuard: _replayGuard,
         );
+        _metrics.decrypted(decryptClock.elapsed);
       } catch (_) {
         _emitError('Encrypted audio packet rejected.');
         return;
@@ -586,21 +686,41 @@ class UdpAudioService implements AudioStreamService {
       case AudioPacketType.clockOffset:
         _hostToLocalOffsetMicros = packet.timestampMicros;
         _clockSynchronized = true;
+        _lastDriftUpdateMicros = _receiverClock.elapsedMicroseconds;
+      case AudioPacketType.clockDrift:
+        _driftCorrectionPpm = packet.timestampMicros.clamp(
+          -_maximumDriftCorrectionPpm,
+          _maximumDriftCorrectionPpm,
+        );
+        _metrics.setDrift(
+          estimatedPpm: _driftCorrectionPpm,
+          appliedPpm: _driftCorrectionPpm,
+        );
       case AudioPacketType.pcmAudio:
         if (packet.codecType != decoder.codecType) return;
-        _nextSequence ??= packet.sequence;
-        if (_pendingPackets.length > 256) {
-          final oldest = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
-          _pendingPackets.remove(oldest);
-          _droppedPackets++;
-        }
-        _pendingPackets.putIfAbsent(
-          packet.sequence,
-          () => _ReceivedAudioPacket(
+        final now = _receiverClock.elapsedMicroseconds;
+        final correction = _driftCorrectionEnabled
+            ? ((now - _lastDriftUpdateMicros) * _driftCorrectionPpm) ~/ 1000000
+            : 0;
+        final adaptiveDelay = _adaptiveJitterEnabled
+            ? _jitter.targetBufferMicros -
+                  LatencyModeConfig.forMode(_latencyMode).normalMicros
+            : 0;
+        _jitter.add(
+          JitterAudioPacket(
             sequence: packet.sequence,
-            timestampMicros: packet.timestampMicros,
-            pcm: packet.payload,
+            timestampMicros:
+                packet.timestampMicros +
+                _hostToLocalOffsetMicros +
+                correction +
+                adaptiveDelay,
+            payload: packet.payload,
+            arrivalMicros: now,
           ),
+        );
+        _metrics.setBuffer(
+          currentPackets: _jitter.length,
+          targetMicros: _jitter.targetBufferMicros,
         );
       case AudioPacketType.clockSyncResponse:
         break;
@@ -608,37 +728,22 @@ class UdpAudioService implements AudioStreamService {
   }
 
   void _drainPlaybackBuffer() {
-    final sequence = _nextSequence;
-    if (!_receiving || !_clockSynchronized || sequence == null) {
-      if (_receiving && _clockSynchronized && _pendingPackets.isNotEmpty) {
-        _nextSequence = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
-      }
-      return;
-    }
-    final packet = _pendingPackets[sequence];
+    if (!_receiving || !_clockSynchronized) return;
+    final now = _receiverClock.elapsedMicroseconds;
+    final packet = _jitter.takeReady(now);
     if (packet == null) {
-      if (_pendingPackets.isNotEmpty) {
-        final now = _receiverClock.elapsedMicroseconds;
-        _missingSequenceSinceMicros ??= now;
-        if (now - _missingSequenceSinceMicros! >=
-            const Duration(milliseconds: 40).inMicroseconds) {
-          _droppedPackets++;
-          _nextSequence = _pendingPackets.keys.reduce((a, b) => a < b ? a : b);
-          _missingSequenceSinceMicros = null;
-        }
-      }
+      _droppedPackets = _jitter.underruns;
       return;
     }
-    if (_receiverClock.elapsedMicroseconds <
-        packet.timestampMicros + _hostToLocalOffsetMicros) {
-      return;
-    }
-    _pendingPackets.remove(sequence);
-    _nextSequence = (sequence + 1) & 0xFFFFFFFF;
-    _missingSequenceSinceMicros = null;
+    _metrics.scheduled(
+      timestampMicros: packet.timestampMicros,
+      waitingMicros: now - packet.arrivalMicros,
+    );
     _playbackQueue = _playbackQueue
         .then((_) async {
-          final pcm = await decoder.decode(packet.pcm);
+          final decodeClock = Stopwatch()..start();
+          final pcm = await decoder.decode(packet.payload);
+          _metrics.decoded(decodeClock.elapsed);
           await playbackService.writePcm(pcm);
         })
         .catchError((_) {
@@ -652,9 +757,7 @@ class UdpAudioService implements AudioStreamService {
     _receiving = false;
     _playbackTimer?.cancel();
     _playbackTimer = null;
-    _pendingPackets.clear();
-    _nextSequence = null;
-    _missingSequenceSinceMicros = null;
+    _jitter.reset();
     _clockSynchronized = false;
     _receiverClock.stop();
     await _udpSubscription?.cancel();
@@ -701,16 +804,4 @@ class _ClockRequest {
 
   final String sessionId;
   final int sentAtMicros;
-}
-
-class _ReceivedAudioPacket {
-  const _ReceivedAudioPacket({
-    required this.sequence,
-    required this.timestampMicros,
-    required this.pcm,
-  });
-
-  final int sequence;
-  final int timestampMicros;
-  final Uint8List pcm;
 }

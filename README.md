@@ -11,9 +11,10 @@ TCP control after the pairing handshake. The app does not bypass Android
 MediaProjection restrictions or DRM restrictions.
 
 The current synchronization implementation estimates clock offset and drift
-from UDP timing samples and schedules timestamped playback. It does not yet
-perform sample-rate correction, a full adaptive jitter target, NSD discovery,
-or an asymmetric authenticated key exchange. Per-device UDP encryption also
+from UDP timing samples, applies bounded playback-timestamp drift correction,
+and uses a bounded adaptive jitter target. It does not perform sample-rate
+resampling, NSD discovery, or an asymmetric authenticated key exchange.
+Per-device UDP encryption also
 requires one shared pairing token; independent `IP=token` entries are still
 supported for control pairing but do not enable encrypted audio fan-out.
 

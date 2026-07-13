@@ -13,6 +13,7 @@ import '../../../services/udp_audio_service.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/calibration_store.dart';
 import '../../../services/device_discovery_service.dart';
+import '../../../services/latency_metrics.dart';
 
 class HostController extends GetxController {
   HostController({
@@ -55,12 +56,18 @@ class HostController extends GetxController {
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
   final codecPreference = AudioCodecPreference.auto.obs;
+  final latencyMode = LatencyMode.balanced.obs;
+  final adaptiveJitter = true.obs;
+  final driftCorrection = true.obs;
+  final maximumDriftCorrectionPpm = 200.obs;
+  final diagnostics = <String, Object>{}.obs;
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   late final StreamSubscription<String> _errorSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
   StreamSubscription<String>? _audioErrorSubscription;
   StreamSubscription<ReceiverSession>? _sessionSubscription;
+  Timer? _diagnosticTimer;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
@@ -88,6 +95,10 @@ class HostController extends GetxController {
         (message) => errorMessage.value = message,
       );
       _sessionSubscription = audioService.sessionChanges.listen(_updateSession);
+      _diagnosticTimer = Timer.periodic(
+        const Duration(milliseconds: 500),
+        (_) => diagnostics.value = audioService.diagnosticsSnapshot,
+      );
     }
   }
 
@@ -174,6 +185,12 @@ class HostController extends GetxController {
     }
     receiverCount.value = addresses.length;
     await audioService.selectCodec(codecPreference.value);
+    await audioService.configureLatency(
+      mode: latencyMode.value,
+      adaptiveJitter: adaptiveJitter.value,
+      driftCorrection: driftCorrection.value,
+      maximumDriftCorrectionPpm: maximumDriftCorrectionPpm.value,
+    );
     final pairingText = pairingTokenController.text.trim();
     if (pairingText.isNotEmpty && !pairingText.contains('=')) {
       await audioService.setSessionSecurity(
@@ -197,6 +214,16 @@ class HostController extends GetxController {
   Future<void> selectCodec(AudioCodecPreference preference) async {
     codecPreference.value = preference;
     await _audioService?.selectCodec(preference);
+  }
+
+  Future<void> configureLatency(LatencyMode mode) async {
+    latencyMode.value = mode;
+    await _audioService?.configureLatency(
+      mode: mode,
+      adaptiveJitter: adaptiveJitter.value,
+      driftCorrection: driftCorrection.value,
+      maximumDriftCorrectionPpm: maximumDriftCorrectionPpm.value,
+    );
   }
 
   Future<void> stopSystemAudioStream() async {
@@ -309,6 +336,7 @@ class HostController extends GetxController {
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();
     _sessionSubscription?.cancel();
+    _diagnosticTimer?.cancel();
     _controlSessionSubscription.cancel();
     receiverIpController.dispose();
     receiverIpInputController.dispose();

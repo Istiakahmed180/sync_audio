@@ -272,6 +272,7 @@ class MainActivity : FlutterActivity() {
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setFlags(AudioAttributes.FLAG_LOW_LATENCY)
                         .build(),
                 )
                 .setAudioFormat(
@@ -281,9 +282,13 @@ class MainActivity : FlutterActivity() {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build(),
                 )
-                .setBufferSizeInBytes((minBufferSize.coerceAtLeast(4096)) * 2)
+                .setBufferSizeInBytes(minBufferSize.coerceAtLeast(48000 / 1000 * 20 * 2))
                 .setTransferMode(AudioTrack.MODE_STREAM)
+                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build()
+            check(audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
+                "AudioTrack failed to initialize"
+            }
             audioTrack?.play()
         }
     }

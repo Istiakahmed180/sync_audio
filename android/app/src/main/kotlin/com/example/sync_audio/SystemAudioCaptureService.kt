@@ -72,6 +72,7 @@ class SystemAudioCaptureService : Service() {
                 .addMatchingUsage(AudioAttributes.USAGE_GAME)
                 .build()
             val sampleRate = 48000
+            val frameBytes = sampleRate / 1000 * 20 * 2
             val minBufferSize = AudioRecord.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
@@ -86,7 +87,7 @@ class SystemAudioCaptureService : Service() {
                         .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                         .build(),
                 )
-                .setBufferSizeInBytes((minBufferSize * 2).coerceAtLeast(8192))
+                .setBufferSizeInBytes((minBufferSize * 2).coerceAtLeast(frameBytes * 2))
                 .setAudioPlaybackCaptureConfig(captureConfig)
                 .build()
             check(record.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord failed to initialize" }
@@ -100,7 +101,7 @@ class SystemAudioCaptureService : Service() {
             audioRecord = record
             capturing = true
             captureThread = Thread({
-                val buffer = ByteArray(4096)
+                val buffer = ByteArray(frameBytes)
                 while (capturing) {
                     val read = record.read(buffer, 0, buffer.size)
                     if (read > 0) {

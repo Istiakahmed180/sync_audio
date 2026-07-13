@@ -5,6 +5,7 @@ import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/audio_codec.dart';
+import '../../../services/latency_metrics.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
@@ -140,9 +141,32 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 8),
+            Obx(
+              () => DropdownButtonFormField<LatencyMode>(
+                initialValue: controller.latencyMode.value,
+                decoration: const InputDecoration(labelText: 'Latency mode'),
+                items: LatencyMode.values
+                    .map(
+                      (mode) => DropdownMenuItem(
+                        value: mode,
+                        child: Text(mode.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) controller.configureLatency(value);
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
             Text(
               'Capture supported app playback through Android MediaProjection and send it over UDP.',
               style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Zero latency is not physically possible. Lower latency may increase dropouts on unstable networks.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
             TextField(
@@ -225,6 +249,18 @@ class HostView extends GetView<HostController> {
                     )
                     .toList(),
               ),
+            ),
+            Obx(
+              () => controller.diagnostics.isEmpty
+                  ? const SizedBox.shrink()
+                  : Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          'Diagnostics · latency ${(controller.diagnostics['estimatedTotalLatencyMicros'] as int? ?? 0) ~/ 1000} ms · RTT ${(controller.diagnostics['roundTripTimeMicros'] as int? ?? 0) ~/ 1000} ms · buffer ${controller.diagnostics['currentJitterBufferPackets'] ?? 0} packets · loss ${(controller.diagnostics['packetLossPercent'] as num? ?? 0).toStringAsFixed(1)}%',
+                        ),
+                      ),
+                    ),
             ),
             const SizedBox(height: 12),
             Obx(

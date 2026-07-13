@@ -7,6 +7,7 @@ enum AudioPacketType {
   clockSyncRequest,
   clockSyncResponse,
   clockOffset,
+  clockDrift,
 }
 
 class AudioPacket {

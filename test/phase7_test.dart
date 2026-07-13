@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:sync_audio/models/control_command.dart';
 import 'package:sync_audio/services/audio_codec.dart';
 import 'package:sync_audio/services/audio_packet_codec.dart';
+import 'package:sync_audio/services/adaptive_jitter_buffer.dart';
 import 'package:sync_audio/services/connection_service.dart';
+import 'package:sync_audio/services/latency_metrics.dart';
 import 'package:sync_audio/services/secure_transport.dart';
 
 void main() {
@@ -66,6 +68,49 @@ void main() {
     );
   });
 
+  test('adaptive jitter buffer orders packets and handles loss', () {
+    final buffer = AdaptiveJitterBuffer(mode: LatencyMode.ultraLow);
+    expect(
+      buffer.add(
+        JitterAudioPacket(
+          sequence: 2,
+          timestampMicros: 100,
+          payload: Uint8List.fromList([2]),
+          arrivalMicros: 20,
+        ),
+      ),
+      isTrue,
+    );
+    expect(buffer.add(_packet(1, 90, 10)), isTrue);
+    expect(buffer.takeReady(90)?.sequence, 1);
+    expect(buffer.takeReady(100)?.sequence, 2);
+
+    buffer.add(
+      JitterAudioPacket(
+        sequence: 4,
+        timestampMicros: 200,
+        payload: Uint8List.fromList([4]),
+        arrivalMicros: 30,
+      ),
+    );
+    expect(buffer.takeReady(200), isNull);
+    expect(buffer.takeReady(30231), isNull);
+    expect(buffer.underruns, 1);
+  });
+
+  test('latency metrics expose a redacted bounded snapshot', () {
+    final metrics = LatencyMetricsTracker();
+    metrics.captureStarted();
+    metrics.packetArrived();
+    metrics.packetLost();
+    metrics.setDrift(estimatedPpm: 420, appliedPpm: 200);
+    final snapshot = metrics.snapshot();
+    expect(snapshot.packetLossPercent, 50);
+    expect(snapshot.appliedDriftCorrectionPpm, 200);
+    expect(snapshot.toRedactedMap().containsKey('pairingToken'), isFalse);
+    expect(snapshot.toRedactedMap().containsKey('rawAudio'), isFalse);
+  });
+
   test('TCP pairing and PING/PONG emit typed control events', () async {
     final receiver = TcpConnectionService()..setPairingToken('123456');
     final host = TcpConnectionService()..setPairingToken('123456');
@@ -83,3 +128,11 @@ void main() {
     await receiver.dispose();
   });
 }
+
+JitterAudioPacket _packet(int sequence, int timestamp, int arrival) =>
+    JitterAudioPacket(
+      sequence: sequence,
+      timestampMicros: timestamp,
+      payload: Uint8List.fromList([sequence]),
+      arrivalMicros: arrival,
+    );
