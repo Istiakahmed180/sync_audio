@@ -1,80 +1,114 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../app/constants/app_constants.dart';
+import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/receiver_controller.dart';
 
 class ReceiverView extends GetView<ReceiverController> {
   const ReceiverView({super.key});
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Receiver Device')),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Receiver status',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              Obx(
-                () => StatusBadge(
-                  label: controller.statusMessage.value == 'Waiting'
-                      ? 'Waiting'
-                      : 'Connected',
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Receiver Device')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Server status',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Card(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Padding(
-              padding: EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  _DetailRow(label: 'Device name', value: 'This device'),
-                  _DetailRow(label: 'Host IP address', value: 'Not available'),
-                  _DetailRow(
-                    label: 'Port',
-                    value: '${AppConstants.placeholderPort}',
+                Obx(
+                  () => StatusBadge(
+                    label: controller.connectionStatus.value.label,
                   ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Obx(() => _DetailCard(ipAddress: controller.localIpAddress.value)),
+            const SizedBox(height: 16),
+            Obx(
+              () => AppPrimaryButton(
+                label:
+                    controller.connectionStatus.value ==
+                        ConnectionStatus.startingServer
+                    ? 'Starting…'
+                    : 'Start Receiver',
+                icon: Icons.play_arrow_rounded,
+                isLoading:
+                    controller.connectionStatus.value ==
+                    ConnectionStatus.startingServer,
+                onPressed: controller.isServerRunning.value
+                    ? null
+                    : controller.startServer,
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          Obx(
-            () => AppPrimaryButton(
-              label: 'Start Receiver',
-              icon: Icons.play_arrow_rounded,
-              onPressed: controller.isReceiverRunning.value
-                  ? null
-                  : controller.startReceiver,
+            const SizedBox(height: 12),
+            Obx(
+              () => AppPrimaryButton(
+                label: 'Stop Receiver',
+                icon: Icons.stop_rounded,
+                onPressed: controller.isServerRunning.value
+                    ? controller.stopServer
+                    : null,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Obx(
-            () => AppPrimaryButton(
-              label: 'Stop Receiver',
-              icon: Icons.stop_rounded,
-              onPressed: controller.isReceiverRunning.value
-                  ? controller.stopReceiver
-                  : null,
+            const SizedBox(height: 20),
+            Obx(
+              () => _MessageCard(
+                label: 'Connected host',
+                value: controller.isConnectedToHost.value
+                    ? 'Host connected'
+                    : 'No host connected',
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          const _InfoMessage(
-            text:
-                'The receiver server and host connection will be implemented in a later phase.',
-          ),
+            const SizedBox(height: 12),
+            Obx(
+              () => _MessageCard(
+                label: 'Last received message',
+                value: controller.lastReceivedMessage.value.isEmpty
+                    ? 'None yet'
+                    : controller.lastReceivedMessage.value,
+              ),
+            ),
+            Obx(
+              () => controller.errorMessage.value == null
+                  ? const SizedBox.shrink()
+                  : _ErrorCard(message: controller.errorMessage.value!),
+            ),
+            const SizedBox(height: 12),
+            const _InfoMessage(
+              text:
+                  'The receiver accepts one host connection and displays line-delimited test messages over TCP.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailCard extends StatelessWidget {
+  const _DetailCard({required this.ipAddress});
+  final String ipAddress;
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        children: [
+          _DetailRow(label: 'Local IP address', value: ipAddress),
+          const _DetailRow(label: 'Listening port', value: '5050'),
         ],
       ),
     ),
@@ -94,6 +128,32 @@ class _DetailRow extends StatelessWidget {
         Text(label),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
+    ),
+  );
+}
+
+class _MessageCard extends StatelessWidget {
+  const _MessageCard({required this.label, required this.value});
+  final String label;
+  final String value;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: ListTile(title: Text(label), subtitle: Text(value)),
+  );
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.errorContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        message,
+        style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+      ),
     ),
   );
 }

@@ -9,10 +9,7 @@ import '../../services/synchronization_service.dart';
 class InitialBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut<ConnectionService>(
-      PlaceholderConnectionService.new,
-      fenix: true,
-    );
+    Get.lazyPut<ConnectionService>(TcpConnectionService.new, fenix: true);
     Get.lazyPut<AudioCaptureService>(
       PlaceholderAudioCaptureService.new,
       fenix: true,

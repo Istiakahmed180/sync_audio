@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
@@ -20,63 +21,99 @@ class HostView extends GetView<HostController> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Host status',
+                  'Connection status',
                   style: Theme.of(
                     context,
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 Obx(
                   () => StatusBadge(
-                    label: controller.isStreaming.value
-                        ? 'Streaming'
-                        : controller.isConnected.value
-                        ? 'Connected'
-                        : 'Not Connected',
+                    label: controller.connectionStatus.value.label,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 20),
-            _InfoCard(
-              label: 'Connected receivers',
-              value: controller.connectedDeviceCount,
-              icon: Icons.devices_other_rounded,
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => _InfoCard(
-                label: 'Streaming status',
-                value: controller.isStreaming.value
-                    ? 'Active'.obs
-                    : 'Inactive'.obs,
-                icon: Icons.graphic_eq_rounded,
+            TextField(
+              controller: controller.receiverIpController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Receiver IP address',
+                hintText: '192.168.1.10',
               ),
             ),
-            const SizedBox(height: 24),
-            AppPrimaryButton(
-              label: 'Find Receiver',
-              icon: Icons.search_rounded,
-              onPressed: controller.findReceiver,
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller.portController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Port',
+                hintText: '5050',
+              ),
+            ),
+            const SizedBox(height: 16),
+            Obx(
+              () => AppPrimaryButton(
+                label: controller.isConnecting ? 'Connecting…' : 'Connect',
+                icon: Icons.link_rounded,
+                isLoading: controller.isConnecting,
+                onPressed: controller.isConnecting || controller.isConnected
+                    ? null
+                    : controller.connect,
+              ),
             ),
             const SizedBox(height: 12),
             Obx(
               () => AppPrimaryButton(
-                label: 'Start Streaming',
-                icon: Icons.play_arrow_rounded,
-                onPressed: controller.isConnected.value ? () {} : null,
+                label: 'Disconnect',
+                icon: Icons.link_off_rounded,
+                onPressed: controller.isConnected
+                    ? controller.disconnect
+                    : null,
               ),
             ),
-            const SizedBox(height: 24),
-            const _InfoMessage(
-              text:
-                  'Networking, receiver discovery, and audio streaming will be implemented in a later phase.',
+            const SizedBox(height: 28),
+            Text(
+              'Test message',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller.testMessageController,
+              enabled: true,
+              maxLines: 2,
+              decoration: const InputDecoration(labelText: 'Message to send'),
+            ),
+            const SizedBox(height: 16),
+            Obx(
+              () => AppPrimaryButton(
+                label: 'Send Test Message',
+                icon: Icons.send_rounded,
+                onPressed: controller.isConnected
+                    ? controller.sendTestMessage
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Obx(
+              () => _MessageCard(
+                label: 'Last sent message',
+                value: controller.lastSentMessage.value.isEmpty
+                    ? 'None yet'
+                    : controller.lastSentMessage.value,
+              ),
             ),
             Obx(
-              () => Text(
-                controller.statusMessage.value,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              () => controller.errorMessage.value == null
+                  ? const SizedBox.shrink()
+                  : _ErrorCard(message: controller.errorMessage.value!),
+            ),
+            const SizedBox(height: 12),
+            const _InfoMessage(
+              text:
+                  'Phase 2 sends line-delimited test text over a local Wi-Fi TCP connection. Audio is not included yet.',
             ),
           ],
         ),
@@ -85,48 +122,60 @@ class HostView extends GetView<HostController> {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
+class _MessageCard extends StatelessWidget {
+  const _MessageCard({required this.label, required this.value});
   final String label;
-  final Rx<dynamic> value;
-  final IconData icon;
-
+  final String value;
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Icon(icon),
-            const SizedBox(width: 14),
-            Expanded(child: Text(label)),
-            Obx(
-              () => Text(
-                '${value.value}',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(value),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.errorContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.error_outline,
+            color: Theme.of(context).colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onErrorContainer,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _InfoMessage extends StatelessWidget {
   const _InfoMessage({required this.text});
-
   final String text;
-
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
