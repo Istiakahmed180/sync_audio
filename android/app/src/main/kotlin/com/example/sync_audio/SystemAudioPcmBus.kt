@@ -7,8 +7,10 @@ import io.flutter.plugin.common.EventChannel
 object SystemAudioPcmBus {
     private val mainHandler = Handler(Looper.getMainLooper())
     var sink: EventChannel.EventSink? = null
+    @Volatile var nativeSink: ((ByteArray) -> Unit)? = null
 
     fun emit(bytes: ByteArray) {
+        nativeSink?.invoke(bytes)
         mainHandler.post { sink?.success(bytes) }
     }
 

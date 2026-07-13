@@ -21,6 +21,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import java.security.KeyStore
+import java.net.InetAddress
 
 class MainActivity : FlutterActivity() {
     private val playbackChannelName = "sync_audio/audio_track"
@@ -28,15 +29,92 @@ class MainActivity : FlutterActivity() {
     private val systemAudioStreamChannelName = "sync_audio/system_audio_stream"
     private val calibrationChannelName = "sync_audio/calibration"
     private val pairingChannelName = "sync_audio/pairing"
+    private val nativeAudioChannelName = "sync_audio/native_audio"
     private val projectionRequestCode = 7002
     private val microphonePermissionRequestCode = 7003
     private val audioExecutor = Executors.newSingleThreadExecutor()
     private val audioLock = Any()
     private var audioTrack: AudioTrack? = null
     private var pendingSystemAudioStartResult: MethodChannel.Result? = null
+    private var pendingNativeSender: NativeUdpAudioSender? = null
+    private var nativeSender: NativeUdpAudioSender? = null
+    private var nativeReceiver: NativeUdpAudioReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, nativeAudioChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "startNativeHostStream" -> {
+                        val codec = call.argument<String>("codec") ?: "pcm16"
+                        val encrypted = call.argument<Boolean>("encrypted") ?: false
+                        val destinations = call.argument<List<String>>("destinations")
+                        val port = call.argument<Int>("port")
+                        val mode = call.argument<String>("latencyMode") ?: "balanced"
+                        val sessionId = call.argument<String>("sessionId")
+                        val pairingToken = call.argument<String>("pairingToken")
+                        if (codec != "pcm16" || destinations.isNullOrEmpty() || port == null || sessionId == null ||
+                            (encrypted && pairingToken.isNullOrEmpty())) {
+                            result.error("NATIVE_PATH_UNAVAILABLE", "Native path currently supports PCM16 with optional AES-GCM", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            pendingNativeSender?.stop()
+                            pendingNativeSender = NativeUdpAudioSender(
+                                destinations = destinations.map(InetAddress::getByName),
+                                port = port,
+                                targetDelayMicros = latencyDelayMicros(mode),
+                                sessionId = sessionId,
+                                pairingToken = if (encrypted) pairingToken else null,
+                            )
+                            requestSystemAudioCapture(result, pendingNativeSender)
+                        } catch (error: Exception) {
+                            pendingNativeSender = null
+                            result.error("NATIVE_HOST_INIT_FAILED", error.message, null)
+                        }
+                    }
+                    "stopNativeHostStream" -> {
+                        stopService(Intent(this, SystemAudioCaptureService::class.java))
+                        nativeSender?.stop()
+                        pendingNativeSender?.stop()
+                        nativeSender = null
+                        pendingNativeSender = null
+                        result.success(null)
+                    }
+                    "startNativeReceiver" -> {
+                        val port = call.argument<Int>("port")
+                        val mode = call.argument<String>("latencyMode") ?: "balanced"
+                        val sessionId = call.argument<String>("sessionId")
+                        val pairingToken = call.argument<String>("pairingToken")
+                        if (port == null) {
+                            result.error("INVALID_PORT", "Native receiver port is missing", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            nativeReceiver?.stop()
+                            nativeReceiver = NativeUdpAudioReceiver(
+                                port = port,
+                                latencyMode = mode,
+                                sessionId = sessionId,
+                                pairingToken = pairingToken,
+                            ).also { it.start() }
+                            result.success(null)
+                        } catch (error: Exception) {
+                            nativeReceiver = null
+                            result.error("NATIVE_RECEIVER_INIT_FAILED", error.message, null)
+                        }
+                    }
+                    "stopNativeReceiver" -> {
+                        nativeReceiver?.stop()
+                        nativeReceiver = null
+                        result.success(null)
+                    }
+                    "getNativeDiagnostics" -> result.success(
+                        nativeReceiver?.diagnostics() ?: mapOf("path" to "dart_fallback"),
+                    )
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, playbackChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -86,6 +164,8 @@ class MainActivity : FlutterActivity() {
                     "start" -> requestSystemAudioCapture(result)
                     "stop" -> {
                         stopService(Intent(this, SystemAudioCaptureService::class.java))
+                        nativeSender?.stop()
+                        nativeSender = null
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -194,7 +274,11 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun requestSystemAudioCapture(result: MethodChannel.Result) {
+    private fun requestSystemAudioCapture(
+        result: MethodChannel.Result,
+        nativeSender: NativeUdpAudioSender? = null,
+    ) {
+        pendingNativeSender = nativeSender
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             result.error("SYSTEM_AUDIO_UNSUPPORTED", "System audio capture requires Android 10 or newer", null)
             return
@@ -223,6 +307,8 @@ class MainActivity : FlutterActivity() {
         pendingSystemAudioStartResult = null
         if (result == null) return
         if (resultCode != Activity.RESULT_OK || data == null) {
+            pendingNativeSender?.stop()
+            pendingNativeSender = null
             result.error("MEDIA_PROJECTION_DENIED", "System audio capture permission was denied", null)
             return
         }
@@ -235,6 +321,9 @@ class MainActivity : FlutterActivity() {
             } else {
                 startService(serviceIntent)
             }
+            pendingNativeSender?.start()
+            nativeSender = pendingNativeSender
+            pendingNativeSender = null
             result.success(null)
         } catch (_: Exception) {
             result.error("SYSTEM_AUDIO_START_FAILED", "Unable to start system audio capture", null)
@@ -254,6 +343,8 @@ class MainActivity : FlutterActivity() {
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
             launchProjectionConsent(result)
         } else {
+            pendingNativeSender?.stop()
+            pendingNativeSender = null
             result.error("MICROPHONE_PERMISSION_DENIED", "Audio capture permission was denied", null)
         }
     }
@@ -304,7 +395,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun latencyDelayMicros(mode: String): Long = when (mode.lowercase()) {
+        "ultralow", "ultra_low", "ultra low" -> 60_000L
+        "stable" -> 220_000L
+        else -> 120_000L
+    }
+
     override fun onDestroy() {
+        nativeSender?.stop()
+        pendingNativeSender?.stop()
+        nativeReceiver?.stop()
         stopAudioTrack()
         audioExecutor.shutdownNow()
         super.onDestroy()

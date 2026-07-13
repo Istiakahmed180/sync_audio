@@ -4,16 +4,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
-import '../../../services/connection_service.dart';
-import '../../../models/audio_stream_status.dart';
-import '../../../services/udp_audio_service.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/calibration_store.dart';
+import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
+import '../../../services/native_audio_runtime.dart';
+import '../../../services/udp_audio_service.dart';
 
 class HostController extends GetxController {
   HostController({
@@ -21,6 +22,7 @@ class HostController extends GetxController {
     AudioStreamService? audioService,
     CalibrationStore? calibrationStore,
     DeviceDiscoveryService? discoveryService,
+    NativeAudioRuntime? nativeAudioRuntime,
   }) : _service = connectionService ?? Get.find<ConnectionService>(),
        _audioService =
            audioService ??
@@ -36,12 +38,18 @@ class HostController extends GetxController {
            discoveryService ??
            (Get.isRegistered<DeviceDiscoveryService>()
                ? Get.find<DeviceDiscoveryService>()
-               : PlaceholderDeviceDiscoveryService());
+               : PlaceholderDeviceDiscoveryService()),
+       _nativeAudioRuntime =
+           nativeAudioRuntime ??
+           (Get.isRegistered<NativeAudioRuntime>()
+               ? Get.find<NativeAudioRuntime>()
+               : NativeAudioRuntime());
 
   final ConnectionService _service;
   final AudioStreamService? _audioService;
   final CalibrationStore _calibrationStore;
   final DeviceDiscoveryService _discoveryService;
+  final NativeAudioRuntime _nativeAudioRuntime;
   final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
   final receiverIpInputController = TextEditingController();
@@ -71,8 +79,10 @@ class HostController extends GetxController {
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
+
   bool get isConnecting =>
       connectionStatus.value == ConnectionStatus.connecting;
+  bool _nativeHostActive = false;
 
   @override
   void onInit() {
@@ -97,7 +107,7 @@ class HostController extends GetxController {
       _sessionSubscription = audioService.sessionChanges.listen(_updateSession);
       _diagnosticTimer = Timer.periodic(
         const Duration(milliseconds: 500),
-        (_) => diagnostics.value = audioService.diagnosticsSnapshot,
+        (_) => unawaited(_refreshDiagnostics(audioService)),
       );
     }
   }
@@ -185,30 +195,64 @@ class HostController extends GetxController {
     }
     receiverCount.value = addresses.length;
     await audioService.selectCodec(codecPreference.value);
+    final pairingText = pairingTokenController.text.trim();
+    final nativeEligible =
+        audioService.activeCodecType == AudioCodecType.pcm16 &&
+        !pairingText.contains('=');
     await audioService.configureLatency(
       mode: latencyMode.value,
       adaptiveJitter: adaptiveJitter.value,
       driftCorrection: driftCorrection.value,
       maximumDriftCorrectionPpm: maximumDriftCorrectionPpm.value,
     );
-    final pairingText = pairingTokenController.text.trim();
     if (pairingText.isNotEmpty && !pairingText.contains('=')) {
       await audioService.setSessionSecurity(
         pairingToken: pairingText,
         sessionId: _streamSessionId,
       );
     }
-    await _sendControlCommand(addresses, ControlCommandType.streamPrepare, [
+    final commandArguments = <String>[
       _streamSessionId,
       '0',
       audioService.activeCodecType.name,
-    ]);
+      if (nativeEligible) 'native',
+    ];
+    await _sendControlCommand(
+      addresses,
+      ControlCommandType.streamPrepare,
+      commandArguments,
+    );
+    if (nativeEligible) {
+      try {
+        await _nativeAudioRuntime.startNativeHostStream(
+          destinations: addresses,
+          port: port,
+          codec: audioService.activeCodecType,
+          encrypted: pairingText.isNotEmpty,
+          latencyMode: latencyMode.value,
+          sessionId: _streamSessionId,
+          pairingToken: pairingText.isEmpty ? null : pairingText,
+        );
+        _nativeHostActive = true;
+      } catch (_) {
+        errorMessage.value =
+            'Native low-latency audio is unavailable; using Dart fallback.';
+      }
+    }
+    if (_nativeHostActive) {
+      await _sendControlCommand(
+        addresses,
+        ControlCommandType.streamStart,
+        commandArguments,
+      );
+      return;
+    }
     await audioService.startStreaming(ipAddresses: addresses, port: port);
-    await _sendControlCommand(addresses, ControlCommandType.streamStart, [
-      _streamSessionId,
-      '0',
-      audioService.activeCodecType.name,
-    ]);
+    await _sendControlCommand(
+      addresses,
+      ControlCommandType.streamStart,
+      commandArguments,
+    );
   }
 
   Future<void> selectCodec(AudioCodecPreference preference) async {
@@ -226,6 +270,12 @@ class HostController extends GetxController {
     );
   }
 
+  Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
+    diagnostics.value = _nativeHostActive
+        ? await _nativeAudioRuntime.diagnostics()
+        : audioService.diagnosticsSnapshot;
+  }
+
   Future<void> stopSystemAudioStream() async {
     errorMessage.value = null;
     await _sendControlCommand(
@@ -233,6 +283,10 @@ class HostController extends GetxController {
       ControlCommandType.streamStop,
       [_streamSessionId],
     );
+    if (_nativeHostActive) {
+      await _nativeAudioRuntime.stopNativeHostStream();
+      _nativeHostActive = false;
+    }
     await _audioService?.stopStreaming();
     receiverCount.value = 0;
     receiverSessions.clear();
@@ -331,6 +385,7 @@ class HostController extends GetxController {
   @override
   void onClose() {
     unawaited(_service.disconnect());
+    unawaited(_nativeAudioRuntime.stopNativeHostStream());
     _statusSubscription.cancel();
     _errorSubscription.cancel();
     _audioStatusSubscription?.cancel();

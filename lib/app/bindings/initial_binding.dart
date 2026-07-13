@@ -8,6 +8,7 @@ import '../../services/device_discovery_service.dart';
 import '../../services/synchronization_service.dart';
 import '../../services/calibration_store.dart';
 import '../../services/pairing_store.dart';
+import '../../services/native_audio_runtime.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -38,5 +39,6 @@ class InitialBinding extends Bindings {
     );
     Get.lazyPut<CalibrationStore>(AndroidCalibrationStore.new, fenix: true);
     Get.lazyPut<PairingStore>(AndroidPairingStore.new, fenix: true);
+    Get.lazyPut<NativeAudioRuntime>(NativeAudioRuntime.new, fenix: true);
   }
 }

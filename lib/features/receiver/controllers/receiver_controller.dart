@@ -12,6 +12,8 @@ import '../../../services/udp_audio_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/pairing_store.dart';
+import '../../../services/native_audio_runtime.dart';
+import '../../../services/latency_metrics.dart';
 
 class ReceiverController extends GetxController {
   ReceiverController({
@@ -19,6 +21,7 @@ class ReceiverController extends GetxController {
     AudioStreamService? audioService,
     DeviceDiscoveryService? discoveryService,
     PairingStore? pairingStore,
+    NativeAudioRuntime? nativeAudioRuntime,
   }) : _service = connectionService ?? Get.find<ConnectionService>(),
        _audioService =
            audioService ??
@@ -34,13 +37,19 @@ class ReceiverController extends GetxController {
            pairingStore ??
            (Get.isRegistered<PairingStore>()
                ? Get.find<PairingStore>()
-               : AndroidPairingStore());
+               : AndroidPairingStore()),
+       _nativeAudioRuntime =
+           nativeAudioRuntime ??
+           (Get.isRegistered<NativeAudioRuntime>()
+               ? Get.find<NativeAudioRuntime>()
+               : NativeAudioRuntime());
 
   static const defaultPort = 5050;
   final ConnectionService _service;
   final AudioStreamService? _audioService;
   final DeviceDiscoveryService _discoveryService;
   final PairingStore _pairingStore;
+  final NativeAudioRuntime _nativeAudioRuntime;
   final pairingToken = 'Loading…'.obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
@@ -58,6 +67,7 @@ class ReceiverController extends GetxController {
   late final StreamSubscription<ControlEvent> _controlEventSubscription;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
+  bool _nativeReceiverActive = false;
   String? _hostSessionId;
   String? _pairingTokenValue;
   late Future<void> _pairingReady;
@@ -86,7 +96,7 @@ class ReceiverController extends GetxController {
       }
       if (session.controlStatus == ControlConnectionStatus.disconnected &&
           isServerRunning.value &&
-          (_audioService?.isReceiving ?? false)) {
+          ((_audioService?.isReceiving ?? false) || _nativeReceiverActive)) {
         unawaited(stopAudioReceiver());
       }
     });
@@ -158,6 +168,10 @@ class ReceiverController extends GetxController {
 
   Future<void> stopAudioReceiver() async {
     errorMessage.value = null;
+    if (_nativeReceiverActive) {
+      await _nativeAudioRuntime.stopNativeReceiver();
+      _nativeReceiverActive = false;
+    }
     await _audioService?.stopReceiver();
     isAudioReceiverRunning.value = false;
   }
@@ -172,6 +186,10 @@ class ReceiverController extends GetxController {
       case ControlCommandType.streamPrepare:
       case ControlCommandType.streamStart:
         final sessionId = event.command.arguments.first;
+        final nativeRequested =
+            event.command.arguments.length >= 4 &&
+            event.command.arguments[3] == 'native' &&
+            event.command.arguments[2] == AudioCodecType.pcm16.name;
         final token = _pairingTokenValue;
         if (token != null) {
           await _audioService?.setSessionSecurity(
@@ -187,11 +205,30 @@ class ReceiverController extends GetxController {
                 : AudioCodecPreference.pcm,
           );
         }
-        if (isServerRunning.value && !(_audioService?.isReceiving ?? false)) {
+        if (isServerRunning.value && nativeRequested) {
+          if (_audioService?.isReceiving ?? false) {
+            await _audioService?.stopReceiver();
+          }
+          try {
+            await _nativeAudioRuntime.startNativeReceiver(
+              port: AppConstants.audioPort,
+              latencyMode: LatencyMode.balanced,
+              sessionId: sessionId,
+              pairingToken: _pairingTokenValue,
+            );
+            _nativeReceiverActive = true;
+            isAudioReceiverRunning.value = true;
+          } catch (_) {
+            _nativeReceiverActive = false;
+            unawaited(startAudioReceiver());
+          }
+        } else if (isServerRunning.value &&
+            !(_audioService?.isReceiving ?? false) &&
+            !_nativeReceiverActive) {
           unawaited(startAudioReceiver());
         }
       case ControlCommandType.streamStop:
-        if (_audioService?.isReceiving ?? false) {
+        if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {
           unawaited(stopAudioReceiver());
         }
       case ControlCommandType.setPlaybackOffset:
@@ -215,8 +252,8 @@ class ReceiverController extends GetxController {
         command: ControlCommand(
           type: ControlCommandType.bufferStatus,
           arguments: [
-            '${audioService.bufferedDurationMicros}',
-            '${audioService.bufferedPackets}',
+            '${_nativeReceiverActive ? 0 : audioService.bufferedDurationMicros}',
+            '${_nativeReceiverActive ? 0 : audioService.bufferedPackets}',
           ],
         ),
       ),
@@ -242,6 +279,7 @@ class ReceiverController extends GetxController {
     _controlSessionSubscription.cancel();
     _bufferStatusTimer?.cancel();
     unawaited(_audioService?.stopReceiver());
+    unawaited(_nativeAudioRuntime.stopNativeReceiver());
     super.onClose();
   }
 }
