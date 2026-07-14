@@ -39,9 +39,9 @@ class ReceiverController extends GetxController {
                : PlaceholderDeviceDiscoveryService()),
        _pairingStore =
            pairingStore ??
-           (Get.isRegistered<PairingStore>()
-               ? Get.find<PairingStore>()
-               : AndroidPairingStore()),
+            (Get.isRegistered<PairingStore>()
+                ? Get.find<PairingStore>()
+                : SharedPrefsPairingStore()),
        _nativeAudioRuntime =
            nativeAudioRuntime ??
            (Get.isRegistered<NativeAudioRuntime>()
@@ -160,7 +160,7 @@ class ReceiverController extends GetxController {
       final needsRegeneration =
           existing == null || !RegExp(r'^\d{8}$').hasMatch(existing);
       final token = needsRegeneration
-          ? AndroidPairingStore.generateToken()
+          ? SharedPrefsPairingStore.generateToken()
           : existing;
       pairingToken.value = token;
       _pairingTokenValue = token;

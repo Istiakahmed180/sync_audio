@@ -34,9 +34,9 @@ class HostController extends GetxController {
                : null),
        _calibrationStore =
            calibrationStore ??
-           (Get.isRegistered<CalibrationStore>()
-               ? Get.find<CalibrationStore>()
-               : AndroidCalibrationStore()),
+            (Get.isRegistered<CalibrationStore>()
+                ? Get.find<CalibrationStore>()
+                : SharedPrefsCalibrationStore()),
        _discoveryService =
            discoveryService ??
            (Get.isRegistered<DeviceDiscoveryService>()

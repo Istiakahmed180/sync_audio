@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sync Audio uses the microphone to capture audio for streaming to connected devices.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
