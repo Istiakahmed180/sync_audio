@@ -78,6 +78,7 @@ class ReceiverController extends GetxController {
   late Future<void> _pairingReady;
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _suppressNextDisconnectedNotification = false;
+  bool _hostWasConnected = false;
 
   @override
   void onInit() {
@@ -115,9 +116,21 @@ class ReceiverController extends GetxController {
       session,
     ) {
       if (session.controlStatus == ControlConnectionStatus.disconnected) {
+        final wasConnected = _hostWasConnected;
+        _hostWasConnected = false;
+        isConnectedToHost.value = false;
         _hostSessionId = null;
         _bufferStatusTimer?.cancel();
         _bufferStatusTimer = null;
+        if (wasConnected) {
+          unawaited(
+            AppNotificationService.show(
+              title: 'Host disconnected',
+              message: 'The Host connection has ended.',
+              id: 1001,
+            ),
+          );
+        }
       }
       if (session.controlStatus == ControlConnectionStatus.disconnected &&
           isServerRunning.value &&
@@ -307,6 +320,12 @@ class ReceiverController extends GetxController {
     connectionStatus.value = status;
     isServerRunning.value = _service.isServerRunning;
     isConnectedToHost.value = status == ConnectionStatus.connected;
+    if (status == ConnectionStatus.disconnected) {
+      _hostWasConnected = false;
+    }
+    if (status == ConnectionStatus.connected) {
+      _hostWasConnected = true;
+    }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
     if (status == ConnectionStatus.connecting) {

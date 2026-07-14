@@ -66,6 +66,7 @@ class HostController extends GetxController {
   final receiverCount = 0.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
+  final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
   final latencyMode = LatencyMode.balanced.obs;
   final adaptiveJitter = true.obs;
@@ -89,6 +90,13 @@ class HostController extends GetxController {
   bool get isConnecting =>
       connectionStatus.value == ConnectionStatus.connecting;
   bool _nativeHostActive = false;
+
+  ReceiverSession? receiverSessionFor(String address) {
+    final index = receiverSessions.indexWhere(
+      (session) => session.id == address,
+    );
+    return index == -1 ? null : receiverSessions[index];
+  }
 
   @override
   void onInit() {
@@ -143,7 +151,7 @@ class HostController extends GetxController {
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter a port between 1 and 65535.');
     }
-    final pairingText = pairingTokenController.text.trim();
+    final pairingText = _pairingInputFor(addresses);
     if (!_isValidPairingInput(pairingText, addresses)) {
       return _showError(
         'Enter the 6-digit Receiver pairing code, or one code per IP address.',
@@ -177,6 +185,44 @@ class HostController extends GetxController {
   Future<void> disconnect() async {
     errorMessage.value = null;
     await _service.disconnect();
+  }
+
+  Future<void> connectReceiver(String address) async {
+    errorMessage.value = null;
+    final port = int.tryParse(portController.text.trim());
+    final pairingCode = receiverPairingControllers[address]?.text.trim() ?? '';
+    if (InternetAddress.tryParse(address)?.type != InternetAddressType.IPv4) {
+      return _showError('Enter a valid IPv4 receiver address.');
+    }
+    if (port == null || port < 1 || port > 65535) {
+      return _showError('Enter a port between 1 and 65535.');
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(pairingCode)) {
+      return _showError('Enter the 6-digit pairing code for $address.');
+    }
+    final pairingCodes = <String, String>{
+      for (final ip in configuredReceiverIps)
+        ip: receiverPairingControllers[ip]?.text.trim() ?? '',
+    };
+    _service.setPairingToken(null);
+    _service.setPairingTokens(pairingCodes);
+    final calibration = await _calibrationStore.read(address) ?? 0;
+    await _service.connectToReceivers(
+      receivers: [
+        ReceiverSession(
+          id: address,
+          ipAddress: address,
+          port: port,
+          controlStatus: ControlConnectionStatus.connecting,
+          playbackCalibrationMicros: calibration,
+        ),
+      ],
+    );
+  }
+
+  Future<void> disconnectReceiver(String address) async {
+    errorMessage.value = null;
+    await _service.disconnectFrom(address);
   }
 
   void _handleStatus(ConnectionStatus status) {
@@ -265,7 +311,7 @@ class HostController extends GetxController {
     }
     receiverCount.value = addresses.length;
     await audioService.selectCodec(codecPreference.value);
-    final pairingText = pairingTokenController.text.trim();
+    final pairingText = _pairingInputFor(addresses);
     final nativeEligible =
         audioService.activeCodecType == AudioCodecType.pcm16 &&
         !pairingText.contains('=');
@@ -401,6 +447,22 @@ class HostController extends GetxController {
         .toList(growable: false);
   }
 
+  String _pairingInputFor(List<String> addresses) {
+    if (configuredReceiverIps.isEmpty) {
+      return pairingTokenController.text.trim();
+    }
+    final codes = <String, String>{
+      for (final address in addresses)
+        address: receiverPairingControllers[address]?.text.trim() ?? '',
+    };
+    if (codes.values.every((code) => code == codes.values.first)) {
+      return codes.values.first;
+    }
+    return codes.entries
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join(',');
+  }
+
   bool _isValidPairingInput(String value, List<String> addresses) {
     final codePattern = RegExp(r'^\d{6}$');
     if (codePattern.hasMatch(value)) return true;
@@ -429,12 +491,18 @@ class HostController extends GetxController {
       return _showError('That receiver is already in the list.');
     }
     configuredReceiverIps.add(address);
+    receiverPairingControllers[address] = TextEditingController(
+      text: pairingTokenController.text.trim(),
+    );
     receiverIpInputController.clear();
+    pairingTokenController.clear();
     errorMessage.value = null;
   }
 
-  void removeReceiverIp(String address) =>
-      configuredReceiverIps.remove(address);
+  void removeReceiverIp(String address) {
+    configuredReceiverIps.remove(address);
+    receiverPairingControllers.remove(address)?.dispose();
+  }
 
   Future<void> discoverReceivers() async {
     errorMessage.value = null;
@@ -446,6 +514,7 @@ class HostController extends GetxController {
     for (final device in devices) {
       if (!configuredReceiverIps.contains(device.ipAddress)) {
         configuredReceiverIps.add(device.ipAddress);
+        receiverPairingControllers[device.ipAddress] = TextEditingController();
       }
     }
   }
@@ -484,7 +553,13 @@ class HostController extends GetxController {
     if (index == -1) {
       receiverSessions.add(session);
     } else {
-      receiverSessions[index] = session;
+      // Clock-sync updates come from the connection service and do not carry
+      // the Host-side manual calibration. Keep that value across PING/PONG
+      // updates instead of resetting it to zero.
+      final current = receiverSessions[index];
+      receiverSessions[index] = session.copyWith(
+        playbackCalibrationMicros: current.playbackCalibrationMicros,
+      );
       receiverSessions.refresh();
     }
   }
@@ -509,6 +584,9 @@ class HostController extends GetxController {
     audioPortController.dispose();
     testMessageController.dispose();
     pairingTokenController.dispose();
+    for (final controller in receiverPairingControllers.values) {
+      controller.dispose();
+    }
     super.onClose();
   }
 }

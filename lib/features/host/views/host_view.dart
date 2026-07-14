@@ -82,11 +82,30 @@ class HostView extends GetView<HostController> {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: controller.receiverIpController,
+              controller: controller.receiverIpInputController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              onSubmitted: (_) => controller.addReceiverIp(),
+              decoration: InputDecoration(
                 labelText: 'Receiver IP address',
-                hintText: '192.168.1.10, 192.168.1.11',
+                hintText: '192.168.1.10',
+                suffixIcon: IconButton(
+                  tooltip: 'Add receiver',
+                  onPressed: controller.addReceiverIp,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller.pairingTokenController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'Receiver pairing code (required)',
+                hintText: '123456',
+                counterText: '',
+                helperText:
+                    'This code will be assigned to the next Receiver you add.',
               ),
             ),
             const SizedBox(height: 12),
@@ -99,41 +118,31 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: controller.pairingTokenController,
-              keyboardType: TextInputType.text,
-              decoration: const InputDecoration(
-                labelText: 'Receiver pairing code (required)',
-                hintText: '123456 or 192.168.1.10=123456',
-                helperText:
-                    'Use one shared code or a code for each Receiver IP.',
+            Obx(
+              () => Column(
+                children: controller.configuredReceiverIps
+                    .map(
+                      (address) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _ReceiverTargetCard(
+                          address: address,
+                          pairingController:
+                              controller.receiverPairingControllers[address]!,
+                          onRemove: () => controller.removeReceiverIp(address),
+                          session: controller.receiverSessionFor(address),
+                          onConnect: () => controller.connectReceiver(address),
+                          onDisconnect: () =>
+                              controller.disconnectReceiver(address),
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
             ),
             const SizedBox(height: 16),
-            Obx(
-              () => AppPrimaryButton(
-                label: controller.isConnecting
-                    ? 'Connecting…'
-                    : controller.connectionStatus.value ==
-                          ConnectionStatus.error
-                    ? 'Try again'
-                    : 'Connect',
-                icon: Icons.link_rounded,
-                isLoading: controller.isConnecting,
-                onPressed: controller.isConnecting || controller.isConnected
-                    ? null
-                    : controller.connect,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => AppPrimaryButton(
-                label: 'Disconnect',
-                icon: Icons.link_off_rounded,
-                onPressed: controller.isConnected
-                    ? controller.disconnect
-                    : null,
-              ),
+            Text(
+              'Each Receiver has its own connection control.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 28),
             Card(
@@ -265,18 +274,12 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 4),
-            Obx(
-              () => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: controller.configuredReceiverIps
-                    .map(
-                      (address) => InputChip(
-                        label: Text(address),
-                        onDeleted: () => controller.removeReceiverIp(address),
-                      ),
-                    )
-                    .toList(),
+            TextField(
+              controller: controller.portController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Port',
+                hintText: '5050',
               ),
             ),
             const SizedBox(height: 12),
@@ -410,6 +413,109 @@ class _MessageCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _ReceiverTargetCard extends StatelessWidget {
+  const _ReceiverTargetCard({
+    required this.address,
+    required this.pairingController,
+    required this.onRemove,
+    required this.session,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
+
+  final String address;
+  final TextEditingController pairingController;
+  final VoidCallback onRemove;
+  final ReceiverSession? session;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 4),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.speaker_group_outlined),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        address,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextField(
+                        controller: pairingController,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        decoration: const InputDecoration(
+                          labelText: 'Pairing code',
+                          hintText: '123456',
+                          counterText: '',
+                          isDense: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove receiver',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                StatusBadge(
+                  label: session?.controlStatus.label ?? 'TCP offline',
+                ),
+                FilledButton.tonalIcon(
+                  onPressed:
+                      session?.controlStatus ==
+                              ControlConnectionStatus.connecting ||
+                          session?.controlStatus ==
+                              ControlConnectionStatus.reconnecting
+                      ? null
+                      : session?.controlStatus ==
+                            ControlConnectionStatus.connected
+                      ? onDisconnect
+                      : onConnect,
+                  icon: Icon(
+                    session?.controlStatus == ControlConnectionStatus.connected
+                        ? Icons.link_off_rounded
+                        : Icons.link_rounded,
+                  ),
+                  label: Text(
+                    session?.controlStatus == ControlConnectionStatus.connected
+                        ? 'Disconnect'
+                        : session?.controlStatus ==
+                                  ControlConnectionStatus.connecting ||
+                              session?.controlStatus ==
+                                  ControlConnectionStatus.reconnecting
+                        ? 'Connecting…'
+                        : 'Connect',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ReceiverSessionCard extends StatelessWidget {
