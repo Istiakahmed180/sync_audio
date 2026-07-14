@@ -7,6 +7,8 @@ import '../../../models/receiver_session.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../shared/widgets/app_primary_button.dart';
+import '../../../shared/widgets/app_error_banner.dart';
+import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
 
@@ -37,7 +39,48 @@ class HostView extends GetView<HostController> {
                 ),
               ],
             ),
+            Obx(
+              () => controller.errorMessage.value == null
+                  ? const SizedBox.shrink()
+                  : AppErrorBanner(
+                      message: controller.errorMessage.value!,
+                      onDismiss: () => controller.errorMessage.value = null,
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => ConnectionOverviewCard(
+                title: 'Host connection',
+                state: controller.connectionStatus.value.label,
+                icon: controller.isConnected
+                    ? Icons.check_circle_outline
+                    : Icons.wifi_tethering_rounded,
+                busy: controller.isConnecting,
+                message: switch (controller.connectionStatus.value) {
+                  ConnectionStatus.connected =>
+                    'Receiver connection established. You can send a test message or start system audio.',
+                  ConnectionStatus.connecting =>
+                    'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
+                  ConnectionStatus.error =>
+                    'Connection failed. Check the Receiver IP, port, and pairing code, then try again.',
+                  _ =>
+                    'Enter the Receiver IP, port, and required pairing code to begin.',
+                },
+              ),
+            ),
             const SizedBox(height: 20),
+            Text(
+              'Connection setup',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Use the IP address and pairing code shown on the Receiver screen.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: controller.receiverIpController,
               keyboardType: TextInputType.number,
@@ -55,10 +98,26 @@ class HostView extends GetView<HostController> {
                 hintText: '5050',
               ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller.pairingTokenController,
+              keyboardType: TextInputType.text,
+              decoration: const InputDecoration(
+                labelText: 'Receiver pairing code (required)',
+                hintText: '123456 or 192.168.1.10=123456',
+                helperText:
+                    'Use one shared code or a code for each Receiver IP.',
+              ),
+            ),
             const SizedBox(height: 16),
             Obx(
               () => AppPrimaryButton(
-                label: controller.isConnecting ? 'Connecting…' : 'Connect',
+                label: controller.isConnecting
+                    ? 'Connecting…'
+                    : controller.connectionStatus.value ==
+                          ConnectionStatus.error
+                    ? 'Try again'
+                    : 'Connect',
                 icon: Icons.link_rounded,
                 isLoading: controller.isConnecting,
                 onPressed: controller.isConnecting || controller.isConnected
@@ -77,6 +136,28 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 28),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Test message is available after the Receiver connection is established.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Text(
               'Test message',
               style: Theme.of(
@@ -98,15 +179,6 @@ class HostView extends GetView<HostController> {
                 onPressed: controller.isConnected
                     ? controller.sendTestMessage
                     : null,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller.pairingTokenController,
-              keyboardType: TextInputType.text,
-              decoration: const InputDecoration(
-                labelText: 'Receiver pairing code(s) (optional)',
-                hintText: '123456 or 192.168.1.10=123456',
               ),
             ),
             const SizedBox(height: 28),
@@ -268,7 +340,9 @@ class HostView extends GetView<HostController> {
                 label: 'Start System Audio',
                 icon: Icons.graphic_eq_rounded,
                 onPressed:
-                    controller.audioStatus.value == AudioStreamStatus.streaming
+                    !controller.isConnected ||
+                        controller.audioStatus.value ==
+                            AudioStreamStatus.streaming
                     ? null
                     : controller.startSystemAudioStream,
               ),
@@ -284,6 +358,18 @@ class HostView extends GetView<HostController> {
                     : null,
               ),
             ),
+            const SizedBox(height: 8),
+            Obx(
+              () => Text(
+                controller.isConnected
+                    ? controller.audioStatus.value ==
+                              AudioStreamStatus.streaming
+                          ? 'System audio is being sent to the connected Receivers.'
+                          : 'Connect a Receiver, then start system audio when you are ready.'
+                    : 'Connect a Receiver before starting system audio.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
             const SizedBox(height: 20),
             Obx(
               () => _MessageCard(
@@ -292,11 +378,6 @@ class HostView extends GetView<HostController> {
                     ? 'None yet'
                     : controller.lastSentMessage.value,
               ),
-            ),
-            Obx(
-              () => controller.errorMessage.value == null
-                  ? const SizedBox.shrink()
-                  : _ErrorCard(message: controller.errorMessage.value!),
             ),
             const SizedBox(height: 12),
             const _InfoMessage(
@@ -390,36 +471,6 @@ class _ReceiverSessionCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({required this.message});
-  final String message;
-  @override
-  Widget build(BuildContext context) => Card(
-    color: Theme.of(context).colorScheme.errorContainer,
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.error_outline,
-            color: Theme.of(context).colorScheme.onErrorContainer,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 class _InfoMessage extends StatelessWidget {

@@ -24,6 +24,9 @@ void main() {
     await tester.pumpWidget(const GetMaterialApp(home: HostView()));
     expect(find.text('Receiver IP address'), findsOneWidget);
     expect(find.text('Port'), findsOneWidget);
+    expect(find.text('Receiver pairing code (required)'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pump();
     expect(
       find.widgetWithText(FilledButton, 'Send Test Message'),
       findsOneWidget,
@@ -35,6 +38,8 @@ void main() {
     Get.put(ReceiverController(connectionService: service));
     await tester.pumpWidget(const GetMaterialApp(home: ReceiverView()));
     expect(find.widgetWithText(FilledButton, 'Start Receiver'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pump();
     expect(find.widgetWithText(FilledButton, 'Stop Receiver'), findsOneWidget);
     expect(find.text('Local IP address'), findsOneWidget);
   });

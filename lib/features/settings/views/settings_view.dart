@@ -60,6 +60,45 @@ class SettingsView extends GetView<SettingsController> {
         ),
         const SizedBox(height: 12),
         _SettingTile(label: 'Version', value: AppConstants.appVersion),
+        const SizedBox(height: 24),
+        Text(
+          'Connection help',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Before connecting',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Keep all devices on the same Wi‑Fi network. Start the Receiver first, then use its IP address and required pairing code on the Host.',
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'If connection fails',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Check the IP, port, and pairing code. The Host Connect button becomes available again after a failed attempt.',
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     ),
   );

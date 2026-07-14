@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_audio/models/receiver_session.dart';
+import 'package:sync_audio/models/connection_status.dart';
 import 'package:sync_audio/services/audio_codec.dart';
 import 'package:sync_audio/services/audio_packet_codec.dart';
 import 'package:sync_audio/services/connection_service.dart';
@@ -66,6 +67,7 @@ void main() {
     expect(await error.timeout(const Duration(seconds: 2)), contains('again'));
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(host.isConnected, isFalse);
+    expect(host.status, ConnectionStatus.disconnected);
 
     await host.dispose();
     await receiver.dispose();

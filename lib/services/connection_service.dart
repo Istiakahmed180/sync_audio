@@ -465,13 +465,10 @@ class TcpConnectionService implements ConnectionService {
         _handlePong(sourceId, command);
       case ControlCommandType.error:
         if (command.arguments.firstOrNull == 'PAIRING_REQUIRED') {
-          _desiredReceivers.remove(sourceId);
-          _reconnectTimers.remove(sourceId)?.cancel();
-          _establishedConnections.remove(sourceId);
           _emitError(
             'Pairing rejected by receiver. Check the pairing code and connect again.',
           );
-          unawaited(_closeSocket(sourceId));
+          await disconnectFrom(sourceId);
         }
       default:
         break;

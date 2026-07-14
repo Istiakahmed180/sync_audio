@@ -2,6 +2,9 @@ package com.example.sync_audio
 
 import android.Manifest
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
@@ -32,6 +35,8 @@ class MainActivity : FlutterActivity() {
     private val nativeAudioChannelName = "sync_audio/native_audio"
     private val projectionRequestCode = 7002
     private val microphonePermissionRequestCode = 7003
+    private val notificationPermissionRequestCode = 7004
+    private val notificationChannelId = "sync_audio_status"
     private val audioExecutor = Executors.newSingleThreadExecutor()
     private val audioLock = Any()
     private var audioTrack: AudioTrack? = null
@@ -39,9 +44,26 @@ class MainActivity : FlutterActivity() {
     private var pendingNativeSender: NativeUdpAudioSender? = null
     private var nativeSender: NativeUdpAudioSender? = null
     private var nativeReceiver: NativeUdpAudioReceiver? = null
+    private var pendingNotification: Pair<String, String>? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/notifications")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "show" -> {
+                        val title = call.argument<String>("title") ?: "Sync Audio"
+                        val message = call.argument<String>("message")
+                        if (message == null) {
+                            result.error("INVALID_NOTIFICATION", "Notification message is missing", null)
+                        } else {
+                            showStatusNotification(title, message)
+                            result.success(null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, nativeAudioChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -336,6 +358,17 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == notificationPermissionRequestCode) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                pendingNotification?.let { (title, message) ->
+                    pendingNotification = null
+                    showStatusNotification(title, message)
+                }
+            } else {
+                pendingNotification = null
+            }
+            return
+        }
         if (requestCode != microphonePermissionRequestCode) return
         val result = pendingSystemAudioStartResult
         pendingSystemAudioStartResult = null
@@ -347,6 +380,45 @@ class MainActivity : FlutterActivity() {
             pendingNativeSender = null
             result.error("MICROPHONE_PERMISSION_DENIED", "Audio capture permission was denied", null)
         }
+    }
+
+    private fun showStatusNotification(title: String, message: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                notificationChannelId,
+                "Sync Audio status",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = "Connection and audio status updates"
+            }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingNotification = title to message
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                notificationPermissionRequestCode,
+            )
+            return
+        }
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, notificationChannelId)
+        } else {
+            Notification.Builder(this)
+        }
+        val notification = builder
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_STATUS)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(
+            title.hashCode() and 0x7fffffff,
+            notification,
+        )
     }
 
     private fun initializeAudioTrack() {

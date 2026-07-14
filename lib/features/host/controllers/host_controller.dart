@@ -14,6 +14,8 @@ import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
+import '../../../shared/widgets/app_error_notifier.dart';
+import '../../../shared/widgets/app_notification_service.dart';
 import '../../../services/udp_audio_service.dart';
 
 class HostController extends GetxController {
@@ -76,6 +78,7 @@ class HostController extends GetxController {
   StreamSubscription<String>? _audioErrorSubscription;
   StreamSubscription<ReceiverSession>? _sessionSubscription;
   Timer? _diagnosticTimer;
+  Worker? _errorSnackbarWorker;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
@@ -93,6 +96,9 @@ class HostController extends GetxController {
     _errorSubscription = _service.errors.listen(
       (message) => errorMessage.value = message,
     );
+    _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
+      if (message != null) showAppErrorSnackbar(message);
+    });
     _controlSessionSubscription = _service.controlSessionChanges.listen(
       _updateSession,
     );
@@ -114,6 +120,10 @@ class HostController extends GetxController {
 
   Future<void> connect() async {
     errorMessage.value = null;
+    await AppNotificationService.show(
+      title: 'Sync Audio',
+      message: 'Connecting to the Receiver…',
+    );
     final addresses = _receiverAddresses();
     final port = int.tryParse(portController.text.trim());
     if (addresses.isEmpty) {
@@ -128,17 +138,21 @@ class HostController extends GetxController {
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter a port between 1 and 65535.');
     }
-    _service.setPairingToken(pairingTokenController.text);
+    final pairingText = pairingTokenController.text.trim();
+    if (!_isValidPairingInput(pairingText, addresses)) {
+      return _showError(
+        'Enter the 6-digit Receiver pairing code, or one code per IP address.',
+      );
+    }
+    _service.setPairingToken(pairingText);
     final perReceiverTokens = <String, String>{};
-    for (final entry in pairingTokenController.text.split(',')) {
+    for (final entry in pairingText.split(',')) {
       final parts = entry.split('=').map((part) => part.trim()).toList();
       if (parts.length == 2 && addresses.contains(parts.first)) {
         perReceiverTokens[parts.first] = parts.last;
       }
     }
-    if (perReceiverTokens.isNotEmpty) {
-      _service.setPairingTokens(perReceiverTokens);
-    }
+    _service.setPairingTokens(perReceiverTokens);
     final receivers = <ReceiverSession>[];
     for (final address in addresses) {
       final calibration = await _calibrationStore.read(address) ?? 0;
@@ -153,11 +167,21 @@ class HostController extends GetxController {
       );
     }
     await _service.connectToReceivers(receivers: receivers);
+    if (isConnected) {
+      await AppNotificationService.show(
+        title: 'Receiver connected',
+        message: 'The Host is ready to send audio.',
+      );
+    }
   }
 
   Future<void> disconnect() async {
     errorMessage.value = null;
     await _service.disconnect();
+    await AppNotificationService.show(
+      title: 'Disconnected',
+      message: 'The Host is no longer connected to Receivers.',
+    );
   }
 
   Future<void> sendTestMessage() async {
@@ -245,6 +269,10 @@ class HostController extends GetxController {
         ControlCommandType.streamStart,
         commandArguments,
       );
+      await AppNotificationService.show(
+        title: 'System audio streaming',
+        message: 'Audio is being sent to the connected Receivers.',
+      );
       return;
     }
     await audioService.startStreaming(ipAddresses: addresses, port: port);
@@ -252,6 +280,10 @@ class HostController extends GetxController {
       addresses,
       ControlCommandType.streamStart,
       commandArguments,
+    );
+    await AppNotificationService.show(
+      title: 'System audio streaming',
+      message: 'Audio is being sent to the connected Receivers.',
     );
   }
 
@@ -290,6 +322,10 @@ class HostController extends GetxController {
     await _audioService?.stopStreaming();
     receiverCount.value = 0;
     receiverSessions.clear();
+    await AppNotificationService.show(
+      title: 'System audio stopped',
+      message: 'Audio streaming has been stopped.',
+    );
   }
 
   Future<void> _sendControlCommand(
@@ -314,6 +350,24 @@ class HostController extends GetxController {
         .map((value) => value.trim())
         .where((value) => value.isNotEmpty)
         .toList(growable: false);
+  }
+
+  bool _isValidPairingInput(String value, List<String> addresses) {
+    final codePattern = RegExp(r'^\d{6}$');
+    if (codePattern.hasMatch(value)) return true;
+    final entries = value.split(',');
+    if (entries.length != addresses.length) return false;
+    final mappedAddresses = <String>{};
+    for (final entry in entries) {
+      final parts = entry.split('=').map((part) => part.trim()).toList();
+      if (parts.length != 2 ||
+          !addresses.contains(parts[0]) ||
+          !codePattern.hasMatch(parts[1]) ||
+          !mappedAddresses.add(parts[0])) {
+        return false;
+      }
+    }
+    return mappedAddresses.length == addresses.length;
   }
 
   void addReceiverIp() {
@@ -392,6 +446,7 @@ class HostController extends GetxController {
     _audioErrorSubscription?.cancel();
     _sessionSubscription?.cancel();
     _diagnosticTimer?.cancel();
+    _errorSnackbarWorker?.dispose();
     _controlSessionSubscription.cancel();
     receiverIpController.dispose();
     receiverIpInputController.dispose();

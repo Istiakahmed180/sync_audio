@@ -5,6 +5,8 @@ import '../../../app/constants/app_constants.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
+import '../../../shared/widgets/app_error_banner.dart';
+import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/receiver_controller.dart';
 
@@ -35,6 +37,36 @@ class ReceiverView extends GetView<ReceiverController> {
                 ),
               ],
             ),
+            Obx(
+              () => controller.errorMessage.value == null
+                  ? const SizedBox.shrink()
+                  : AppErrorBanner(
+                      message: controller.errorMessage.value!,
+                      onDismiss: () => controller.errorMessage.value = null,
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => ConnectionOverviewCard(
+                title: 'Receiver connection',
+                state: controller.connectionStatus.value.label,
+                icon: controller.isConnectedToHost.value
+                    ? Icons.check_circle_outline
+                    : Icons.speaker_group_rounded,
+                busy:
+                    controller.connectionStatus.value ==
+                    ConnectionStatus.startingServer,
+                message: !controller.isServerRunning.value
+                    ? 'Start this Receiver first. The Host cannot connect while the server is stopped.'
+                    : controller.isConnectedToHost.value
+                    ? controller.audioStatus.value ==
+                              AudioStreamStatus.receiving
+                          ? 'Host connected and audio is being received.'
+                          : 'Host connected. Audio will start when the Host starts streaming.'
+                    : 'Waiting for a Host. Share the IP address and pairing code below.',
+              ),
+            ),
+            const SizedBox(height: 20),
             const SizedBox(height: 20),
             Obx(() => _DetailCard(ipAddress: controller.localIpAddress.value)),
             const SizedBox(height: 12),
@@ -43,6 +75,11 @@ class ReceiverView extends GetView<ReceiverController> {
                 label: 'Pairing code',
                 value: controller.pairingToken.value,
               ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Give this code to the Host. It is required before a connection can be accepted.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
             Obx(
@@ -69,6 +106,15 @@ class ReceiverView extends GetView<ReceiverController> {
                 onPressed: controller.isServerRunning.value
                     ? controller.stopServer
                     : null,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => Text(
+                controller.isServerRunning.value
+                    ? 'This Receiver is discoverable and ready for a Host connection.'
+                    : 'Start Receiver to open the control and audio listeners.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
             const SizedBox(height: 28),
@@ -136,11 +182,6 @@ class ReceiverView extends GetView<ReceiverController> {
                     : controller.lastReceivedMessage.value,
               ),
             ),
-            Obx(
-              () => controller.errorMessage.value == null
-                  ? const SizedBox.shrink()
-                  : _ErrorCard(message: controller.errorMessage.value!),
-            ),
             const SizedBox(height: 12),
             const _InfoMessage(
               text:
@@ -195,22 +236,6 @@ class _MessageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: ListTile(title: Text(label), subtitle: Text(value)),
-  );
-}
-
-class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({required this.message});
-  final String message;
-  @override
-  Widget build(BuildContext context) => Card(
-    color: Theme.of(context).colorScheme.errorContainer,
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Text(
-        message,
-        style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
-      ),
-    ),
   );
 }
 

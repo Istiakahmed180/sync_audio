@@ -34,7 +34,7 @@ class HomeView extends GetView<HomeController> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Connect Android devices and prepare them for synchronized audio playback.',
+              'Use one Android device as the Host and one or more devices as Receivers on the same Wi‑Fi network.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 32),
@@ -72,7 +72,7 @@ class HomeView extends GetView<HomeController> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Development status: Phase 1 foundation. Networking and audio features are coming in later phases.',
+                        'Quick start\n1. Start Receiver on the speaker devices.\n2. Copy a Receiver IP address and pairing code.\n3. Open Host, enter those details, and connect.\n4. Start system audio after the connection is ready.',
                       ),
                     ),
                   ],

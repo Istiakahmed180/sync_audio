@@ -14,6 +14,8 @@ import '../../../services/audio_codec.dart';
 import '../../../services/pairing_store.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/latency_metrics.dart';
+import '../../../shared/widgets/app_error_notifier.dart';
+import '../../../shared/widgets/app_notification_service.dart';
 
 class ReceiverController extends GetxController {
   ReceiverController({
@@ -68,6 +70,7 @@ class ReceiverController extends GetxController {
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
   bool _nativeReceiverActive = false;
+  Worker? _errorSnackbarWorker;
   String? _hostSessionId;
   String? _pairingTokenValue;
   late Future<void> _pairingReady;
@@ -83,6 +86,9 @@ class ReceiverController extends GetxController {
     _errorSubscription = _service.errors.listen(
       (message) => errorMessage.value = message,
     );
+    _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
+      if (message != null) showAppErrorSnackbar(message);
+    });
     _controlEventSubscription = _service.controlEvents.listen(
       _handleControlEvent,
     );
@@ -141,6 +147,12 @@ class ReceiverController extends GetxController {
     if (_audioService != null && !_audioService.isReceiving) {
       await startAudioReceiver();
     }
+    if (isServerRunning.value) {
+      await AppNotificationService.show(
+        title: 'Receiver ready',
+        message: 'Share this device IP and pairing code with the Host.',
+      );
+    }
   }
 
   Future<void> stopServer() async {
@@ -153,6 +165,10 @@ class ReceiverController extends GetxController {
     isServerRunning.value = false;
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;
+    await AppNotificationService.show(
+      title: 'Receiver stopped',
+      message: 'The control and audio listeners are closed.',
+    );
   }
 
   Future<void> startAudioReceiver() async {
@@ -278,6 +294,7 @@ class ReceiverController extends GetxController {
     _controlEventSubscription.cancel();
     _controlSessionSubscription.cancel();
     _bufferStatusTimer?.cancel();
+    _errorSnackbarWorker?.dispose();
     unawaited(_audioService?.stopReceiver());
     unawaited(_nativeAudioRuntime.stopNativeReceiver());
     super.onClose();
