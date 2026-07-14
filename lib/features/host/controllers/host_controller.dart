@@ -456,13 +456,12 @@ class HostController extends GetxController {
   ) async {
     final audioService = _audioService;
     if (audioService == null) return;
-    await audioService.setReceiverCalibration(
-      receiverId: session.id,
-      calibrationMicros:
-          session.playbackCalibrationMicros + deltaMilliseconds * 1000,
-    );
     final calibrationMicros =
         session.playbackCalibrationMicros + deltaMilliseconds * 1000;
+    await audioService.setReceiverCalibration(
+      receiverId: session.id,
+      calibrationMicros: calibrationMicros,
+    );
     await _calibrationStore.write(session.id, calibrationMicros);
     await _service.sendControlCommand(
       receiverId: session.id,
@@ -471,6 +470,13 @@ class HostController extends GetxController {
         arguments: ['${session.clockOffsetMicros + calibrationMicros}'],
       ),
     );
+    final index = receiverSessions.indexWhere((item) => item.id == session.id);
+    if (index != -1) {
+      receiverSessions[index] = session.copyWith(
+        playbackCalibrationMicros: calibrationMicros,
+      );
+      receiverSessions.refresh();
+    }
   }
 
   void _updateSession(ReceiverSession session) {
