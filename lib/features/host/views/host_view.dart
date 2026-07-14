@@ -118,10 +118,13 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 12),
-             Obx(
-               () => Column(
+            Obx(
+              () => Column(
                 children: controller.configuredReceiverIps
-                    .where((a) => controller.receiverPairingControllers.containsKey(a))
+                    .where(
+                      (a) =>
+                          controller.receiverPairingControllers.containsKey(a),
+                    )
                     .map(
                       (address) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -146,64 +149,108 @@ class HostView extends GetView<HostController> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 28),
-            Text('Paired Devices', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            Text(
+              'Paired Devices',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
-            Obx(() => controller.pairedDevices.isEmpty
-                ? Text('No paired devices yet. Connect to save them here.', style: Theme.of(context).textTheme.bodySmall)
-                : Column(
-                    children: controller.pairedDevices.map((d) => Card(
+            Obx(
+              () => controller.pairedDevices.isEmpty
+                  ? Text(
+                      'No paired devices yet. Connect to save them here.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    )
+                  : Column(
+                      children: controller.pairedDevices
+                          .map(
+                            (d) => Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.speaker_rounded),
+                                title: Text(d.name),
+                                subtitle: Text(
+                                  '${d.ipAddress}:${d.port} · ${_formatDate(d.lastConnected)}',
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.link_rounded),
+                                      tooltip: 'Connect',
+                                      onPressed: () {
+                                        controller
+                                                .receiverIpInputController
+                                                .text =
+                                            d.ipAddress;
+                                        controller.portController.text =
+                                            '${d.port}';
+                                        controller.addReceiverIp();
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                      ),
+                                      tooltip: 'Remove',
+                                      onPressed: () => controller
+                                          .removeReceiverIp(d.ipAddress),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Group Presets',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => Column(
+                children: [
+                  ...controller.savedGroups.map(
+                    (g) => Card(
                       child: ListTile(
-                        leading: const Icon(Icons.speaker_rounded),
-                        title: Text(d.name),
-                        subtitle: Text('${d.ipAddress}:${d.port} · ${_formatDate(d.lastConnected)}'),
+                        leading: const Icon(Icons.group_rounded),
+                        title: Text(g.name),
+                        subtitle: Text('${g.deviceIps.length} devices'),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(icon: const Icon(Icons.link_rounded), tooltip: 'Connect',
-                              onPressed: () {
-                                controller.receiverIpInputController.text = d.ipAddress;
-                                controller.portController.text = '${d.port}';
-                                controller.addReceiverIp();
-                              }),
-                            IconButton(icon: const Icon(Icons.delete_outline, size: 18), tooltip: 'Remove',
-                              onPressed: () => controller.removeReceiverIp(d.ipAddress)),
+                            IconButton(
+                              icon: const Icon(Icons.play_arrow_rounded),
+                              tooltip: 'Apply & Connect',
+                              onPressed: () => controller.applyGroup(g),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              tooltip: 'Delete',
+                              onPressed: () => controller.deleteGroup(g.name),
+                            ),
                           ],
                         ),
                       ),
-                    )).toList(),
+                    ),
                   ),
+                  if (controller.configuredReceiverIps.isNotEmpty)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.add_rounded),
+                        title: const Text('Save current as group'),
+                        onTap: () => _showSaveGroupDialog(context),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            Text('Group Presets', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Obx(() => Column(
-              children: [
-                ...controller.savedGroups.map((g) => Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.group_rounded),
-                    title: Text(g.name),
-                    subtitle: Text('${g.deviceIps.length} devices'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(icon: const Icon(Icons.play_arrow_rounded), tooltip: 'Apply & Connect',
-                            onPressed: () => controller.applyGroup(g)),
-                        IconButton(icon: const Icon(Icons.delete_outline, size: 18), tooltip: 'Delete',
-                            onPressed: () => controller.deleteGroup(g.name)),
-                      ],
-                    ),
-                  ),
-                )),
-                if (controller.configuredReceiverIps.isNotEmpty)
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.add_rounded),
-                      title: const Text('Save current as group'),
-                      onTap: () => _showSaveGroupDialog(context),
-                    ),
-                  ),
-              ],
-            )),
             const SizedBox(height: 28),
             Card(
               child: Padding(
@@ -317,7 +364,8 @@ class HostView extends GetView<HostController> {
               decoration: InputDecoration(
                 labelText: 'Add receiver IP',
                 hintText: '192.168.1.11',
-                helperText: 'Receivers added in connection setup are reused here.',
+                helperText:
+                    'Receivers added in connection setup are reused here.',
                 suffixIcon: IconButton(
                   tooltip: 'Add receiver',
                   onPressed: controller.addReceiverIp,
@@ -372,16 +420,22 @@ class HostView extends GetView<HostController> {
             const SizedBox(height: 12),
             Obx(
               () => Column(
-                children: controller.receiverSessions
+                children: controller.displayReceiverSessions
                     .map(
                       (session) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _ReceiverSessionCard(
                           session: session,
-                          volume: controller.volumeForReceiver(session.ipAddress),
+                          volume: controller.volumeForReceiver(
+                            session.ipAddress,
+                          ),
                           muted: controller.isMuted(session.ipAddress),
-                          onVolumeChanged: (v) => controller.setReceiverVolume(session.ipAddress, v),
-                          onMuteToggle: () => controller.toggleMute(session.ipAddress),
+                          onVolumeChanged: (v) => controller.setReceiverVolume(
+                            session.ipAddress,
+                            v,
+                          ),
+                          onMuteToggle: () =>
+                              controller.toggleMute(session.ipAddress),
                           onAdjust: (delta) => controller
                               .adjustReceiverCalibration(session, delta),
                         ),
@@ -608,8 +662,10 @@ class _ReceiverSessionCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(muted ? Icons.volume_off_rounded : Icons.speaker_group_outlined,
-                color: muted ? Colors.grey : null),
+            Icon(
+              muted ? Icons.volume_off_rounded : Icons.speaker_group_outlined,
+              color: muted ? Colors.grey : null,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -630,7 +686,10 @@ class _ReceiverSessionCard extends StatelessWidget {
                         tooltip: muted ? 'Unmute' : 'Mute',
                         visualDensity: VisualDensity.compact,
                         onPressed: onMuteToggle,
-                        icon: Icon(muted ? Icons.volume_off : Icons.volume_up, size: 18),
+                        icon: Icon(
+                          muted ? Icons.volume_off : Icons.volume_up,
+                          size: 18,
+                        ),
                       ),
                       Expanded(
                         child: Slider(
@@ -642,8 +701,10 @@ class _ReceiverSessionCard extends StatelessWidget {
                           },
                         ),
                       ),
-                      Text('${(muted ? 0 : volume * 100).round()}%',
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        '${(muted ? 0 : volume * 100).round()}%',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ],
                   ),
                 ],
@@ -701,16 +762,24 @@ void _showSaveGroupDialog(BuildContext context) {
       title: const Text('Save Group'),
       content: TextField(
         controller: nameController,
-        decoration: const InputDecoration(hintText: 'eg. Living Room + Kitchen'),
+        decoration: const InputDecoration(
+          hintText: 'eg. Living Room + Kitchen',
+        ),
         autofocus: true,
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () {
-          final name = nameController.text.trim();
-          if (name.isNotEmpty) controller.saveCurrentAsGroup(name);
-          Navigator.pop(ctx);
-        }, child: const Text('Save')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final name = nameController.text.trim();
+            if (name.isNotEmpty) controller.saveCurrentAsGroup(name);
+            Navigator.pop(ctx);
+          },
+          child: const Text('Save'),
+        ),
       ],
     ),
   );

@@ -36,9 +36,9 @@ class HostController extends GetxController {
                : null),
        _calibrationStore =
            calibrationStore ??
-            (Get.isRegistered<CalibrationStore>()
-                ? Get.find<CalibrationStore>()
-                : SharedPrefsCalibrationStore()),
+           (Get.isRegistered<CalibrationStore>()
+               ? Get.find<CalibrationStore>()
+               : SharedPrefsCalibrationStore()),
        _discoveryService =
            discoveryService ??
            (Get.isRegistered<DeviceDiscoveryService>()
@@ -100,6 +100,18 @@ class HostController extends GetxController {
   final _statsStartTime = DateTime.now();
   bool _statsActive = false;
 
+  /// The TCP control service and UDP audio service use different session IDs
+  /// for the same receiver (for example, `192.168.1.10` vs
+  /// `192.168.1.10:5051`). Keep those internal IDs intact, but expose one
+  /// logical receiver card to the UI.
+  List<ReceiverSession> get displayReceiverSessions {
+    final grouped = <String, List<ReceiverSession>>{};
+    for (final session in receiverSessions) {
+      grouped.putIfAbsent(session.ipAddress, () => []).add(session);
+    }
+    return grouped.values.map(_mergeDisplaySessions).toList(growable: false);
+  }
+
   double volumeForReceiver(String address) => receiverVolumes[address] ?? 1.0;
   bool isMuted(String address) => receiverMuted[address] ?? false;
 
@@ -113,7 +125,9 @@ class HostController extends GetxController {
 
   Future<void> saveCurrentAsGroup(String groupName) async {
     if (configuredReceiverIps.isEmpty) return;
-    await _pairedStore.saveGroup(DeviceGroup(name: groupName, deviceIps: configuredReceiverIps.toList()));
+    await _pairedStore.saveGroup(
+      DeviceGroup(name: groupName, deviceIps: configuredReceiverIps.toList()),
+    );
     await loadSavedGroups();
   }
 
@@ -156,7 +170,11 @@ class HostController extends GetxController {
     final totalMb = 0.0;
     final lossCount = (diagnostics['droppedPacketCount'] as int? ?? 0);
     if (Get.isRegistered<SettingsController>()) {
-      Get.find<SettingsController>().addStreamStats(minutes, totalMb, lossCount);
+      Get.find<SettingsController>().addStreamStats(
+        minutes,
+        totalMb,
+        lossCount,
+      );
     }
   }
 
@@ -211,11 +229,11 @@ class HostController extends GetxController {
         (message) => errorMessage.value = message,
       );
       _sessionSubscription = audioService.sessionChanges.listen(_updateSession);
-    _diagnosticTimer = Timer.periodic(
-      const Duration(milliseconds: 1000),
-      (_) => unawaited(_refreshDiagnostics(audioService)),
-    );
-  }
+      _diagnosticTimer = Timer.periodic(
+        const Duration(milliseconds: 1000),
+        (_) => unawaited(_refreshDiagnostics(audioService)),
+      );
+    }
   }
 
   Future<void> connect() async {
@@ -618,13 +636,20 @@ class HostController extends GetxController {
     if (audioService == null) return;
     final calibrationMicros =
         session.playbackCalibrationMicros + deltaMilliseconds * 1000;
+    final audioSession = audioService.receiverSessions
+        .cast<ReceiverSession?>()
+        .firstWhere(
+          (candidate) => candidate?.ipAddress == session.ipAddress,
+          orElse: () => null,
+        );
     await audioService.setReceiverCalibration(
-      receiverId: session.id,
+      receiverId: audioSession?.id ?? session.id,
       calibrationMicros: calibrationMicros,
     );
     await _calibrationStore.write(session.id, calibrationMicros);
-    final currentIndex =
-        receiverSessions.indexWhere((s) => s.id == session.id);
+    final currentIndex = receiverSessions.indexWhere(
+      (s) => s.ipAddress == session.ipAddress,
+    );
     final clockOffset = currentIndex != -1
         ? receiverSessions[currentIndex].clockOffsetMicros
         : session.clockOffsetMicros;
@@ -635,13 +660,36 @@ class HostController extends GetxController {
         arguments: ['${clockOffset + calibrationMicros}'],
       ),
     );
-    final index = receiverSessions.indexWhere((item) => item.id == session.id);
+    final index = receiverSessions.indexWhere(
+      (item) => item.ipAddress == session.ipAddress,
+    );
     if (index != -1) {
       receiverSessions[index] = session.copyWith(
         playbackCalibrationMicros: calibrationMicros,
       );
       receiverSessions.refresh();
     }
+  }
+
+  ReceiverSession _mergeDisplaySessions(List<ReceiverSession> sessions) {
+    final control = sessions.cast<ReceiverSession?>().firstWhere(
+      (session) => session?.id == session?.ipAddress,
+      orElse: () => null,
+    );
+    final audio = sessions.cast<ReceiverSession?>().firstWhere(
+      (session) => session?.id != session?.ipAddress,
+      orElse: () => null,
+    );
+    final base = control ?? sessions.first;
+    if (audio == null) return base;
+    return base.copyWith(
+      status: audio.status,
+      clockOffsetMicros: audio.clockOffsetMicros,
+      clockDriftPpm: audio.clockDriftPpm,
+      playbackCalibrationMicros: audio.playbackCalibrationMicros,
+      roundTripTimeMicros: audio.roundTripTimeMicros,
+      lastSyncMicros: audio.lastSyncMicros,
+    );
   }
 
   void _updateSession(ReceiverSession session) {
