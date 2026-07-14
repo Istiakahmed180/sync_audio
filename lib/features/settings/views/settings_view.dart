@@ -15,15 +15,15 @@ class SettingsView extends GetView<SettingsController> {
       children: [
         _sectionTitle(context, 'Appearance'),
         const SizedBox(height: 12),
-        Obx(() => _ThemeSelector(controller: controller)),
+        _ThemeSelector(controller: controller),
         const SizedBox(height: 24),
         _sectionTitle(context, 'Scheduled Streaming'),
         const SizedBox(height: 12),
-        Obx(() => _ScheduledStreamingCard(controller: controller)),
+        _ScheduledStreamingCard(controller: controller),
         const SizedBox(height: 24),
         _sectionTitle(context, 'Usage Statistics'),
         const SizedBox(height: 12),
-        Obx(() => _UsageStatsCard(controller: controller)),
+        _UsageStatsCard(controller: controller),
         const SizedBox(height: 24),
         _sectionTitle(context, 'About'),
         const SizedBox(height: 12),
@@ -78,19 +78,21 @@ class _ThemeSelector extends StatelessWidget {
   const _ThemeSelector({required this.controller});
   final SettingsController controller;
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: ThemeMode.values.map((mode) {
-          final selected = controller.themeMode.value == mode;
-          return ChoiceChip(
-            label: Text(mode.name[0].toUpperCase() + mode.name.substring(1)),
-            selected: selected,
-            onSelected: (_) => controller.setThemeMode(mode),
-          );
-        }).toList(),
+  Widget build(BuildContext context) => Obx(
+    () => Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: ThemeMode.values.map((mode) {
+            final selected = controller.themeMode.value == mode;
+            return ChoiceChip(
+              label: Text(mode.name[0].toUpperCase() + mode.name.substring(1)),
+              selected: selected,
+              onSelected: (_) => controller.setThemeMode(mode),
+            );
+          }).toList(),
+        ),
       ),
     ),
   );
@@ -100,35 +102,37 @@ class _ScheduledStreamingCard extends StatelessWidget {
   const _ScheduledStreamingCard({required this.controller});
   final SettingsController controller;
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          SwitchListTile(
-            title: const Text('Enable scheduled streaming'),
-            subtitle: const Text('Auto start/stop audio at set times'),
-            value: controller.isScheduledEnabled.value,
-            onChanged: controller.setScheduleEnabled,
-            contentPadding: EdgeInsets.zero,
-          ),
-          if (controller.isScheduledEnabled.value) ...[
-            const Divider(),
-            _TimePickerRow(
-              label: 'Start time',
-              hour: controller.scheduleStartHour,
-              minute: controller.scheduleStartMinute,
-              onChanged: controller.scheduleStartTime,
+  Widget build(BuildContext context) => Obx(
+    () => Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            SwitchListTile(
+              title: const Text('Enable scheduled streaming'),
+              subtitle: const Text('Auto start/stop audio at set times'),
+              value: controller.isScheduledEnabled.value,
+              onChanged: controller.setScheduleEnabled,
+              contentPadding: EdgeInsets.zero,
             ),
-            const SizedBox(height: 12),
-            _TimePickerRow(
-              label: 'Stop time',
-              hour: controller.scheduleStopHour,
-              minute: controller.scheduleStopMinute,
-              onChanged: controller.scheduleStopTime,
-            ),
+            if (controller.isScheduledEnabled.value) ...[
+              const Divider(),
+              _TimePickerRow(
+                label: 'Start time',
+                hour: controller.scheduleStartHour,
+                minute: controller.scheduleStartMinute,
+                onChanged: controller.scheduleStartTime,
+              ),
+              const SizedBox(height: 12),
+              _TimePickerRow(
+                label: 'Stop time',
+                hour: controller.scheduleStopHour,
+                minute: controller.scheduleStopMinute,
+                onChanged: controller.scheduleStopTime,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     ),
   );
@@ -174,26 +178,28 @@ class _UsageStatsCard extends StatelessWidget {
   const _UsageStatsCard({required this.controller});
   final SettingsController controller;
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _StatRow(
-            label: 'Total stream time',
-            value: _formatMinutes(controller.totalStreamTimeMinutes.value),
-          ),
-          const Divider(),
-          _StatRow(
-            label: 'Data sent',
-            value: '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
-          ),
-          const Divider(),
-          _StatRow(
-            label: 'Packets lost',
-            value: '${controller.totalPacketsLost.value}',
-          ),
-        ],
+  Widget build(BuildContext context) => Obx(
+    () => Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _StatRow(
+              label: 'Total stream time',
+              value: _formatMinutes(controller.totalStreamTimeMinutes.value),
+            ),
+            const Divider(),
+            _StatRow(
+              label: 'Data sent',
+              value: '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
+            ),
+            const Divider(),
+            _StatRow(
+              label: 'Packets lost',
+              value: '${controller.totalPacketsLost.value}',
+            ),
+          ],
+        ),
       ),
     ),
   );
