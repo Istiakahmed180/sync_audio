@@ -44,7 +44,7 @@ class MainActivity : FlutterActivity() {
     private var pendingNativeSender: NativeUdpAudioSender? = null
     private var nativeSender: NativeUdpAudioSender? = null
     private var nativeReceiver: NativeUdpAudioReceiver? = null
-    private var pendingNotification: Pair<String, String>? = null
+    private var pendingNotification: Triple<Int, String, String>? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -54,10 +54,11 @@ class MainActivity : FlutterActivity() {
                     "show" -> {
                         val title = call.argument<String>("title") ?: "Sync Audio"
                         val message = call.argument<String>("message")
+                        val id = call.argument<Int>("id") ?: 1001
                         if (message == null) {
                             result.error("INVALID_NOTIFICATION", "Notification message is missing", null)
                         } else {
-                            showStatusNotification(title, message)
+                            showStatusNotification(id, title, message)
                             result.success(null)
                         }
                     }
@@ -360,9 +361,9 @@ class MainActivity : FlutterActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == notificationPermissionRequestCode) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-                pendingNotification?.let { (title, message) ->
+                pendingNotification?.let { (id, title, message) ->
                     pendingNotification = null
-                    showStatusNotification(title, message)
+                    showStatusNotification(id, title, message)
                 }
             } else {
                 pendingNotification = null
@@ -382,7 +383,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun showStatusNotification(title: String, message: String) {
+    private fun showStatusNotification(id: Int, title: String, message: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 notificationChannelId,
@@ -396,7 +397,7 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            pendingNotification = title to message
+            pendingNotification = Triple(id, title, message)
             requestPermissions(
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 notificationPermissionRequestCode,
@@ -416,7 +417,7 @@ class MainActivity : FlutterActivity() {
             .setCategory(Notification.CATEGORY_STATUS)
             .build()
         getSystemService(NotificationManager::class.java).notify(
-            title.hashCode() and 0x7fffffff,
+            id,
             notification,
         )
     }

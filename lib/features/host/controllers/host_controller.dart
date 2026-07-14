@@ -80,6 +80,8 @@ class HostController extends GetxController {
   Timer? _diagnosticTimer;
   Worker? _errorSnackbarWorker;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
+  ConnectionStatus? _lastNotifiedConnectionStatus;
+  bool _suppressNextDisconnectedNotification = false;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
 
@@ -90,12 +92,18 @@ class HostController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _statusSubscription = _service.statusChanges.listen(
-      (status) => connectionStatus.value = status,
-    );
-    _errorSubscription = _service.errors.listen(
-      (message) => errorMessage.value = message,
-    );
+    _statusSubscription = _service.statusChanges.listen(_handleStatus);
+    _errorSubscription = _service.errors.listen((message) {
+      errorMessage.value = message;
+      _suppressNextDisconnectedNotification = true;
+      unawaited(
+        AppNotificationService.show(
+          title: 'Connection error',
+          message: message,
+          id: 1001,
+        ),
+      );
+    });
     _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
       if (message != null) showAppErrorSnackbar(message);
     });
@@ -120,10 +128,6 @@ class HostController extends GetxController {
 
   Future<void> connect() async {
     errorMessage.value = null;
-    await AppNotificationService.show(
-      title: 'Sync Audio',
-      message: 'Connecting to the Receiver…',
-    );
     final addresses = _receiverAddresses();
     final port = int.tryParse(portController.text.trim());
     if (addresses.isEmpty) {
@@ -167,21 +171,54 @@ class HostController extends GetxController {
       );
     }
     await _service.connectToReceivers(receivers: receivers);
-    if (isConnected) {
-      await AppNotificationService.show(
-        title: 'Receiver connected',
-        message: 'The Host is ready to send audio.',
-      );
-    }
   }
 
   Future<void> disconnect() async {
     errorMessage.value = null;
     await _service.disconnect();
-    await AppNotificationService.show(
-      title: 'Disconnected',
-      message: 'The Host is no longer connected to Receivers.',
-    );
+  }
+
+  void _handleStatus(ConnectionStatus status) {
+    final previous = _lastNotifiedConnectionStatus;
+    connectionStatus.value = status;
+    if (previous == status) return;
+    _lastNotifiedConnectionStatus = status;
+    if (status == ConnectionStatus.connecting) {
+      _suppressNextDisconnectedNotification = false;
+    }
+    if (status == ConnectionStatus.disconnected &&
+        _suppressNextDisconnectedNotification) {
+      _suppressNextDisconnectedNotification = false;
+      return;
+    }
+    final notification = switch (status) {
+      ConnectionStatus.connecting => (
+        'Connecting',
+        'Connecting to the Receiver…',
+      ),
+      ConnectionStatus.connected => (
+        'Connected',
+        'The Host is ready to send audio.',
+      ),
+      ConnectionStatus.error => (
+        'Connection error',
+        'The Receiver connection failed.',
+      ),
+      ConnectionStatus.disconnected when previous != null => (
+        'Disconnected',
+        'The Host is no longer connected to Receivers.',
+      ),
+      _ => null,
+    };
+    if (notification != null) {
+      unawaited(
+        AppNotificationService.show(
+          title: notification.$1,
+          message: notification.$2,
+          id: 1001,
+        ),
+      );
+    }
   }
 
   Future<void> sendTestMessage() async {
@@ -272,6 +309,7 @@ class HostController extends GetxController {
       await AppNotificationService.show(
         title: 'System audio streaming',
         message: 'Audio is being sent to the connected Receivers.',
+        id: 1002,
       );
       return;
     }
@@ -284,6 +322,7 @@ class HostController extends GetxController {
     await AppNotificationService.show(
       title: 'System audio streaming',
       message: 'Audio is being sent to the connected Receivers.',
+      id: 1002,
     );
   }
 
@@ -325,6 +364,7 @@ class HostController extends GetxController {
     await AppNotificationService.show(
       title: 'System audio stopped',
       message: 'Audio streaming has been stopped.',
+      id: 1002,
     );
   }
 

@@ -74,6 +74,8 @@ class ReceiverController extends GetxController {
   String? _hostSessionId;
   String? _pairingTokenValue;
   late Future<void> _pairingReady;
+  ConnectionStatus? _lastNotifiedConnectionStatus;
+  bool _suppressNextDisconnectedNotification = false;
 
   @override
   void onInit() {
@@ -83,9 +85,17 @@ class ReceiverController extends GetxController {
       (message) => lastReceivedMessage.value = message,
     );
     _statusSubscription = _service.statusChanges.listen(_handleStatus);
-    _errorSubscription = _service.errors.listen(
-      (message) => errorMessage.value = message,
-    );
+    _errorSubscription = _service.errors.listen((message) {
+      errorMessage.value = message;
+      _suppressNextDisconnectedNotification = true;
+      unawaited(
+        AppNotificationService.show(
+          title: 'Receiver error',
+          message: message,
+          id: 1001,
+        ),
+      );
+    });
     _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
       if (message != null) showAppErrorSnackbar(message);
     });
@@ -151,6 +161,7 @@ class ReceiverController extends GetxController {
       await AppNotificationService.show(
         title: 'Receiver ready',
         message: 'Share this device IP and pairing code with the Host.',
+        id: 1003,
       );
     }
   }
@@ -168,6 +179,7 @@ class ReceiverController extends GetxController {
     await AppNotificationService.show(
       title: 'Receiver stopped',
       message: 'The control and audio listeners are closed.',
+      id: 1003,
     );
   }
 
@@ -277,9 +289,44 @@ class ReceiverController extends GetxController {
   }
 
   void _handleStatus(ConnectionStatus status) {
+    final previous = _lastNotifiedConnectionStatus;
     connectionStatus.value = status;
     isServerRunning.value = _service.isServerRunning;
     isConnectedToHost.value = status == ConnectionStatus.connected;
+    if (previous == status) return;
+    _lastNotifiedConnectionStatus = status;
+    if (status == ConnectionStatus.connecting) {
+      _suppressNextDisconnectedNotification = false;
+    }
+    if (status == ConnectionStatus.disconnected &&
+        _suppressNextDisconnectedNotification) {
+      _suppressNextDisconnectedNotification = false;
+      return;
+    }
+    final notification = switch (status) {
+      ConnectionStatus.connected => (
+        'Host connected',
+        'A Host is connected to this Receiver.',
+      ),
+      ConnectionStatus.disconnected when previous != null => (
+        'Host disconnected',
+        'The Host connection has ended.',
+      ),
+      ConnectionStatus.error => (
+        'Receiver error',
+        'The Host connection failed.',
+      ),
+      _ => null,
+    };
+    if (notification != null) {
+      unawaited(
+        AppNotificationService.show(
+          title: notification.$1,
+          message: notification.$2,
+          id: 1001,
+        ),
+      );
+    }
   }
 
   @override
