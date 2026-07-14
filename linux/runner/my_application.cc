@@ -1,4 +1,5 @@
 #include "my_application.h"
+#include "audio_plugin.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -74,6 +75,11 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  auto* audio_plugin = new AudioPlugin(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)));
+  g_object_set_data_full(G_OBJECT(view), "audio-plugin", audio_plugin,
+                         [](gpointer data) { delete static_cast<AudioPlugin*>(data); });
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

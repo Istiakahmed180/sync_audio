@@ -1,6 +1,8 @@
 #include "flutter_window.h"
+#include "audio_plugin.h"
 
 #include <optional>
+#include <memory>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -16,15 +18,16 @@ bool FlutterWindow::OnCreate() {
 
   RECT frame = GetClientArea();
 
-  // The size here must match the window dimensions to avoid unnecessary surface
-  // creation / destruction in the startup path.
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
-  // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  audio_plugin_ = std::make_unique<AudioPlugin>(
+      flutter_controller_->engine()->messenger());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

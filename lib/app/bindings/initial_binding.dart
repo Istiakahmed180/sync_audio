@@ -15,22 +15,17 @@ import '../../services/ios_audio_capture_service.dart';
 import '../../services/ios_audio_playback_service.dart';
 import '../../services/macos_audio_capture_service.dart';
 import '../../services/macos_audio_playback_service.dart';
+import '../../services/windows_audio_capture_service.dart';
+import '../../services/windows_audio_playback_service.dart';
+import '../../services/linux_audio_capture_service.dart';
+import '../../services/linux_audio_playback_service.dart';
 
 class InitialBinding extends Bindings {
   @override
   void dependencies() {
     Get.lazyPut<ConnectionService>(TcpConnectionService.new, fenix: true);
-
-    Get.lazyPut<AudioCaptureService>(
-      _captureServiceFactory,
-      fenix: true,
-    );
-
-    Get.lazyPut<AudioPlaybackService>(
-      _playbackServiceFactory,
-      fenix: true,
-    );
-
+    Get.lazyPut<AudioCaptureService>(_captureServiceFactory, fenix: true);
+    Get.lazyPut<AudioPlaybackService>(_playbackServiceFactory, fenix: true);
     Get.lazyPut<AudioStreamService>(
       () => UdpAudioService(
         playbackService: Get.find<AudioPlaybackService>(),
@@ -38,27 +33,12 @@ class InitialBinding extends Bindings {
       ),
       fenix: true,
     );
-
     Get.lazyPut<DeviceDiscoveryService>(
-      UdpDeviceDiscoveryService.new,
-      fenix: true,
-    );
-
+      UdpDeviceDiscoveryService.new, fenix: true);
     Get.lazyPut<SynchronizationService>(
-      PlaceholderSynchronizationService.new,
-      fenix: true,
-    );
-
-    Get.lazyPut<CalibrationStore>(
-      SharedPrefsCalibrationStore.new,
-      fenix: true,
-    );
-
-    Get.lazyPut<PairingStore>(
-      SharedPrefsPairingStore.new,
-      fenix: true,
-    );
-
+      PlaceholderSynchronizationService.new, fenix: true);
+    Get.lazyPut<CalibrationStore>(SharedPrefsCalibrationStore.new, fenix: true);
+    Get.lazyPut<PairingStore>(SharedPrefsPairingStore.new, fenix: true);
     Get.lazyPut<NativeAudioRuntime>(NativeAudioRuntime.new, fenix: true);
   }
 
@@ -66,6 +46,8 @@ class InitialBinding extends Bindings {
     if (Platform.isAndroid) return AndroidSystemAudioCaptureService();
     if (Platform.isIOS) return IosAudioCaptureService();
     if (Platform.isMacOS) return MacosAudioCaptureService();
+    if (Platform.isWindows) return WindowsAudioCaptureService();
+    if (Platform.isLinux) return LinuxAudioCaptureService();
     return PlaceholderAudioCaptureService();
   }
 
@@ -73,6 +55,8 @@ class InitialBinding extends Bindings {
     if (Platform.isAndroid) return AndroidAudioTrackPlaybackService();
     if (Platform.isIOS) return IosAudioPlaybackService();
     if (Platform.isMacOS) return MacosAudioPlaybackService();
+    if (Platform.isWindows) return WindowsAudioPlaybackService();
+    if (Platform.isLinux) return LinuxAudioPlaybackService();
     return PlaceholderAudioPlaybackService();
   }
 }
