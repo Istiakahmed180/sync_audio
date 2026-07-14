@@ -24,7 +24,7 @@ class AndroidSystemAudioCaptureService implements AudioCaptureService {
         } catch (_) {
           return Uint8List(0);
         }
-      }).where((bytes) => bytes.isNotEmpty);
+      }).where((bytes) => bytes.isNotEmpty).handleError((_) {});
 
   bool _isCapturing = false;
 

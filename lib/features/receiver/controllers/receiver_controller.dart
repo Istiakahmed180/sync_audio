@@ -167,7 +167,7 @@ class ReceiverController extends GetxController {
       if (needsRegeneration) await _pairingStore.writeToken(token);
       _service.setPairingToken(token);
     } catch (_) {
-      final token = AndroidPairingStore.generateToken();
+      final token = SharedPrefsPairingStore.generateToken();
       pairingToken.value = token;
       _pairingTokenValue = token;
       _service.setPairingToken(token);

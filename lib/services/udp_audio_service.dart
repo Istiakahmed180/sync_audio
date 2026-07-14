@@ -486,7 +486,7 @@ class UdpAudioService implements AudioStreamService {
     if (!_streaming) return;
     await stopStreaming();
     _emitError(
-      'Audio encoding failed. PCM fallback remains available when selected.',
+      'Audio encoding failed. Stream has been stopped — switch to PCM and try again.',
     );
     _setStatus(AudioStreamStatus.error);
   }
@@ -708,8 +708,8 @@ class UdpAudioService implements AudioStreamService {
         if (packet.codecType != decoder.codecType) return;
         final now = _receiverClock.elapsedMicroseconds;
         final correction = _driftCorrectionEnabled
-            ? ((now - _lastDriftUpdateMicros) * _driftCorrectionPpm)
-                  ~/ 1000000
+            ? (((now - _lastDriftUpdateMicros) * _driftCorrectionPpm)
+                  ~/ 1000000)
                   .clamp(-20000, 20000)
             : 0;
         final adaptiveDelay = _adaptiveJitterEnabled

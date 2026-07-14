@@ -363,10 +363,12 @@ class HostController extends GetxController {
         );
         _nativeHostActive = true;
       } catch (_) {
-        // Informational: fallback to Dart audio path, not an error.
-        debugPrint(
-          'Native low-latency audio is unavailable; using Dart fallback.',
-        );
+        assert(() {
+          debugPrint(
+            'Native low-latency audio is unavailable; using Dart fallback.',
+          );
+          return true;
+        }());
       }
     }
     if (_nativeHostActive) {
@@ -549,11 +551,16 @@ class HostController extends GetxController {
       calibrationMicros: calibrationMicros,
     );
     await _calibrationStore.write(session.id, calibrationMicros);
+    final currentIndex =
+        receiverSessions.indexWhere((s) => s.id == session.id);
+    final clockOffset = currentIndex != -1
+        ? receiverSessions[currentIndex].clockOffsetMicros
+        : session.clockOffsetMicros;
     await _service.sendControlCommand(
       receiverId: session.id,
       command: ControlCommand(
         type: ControlCommandType.setPlaybackOffset,
-        arguments: ['${session.clockOffsetMicros + calibrationMicros}'],
+        arguments: ['${clockOffset + calibrationMicros}'],
       ),
     );
     final index = receiverSessions.indexWhere((item) => item.id == session.id);
