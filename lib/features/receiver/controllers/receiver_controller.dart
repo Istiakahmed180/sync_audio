@@ -157,10 +157,14 @@ class ReceiverController extends GetxController {
   Future<void> _loadPairingToken() async {
     try {
       final existing = await _pairingStore.readToken();
-      final token = existing ?? AndroidPairingStore.generateToken();
+      final needsRegeneration =
+          existing == null || !RegExp(r'^\d{8}$').hasMatch(existing);
+      final token = needsRegeneration
+          ? AndroidPairingStore.generateToken()
+          : existing;
       pairingToken.value = token;
       _pairingTokenValue = token;
-      if (existing == null) await _pairingStore.writeToken(token);
+      if (needsRegeneration) await _pairingStore.writeToken(token);
       _service.setPairingToken(token);
     } catch (_) {
       final token = AndroidPairingStore.generateToken();
