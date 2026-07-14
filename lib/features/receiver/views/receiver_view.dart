@@ -176,6 +176,15 @@ class ReceiverView extends GetView<ReceiverController> {
             const SizedBox(height: 12),
             Obx(
               () => _MessageCard(
+                label: 'Last sync ping',
+                value: controller.lastSyncPing.value.isEmpty
+                    ? 'None yet'
+                    : controller.lastSyncPing.value,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => _MessageCard(
                 label: 'Last received message',
                 value: controller.lastReceivedMessage.value.isEmpty
                     ? 'None yet'

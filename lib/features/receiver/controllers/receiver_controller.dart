@@ -59,6 +59,7 @@ class ReceiverController extends GetxController {
   final isServerRunning = false.obs;
   final isConnectedToHost = false.obs;
   final lastReceivedMessage = ''.obs;
+  final lastSyncPing = ''.obs;
   final errorMessage = RxnString();
   final audioStatus = AudioStreamStatus.idle.obs;
   final isAudioReceiverRunning = false.obs;
@@ -82,9 +83,16 @@ class ReceiverController extends GetxController {
   void onInit() {
     super.onInit();
     _pairingReady = _loadPairingToken();
-    _messageSubscription = _service.receivedMessages.listen(
-      (message) => lastReceivedMessage.value = message,
-    );
+    _messageSubscription = _service.receivedMessages.listen((message) {
+      lastReceivedMessage.value = message;
+      unawaited(
+        AppNotificationService.show(
+          title: 'New message from Host',
+          message: message,
+          id: 1004,
+        ),
+      );
+    });
     _statusSubscription = _service.statusChanges.listen(_handleStatus);
     _errorSubscription = _service.errors.listen((message) {
       errorMessage.value = message;
@@ -209,6 +217,9 @@ class ReceiverController extends GetxController {
 
   Future<void> _handleControlEvent(ControlEvent event) async {
     _hostSessionId = event.sourceId;
+    if (event.command.type == ControlCommandType.ping) {
+      lastSyncPing.value = event.command.line;
+    }
     _bufferStatusTimer ??= Timer.periodic(
       const Duration(seconds: 2),
       (_) => _sendBufferStatus(),
