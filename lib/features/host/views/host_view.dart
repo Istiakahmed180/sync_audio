@@ -146,6 +146,65 @@ class HostView extends GetView<HostController> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 28),
+            Text('Paired Devices', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Obx(() => controller.pairedDevices.isEmpty
+                ? Text('No paired devices yet. Connect to save them here.', style: Theme.of(context).textTheme.bodySmall)
+                : Column(
+                    children: controller.pairedDevices.map((d) => Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.speaker_rounded),
+                        title: Text(d.name),
+                        subtitle: Text('${d.ipAddress}:${d.port} · ${_formatDate(d.lastConnected)}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(icon: const Icon(Icons.link_rounded), tooltip: 'Connect',
+                              onPressed: () {
+                                controller.receiverIpInputController.text = d.ipAddress;
+                                controller.portController.text = '${d.port}';
+                                controller.addReceiverIp();
+                              }),
+                            IconButton(icon: const Icon(Icons.delete_outline, size: 18), tooltip: 'Remove',
+                              onPressed: () => controller.removeReceiverIp(d.ipAddress)),
+                          ],
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Text('Group Presets', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Obx(() => Column(
+              children: [
+                ...controller.savedGroups.map((g) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.group_rounded),
+                    title: Text(g.name),
+                    subtitle: Text('${g.deviceIps.length} devices'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(icon: const Icon(Icons.play_arrow_rounded), tooltip: 'Apply & Connect',
+                            onPressed: () => controller.applyGroup(g)),
+                        IconButton(icon: const Icon(Icons.delete_outline, size: 18), tooltip: 'Delete',
+                            onPressed: () => controller.deleteGroup(g.name)),
+                      ],
+                    ),
+                  ),
+                )),
+                if (controller.configuredReceiverIps.isNotEmpty)
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.add_rounded),
+                      title: const Text('Save current as group'),
+                      onTap: () => _showSaveGroupDialog(context),
+                    ),
+                  ),
+              ],
+            )),
+            const SizedBox(height: 28),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(14),
@@ -319,6 +378,10 @@ class HostView extends GetView<HostController> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _ReceiverSessionCard(
                           session: session,
+                          volume: controller.volumeForReceiver(session.ipAddress),
+                          muted: controller.isMuted(session.ipAddress),
+                          onVolumeChanged: (v) => controller.setReceiverVolume(session.ipAddress, v),
+                          onMuteToggle: () => controller.toggleMute(session.ipAddress),
                           onAdjust: (delta) => controller
                               .adjustReceiverCalibration(session, delta),
                         ),
@@ -521,9 +584,20 @@ class _ReceiverTargetCard extends StatelessWidget {
 }
 
 class _ReceiverSessionCard extends StatelessWidget {
-  const _ReceiverSessionCard({required this.session, required this.onAdjust});
+  const _ReceiverSessionCard({
+    required this.session,
+    required this.volume,
+    required this.muted,
+    required this.onVolumeChanged,
+    required this.onMuteToggle,
+    required this.onAdjust,
+  });
 
   final ReceiverSession session;
+  final double volume;
+  final bool muted;
+  final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onMuteToggle;
   final ValueChanged<int> onAdjust;
 
   @override
@@ -534,7 +608,8 @@ class _ReceiverSessionCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            const Icon(Icons.speaker_group_outlined),
+            Icon(muted ? Icons.volume_off_rounded : Icons.speaker_group_outlined,
+                color: muted ? Colors.grey : null),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -546,6 +621,30 @@ class _ReceiverSessionCard extends StatelessWidget {
                   ),
                   Text(
                     '${session.controlStatus.label} · RTT ${session.roundTripTimeMicros ~/ 1000} ms · offset ${session.clockOffsetMicros ~/ 1000} ms · drift ${session.clockDriftPpm} ppm',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: muted ? 'Unmute' : 'Mute',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onMuteToggle,
+                        icon: Icon(muted ? Icons.volume_off : Icons.volume_up, size: 18),
+                      ),
+                      Expanded(
+                        child: Slider(
+                          value: muted ? 0 : volume,
+                          min: 0,
+                          max: 1.5,
+                          onChanged: (v) {
+                            if (v > 0) onVolumeChanged(v);
+                          },
+                        ),
+                      ),
+                      Text('${(muted ? 0 : volume * 100).round()}%',
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ],
                   ),
                 ],
               ),
@@ -559,13 +658,13 @@ class _ReceiverSessionCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      tooltip: 'Make receiver earlier',
+                      tooltip: 'Earlier',
                       visualDensity: VisualDensity.compact,
                       onPressed: () => onAdjust(-5),
                       icon: const Icon(Icons.remove_circle_outline, size: 18),
                     ),
                     IconButton(
-                      tooltip: 'Make receiver later',
+                      tooltip: 'Later',
                       visualDensity: VisualDensity.compact,
                       onPressed: () => onAdjust(5),
                       icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -591,4 +690,37 @@ class _InfoMessage extends StatelessWidget {
       child: Text(text, textAlign: TextAlign.center),
     ),
   );
+}
+
+void _showSaveGroupDialog(BuildContext context) {
+  final controller = Get.find<HostController>();
+  final nameController = TextEditingController();
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Save Group'),
+      content: TextField(
+        controller: nameController,
+        decoration: const InputDecoration(hintText: 'eg. Living Room + Kitchen'),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: () {
+          final name = nameController.text.trim();
+          if (name.isNotEmpty) controller.saveCurrentAsGroup(name);
+          Navigator.pop(ctx);
+        }, child: const Text('Save')),
+      ],
+    ),
+  );
+}
+
+String _formatDate(DateTime d) {
+  final now = DateTime.now();
+  final diff = now.difference(d);
+  if (diff.inMinutes < 1) return 'Just now';
+  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+  if (diff.inDays < 1) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
 }

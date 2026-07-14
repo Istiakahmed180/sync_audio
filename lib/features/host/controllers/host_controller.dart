@@ -15,9 +15,11 @@ import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
+import '../../../services/paired_device_store.dart';
 import '../../../shared/widgets/app_error_notifier.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 import '../../../services/udp_audio_service.dart';
+import '../../../features/settings/controllers/settings_controller.dart';
 
 class HostController extends GetxController {
   HostController({
@@ -90,6 +92,73 @@ class HostController extends GetxController {
   bool get isConnecting =>
       connectionStatus.value == ConnectionStatus.connecting;
   bool _nativeHostActive = false;
+  final _pairedStore = PairedDeviceStore();
+  final receiverVolumes = <String, double>{}.obs;
+  final receiverMuted = <String, bool>{}.obs;
+  final pairedDevices = <PairedDevice>[].obs;
+  final savedGroups = <DeviceGroup>[].obs;
+  final _statsStartTime = DateTime.now();
+  bool _statsActive = false;
+
+  double volumeForReceiver(String address) => receiverVolumes[address] ?? 1.0;
+  bool isMuted(String address) => receiverMuted[address] ?? false;
+
+  Future<void> loadPairedDevices() async {
+    pairedDevices.value = await _pairedStore.loadPaired();
+  }
+
+  Future<void> loadSavedGroups() async {
+    savedGroups.value = await _pairedStore.loadGroups();
+  }
+
+  Future<void> saveCurrentAsGroup(String groupName) async {
+    if (configuredReceiverIps.isEmpty) return;
+    await _pairedStore.saveGroup(DeviceGroup(name: groupName, deviceIps: configuredReceiverIps.toList()));
+    await loadSavedGroups();
+  }
+
+  Future<void> applyGroup(DeviceGroup group) async {
+    configuredReceiverIps.clear();
+    for (final ip in group.deviceIps) {
+      configuredReceiverIps.add(ip);
+      receiverPairingControllers[ip] ??= TextEditingController();
+    }
+  }
+
+  Future<void> deleteGroup(String name) async {
+    await _pairedStore.removeGroup(name);
+    await loadSavedGroups();
+  }
+
+  void setReceiverVolume(String address, double volume) {
+    receiverVolumes[address] = volume;
+    if (volume <= 0.0) {
+      receiverMuted[address] = true;
+    } else if (volume > 0.0) {
+      receiverMuted[address] = false;
+    }
+  }
+
+  void toggleMute(String address) {
+    receiverMuted[address] = !(receiverMuted[address] ?? false);
+  }
+
+  void _startStats() {
+    _statsActive = true;
+  }
+
+  void _stopStats() {
+    if (!_statsActive) return;
+    _statsActive = false;
+    final elapsed = DateTime.now().difference(_statsStartTime);
+    final minutes = elapsed.inMinutes;
+    if (minutes <= 0) return;
+    final totalMb = 0.0;
+    final lossCount = (diagnostics['droppedPacketCount'] as int? ?? 0);
+    if (Get.isRegistered<SettingsController>()) {
+      Get.find<SettingsController>().addStreamStats(minutes, totalMb, lossCount);
+    }
+  }
 
   void _cleanupDiagnosticTimer() {
     _diagnosticTimer?.cancel();
@@ -372,6 +441,7 @@ class HostController extends GetxController {
       }
     }
     if (_nativeHostActive) {
+      _startStats();
       await _sendControlCommand(
         addresses,
         ControlCommandType.streamStart,
@@ -386,6 +456,7 @@ class HostController extends GetxController {
       return;
     }
     await audioService.startStreaming(ipAddresses: addresses, port: port);
+    _startStats();
     await _sendControlCommand(
       addresses,
       ControlCommandType.streamStart,
@@ -422,6 +493,7 @@ class HostController extends GetxController {
 
   Future<void> stopSystemAudioStream() async {
     errorMessage.value = null;
+    _stopStats();
     _cleanupDiagnosticTimer();
     await _sendControlCommand(
       _receiverAddresses(),

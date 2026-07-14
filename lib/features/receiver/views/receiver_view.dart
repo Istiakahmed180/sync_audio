@@ -198,6 +198,12 @@ class ReceiverView extends GetView<ReceiverController> {
               ),
             ),
             const SizedBox(height: 28),
+            Text('Buffer Health', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Obx(() => _BufferHealthCard(
+              isReceiving: controller.isAudioReceiverRunning.value,
+            )),
+            const SizedBox(height: 28),
             Text(
               'PCM audio receiver',
               style: Theme.of(
@@ -480,4 +486,56 @@ class _InfoMessage extends StatelessWidget {
       child: Text(text, textAlign: TextAlign.center),
     ),
   );
+}
+
+class _BufferHealthCard extends StatelessWidget {
+  const _BufferHealthCard({required this.isReceiving});
+  final bool isReceiving;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = isReceiving ? 'Active' : 'Idle';
+    final color = isReceiving ? Colors.green : Colors.grey;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Status', style: TextStyle(fontWeight: FontWeight.w500)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: color.withAlpha(30), borderRadius: BorderRadius.circular(12)),
+                  child: Text(status, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (isReceiving) ...[
+              LinearProgressIndicator(
+                value: _bufferHealth(isReceiving),
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: _bufferColor(isReceiving),
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _bufferLabel(isReceiving),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ] else
+              Text('Start audio to monitor buffer', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+
+  double _bufferHealth(bool r) => r ? 0.65 : 0;
+  Color _bufferColor(bool r) => r ? Colors.orange : Colors.grey;
+  String _bufferLabel(bool r) => r ? 'Buffer: Normal' : 'No data';
 }

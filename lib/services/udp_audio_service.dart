@@ -140,6 +140,9 @@ class UdpAudioService implements AudioStreamService {
   bool _clockSynchronized = false;
   int _driftCorrectionPpm = 0;
   int _lastDriftUpdateMicros = 0;
+  final bool _autoLatencyEnabled = true;
+  int _consecutiveUnderruns = 0;
+  int _consecutiveGoodFrames = 0;
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
@@ -484,10 +487,13 @@ class UdpAudioService implements AudioStreamService {
 
   Future<void> _handleEncodingError() async {
     if (!_streaming) return;
+    if (encoder.codecType == AudioCodecType.opus) {
+      encoder = Pcm16AudioEncoder();
+      _emitError('Opus encoding failed — auto-switched to PCM.');
+      return;
+    }
     await stopStreaming();
-    _emitError(
-      'Audio encoding failed. Stream has been stopped — switch to PCM and try again.',
-    );
+    _emitError('Audio encoding failed. Stream stopped.');
     _setStatus(AudioStreamStatus.error);
   }
 
@@ -737,14 +743,36 @@ class UdpAudioService implements AudioStreamService {
     }
   }
 
+  void _autoAdjustLatency() {
+    if (!_autoLatencyEnabled || !_adaptiveJitterEnabled) return;
+    if (_consecutiveUnderruns >= 10 && _latencyMode != LatencyMode.stable) {
+      _latencyMode = LatencyMode.stable;
+      _jitter.configure(mode: LatencyMode.stable, enabled: true);
+      _consecutiveUnderruns = 0;
+      _consecutiveGoodFrames = 0;
+    } else if (_consecutiveGoodFrames >= 500 && _latencyMode != LatencyMode.ultraLow) {
+      _latencyMode = _latencyMode == LatencyMode.stable
+          ? LatencyMode.balanced
+          : LatencyMode.ultraLow;
+      _jitter.configure(mode: _latencyMode, enabled: true);
+      _consecutiveGoodFrames = 0;
+    }
+  }
+
   void _drainPlaybackBuffer() {
     if (!_receiving || !_clockSynchronized) return;
     final now = _receiverClock.elapsedMicroseconds;
     final packet = _jitter.takeReady(now);
     if (packet == null) {
       _droppedPackets = _jitter.underruns;
+      _consecutiveGoodFrames = 0;
+      _consecutiveUnderruns++;
+      _autoAdjustLatency();
       return;
     }
+    _consecutiveUnderruns = 0;
+    _consecutiveGoodFrames++;
+    _autoAdjustLatency();
     _metrics.scheduled(
       timestampMicros: packet.timestampMicros,
       waitingMicros: now - packet.arrivalMicros,
