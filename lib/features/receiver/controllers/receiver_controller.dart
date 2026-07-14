@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
 import '../../../app/constants/app_constants.dart';
@@ -62,6 +63,8 @@ class ReceiverController extends GetxController {
   final lastReceivedMessage = ''.obs;
   final lastSyncPing = ''.obs;
   final errorMessage = RxnString();
+  final messageController = TextEditingController();
+  final lastSentMessage = ''.obs;
   final audioStatus = AudioStreamStatus.idle.obs;
   final isAudioReceiverRunning = false.obs;
   late final StreamSubscription<String> _messageSubscription;
@@ -236,6 +239,32 @@ class ReceiverController extends GetxController {
     isAudioReceiverRunning.value = false;
   }
 
+  Future<void> sendMessageToHost() async {
+    final message = messageController.text.trim();
+    if (message.isEmpty) {
+      errorMessage.value = 'Enter a message first.';
+      return;
+    }
+    if (!isConnectedToHost.value) {
+      errorMessage.value = 'No Host is connected.';
+      return;
+    }
+    final hostId = _hostSessionId;
+    if (hostId == null) {
+      errorMessage.value = 'Host session is unavailable.';
+      return;
+    }
+    errorMessage.value = null;
+    await _service.sendMessageTo(receiverId: hostId, message: message);
+    lastSentMessage.value = message;
+    messageController.clear();
+  }
+
+  void prepareConnectionInfo() {
+    messageController.text =
+        'I\'m "$deviceName" — IP: ${localIpAddress.value}:5050, Pairing code: ${pairingToken.value}';
+  }
+
   Future<void> _handleControlEvent(ControlEvent event) async {
     _hostSessionId = event.sourceId;
     if (event.command.type == ControlCommandType.ping) {
@@ -385,6 +414,7 @@ class ReceiverController extends GetxController {
     _errorSnackbarWorker?.dispose();
     unawaited(_audioService?.stopReceiver());
     unawaited(_nativeAudioRuntime.stopNativeReceiver());
+    messageController.dispose();
     super.onClose();
   }
 }

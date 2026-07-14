@@ -93,6 +93,75 @@ class ReceiverView extends GetView<ReceiverController> {
               ),
             ),
             const SizedBox(height: 16),
+            Text(
+              'Message Host',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Send your connection info or a custom message directly to the Host inside the app.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller.messageController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Your message',
+                      hintText: 'Send a message to the Host…',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  tooltip: 'Send message',
+                  onPressed: controller.isConnectedToHost.value
+                      ? controller.sendMessageToHost
+                      : null,
+                  icon: const Icon(Icons.send_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => controller.lastSentMessage.value.isEmpty
+                  ? const SizedBox.shrink()
+                  : Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline,
+                                size: 18, color: Colors.green),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Sent: ${controller.lastSentMessage.value}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: controller.isConnectedToHost.value
+                    ? controller.prepareConnectionInfo
+                    : null,
+                icon: const Icon(Icons.info_outline, size: 18),
+                label: const Text('Auto-fill my connection info'),
+              ),
+            ),
+            const SizedBox(height: 16),
             Obx(
               () => AppPrimaryButton(
                 label:
