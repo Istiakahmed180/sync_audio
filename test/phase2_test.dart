@@ -165,7 +165,7 @@ void main() {
       host.onInit();
       receiver.onInit();
       host.receiverIpController.text = '192.168.1.20';
-      host.pairingTokenController.text = '123456';
+      host.pairingTokenController.text = '12345678';
 
       await host.connect();
       await Future<void>.delayed(Duration.zero);

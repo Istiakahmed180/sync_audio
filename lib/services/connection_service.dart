@@ -179,6 +179,7 @@ class TcpConnectionService implements ConnectionService {
           ),
     );
     _socketSubscriptions[id]?.cancel();
+    _socketSubscriptions.remove(id);
     _socketSubscriptions[id] = socket
         .cast<List<int>>()
         .transform(utf8.decoder)
@@ -195,7 +196,10 @@ class TcpConnectionService implements ConnectionService {
           _sendHello(
             receiverId: id,
             token: _pairingTokens[id] ?? _pairingToken,
-          ),
+          ).catchError((_) {
+            _emitError('Handshake with receiver $id failed.');
+            _handleSocketClosed(id, socket);
+          }),
         );
       });
       _startPingTimer(id);
@@ -241,7 +245,10 @@ class TcpConnectionService implements ConnectionService {
         receiver.copyWith(controlStatus: ControlConnectionStatus.connecting),
       );
     }
-    await Future.wait(receivers.map((receiver) => _connectTarget(receiver.id)));
+    await Future.wait(
+      receivers.map((receiver) => _connectTarget(receiver.id)),
+      eagerError: false,
+    );
   }
 
   Future<void> _connectTarget(String id) async {
@@ -522,6 +529,12 @@ class TcpConnectionService implements ConnectionService {
       ..addAll(tokens.map((key, value) => MapEntry(key, value.trim())));
   }
 
+  void _evictStalePings() {
+    if (_pendingPings.length < 256) return;
+    final cutoff = _controlClock.elapsedMicroseconds - 10_000_000;
+    _pendingPings.removeWhere((_, r) => r.sentAtMicros < cutoff);
+  }
+
   void _handlePong(String sourceId, ControlCommand command) {
     final requestId = int.tryParse(command.arguments[0]);
     final receiverReceived = int.tryParse(command.arguments[1]);
@@ -565,6 +578,7 @@ class TcpConnectionService implements ConnectionService {
       sessionId: id,
       sentAtMicros: sentAt,
     );
+    _evictStalePings();
     unawaited(
       sendControlCommand(
         receiverId: id,
@@ -664,7 +678,7 @@ class TcpConnectionService implements ConnectionService {
     if (!_errorsController.isClosed) _errorsController.add(message);
   }
 
-  String _sessionId(String ipAddress, int port) => ipAddress;
+  String _sessionId(String ipAddress, int port) => '$ipAddress:$port';
 
   String _friendlySocketError(
     SocketException error,

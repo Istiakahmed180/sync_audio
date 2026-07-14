@@ -33,13 +33,14 @@ class AdaptiveJitterBuffer {
   int reorders = 0;
   int latePackets = 0;
 
+  int _minTimestamp = 0;
+  int _maxTimestamp = 0;
+  bool _haveTimestamps = false;
+
   int get length => _packets.length;
   int get bufferedDurationMicros {
     if (_packets.length < 2) return 0;
-    final timestamps =
-        _packets.values.map((packet) => packet.timestampMicros).toList()
-          ..sort();
-    return timestamps.last - timestamps.first;
+    return _maxTimestamp - _minTimestamp;
   }
 
   int get targetDelayMicros => _config.normalMicros + _jitterMicros * 2;
@@ -71,6 +72,15 @@ class AdaptiveJitterBuffer {
     if (_packets.containsKey(packet.sequence)) return false;
     if (nextSequence != null && packet.sequence != nextSequence) reorders++;
     _packets[packet.sequence] = packet;
+    final ts = packet.timestampMicros;
+    if (!_haveTimestamps) {
+      _minTimestamp = ts;
+      _maxTimestamp = ts;
+      _haveTimestamps = true;
+    } else {
+      if (ts < _minTimestamp) _minTimestamp = ts;
+      if (ts > _maxTimestamp) _maxTimestamp = ts;
+    }
     while (_packets.length > 256) {
       _removeOldest();
       overruns++;
@@ -110,6 +120,9 @@ class AdaptiveJitterBuffer {
     _lastArrivalMicros = null;
     _jitterMicros = 0;
     _missingSinceMicros = 0;
+    _haveTimestamps = false;
+    _minTimestamp = 0;
+    _maxTimestamp = 0;
     underruns = 0;
     overruns = 0;
     reorders = 0;

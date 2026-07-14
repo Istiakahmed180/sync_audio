@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:get/get.dart';
 
 import '../../services/audio_capture_service.dart';
@@ -15,11 +17,15 @@ class InitialBinding extends Bindings {
   void dependencies() {
     Get.lazyPut<ConnectionService>(TcpConnectionService.new, fenix: true);
     Get.lazyPut<AudioCaptureService>(
-      AndroidSystemAudioCaptureService.new,
+      Platform.isAndroid
+          ? AndroidSystemAudioCaptureService.new
+          : PlaceholderAudioCaptureService.new,
       fenix: true,
     );
     Get.lazyPut<AudioPlaybackService>(
-      AndroidAudioTrackPlaybackService.new,
+      Platform.isAndroid
+          ? AndroidAudioTrackPlaybackService.new
+          : PlaceholderAudioPlaybackService.new,
       fenix: true,
     );
     Get.lazyPut<AudioStreamService>(

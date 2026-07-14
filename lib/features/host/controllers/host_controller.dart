@@ -91,6 +91,20 @@ class HostController extends GetxController {
       connectionStatus.value == ConnectionStatus.connecting;
   bool _nativeHostActive = false;
 
+  void _cleanupDiagnosticTimer() {
+    _diagnosticTimer?.cancel();
+    _diagnosticTimer = null;
+  }
+
+  void _ensureDiagnosticTimer() {
+    final audioService = _audioService;
+    if (audioService == null || _diagnosticTimer != null) return;
+    _diagnosticTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => unawaited(_refreshDiagnostics(audioService)),
+    );
+  }
+
   ReceiverSession? receiverSessionFor(String address) {
     final index = receiverSessions.indexWhere(
       (session) => session.id == address,
@@ -154,7 +168,7 @@ class HostController extends GetxController {
     final pairingText = _pairingInputFor(addresses);
     if (!_isValidPairingInput(pairingText, addresses)) {
       return _showError(
-        'Enter the 6-digit Receiver pairing code, or one code per IP address.',
+        'Enter the 8-digit Receiver pairing code, or one code per IP address.',
       );
     }
     _service.setPairingToken(pairingText);
@@ -184,6 +198,7 @@ class HostController extends GetxController {
 
   Future<void> disconnect() async {
     errorMessage.value = null;
+    _nativeHostActive = false;
     await _service.disconnect();
   }
 
@@ -197,8 +212,8 @@ class HostController extends GetxController {
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter a port between 1 and 65535.');
     }
-    if (!RegExp(r'^\d{6}$').hasMatch(pairingCode)) {
-      return _showError('Enter the 6-digit pairing code for $address.');
+    if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
+      return _showError('Enter the 8-digit pairing code for $address.');
     }
     final pairingCodes = <String, String>{
       for (final ip in configuredReceiverIps)
@@ -291,6 +306,7 @@ class HostController extends GetxController {
 
   Future<void> startSystemAudioStream() async {
     errorMessage.value = null;
+    _nativeHostActive = false;
     final audioService = _audioService;
     final addresses = _receiverAddresses();
     final port = int.tryParse(audioPortController.text.trim());
@@ -361,6 +377,7 @@ class HostController extends GetxController {
         ControlCommandType.streamStart,
         commandArguments,
       );
+      _ensureDiagnosticTimer();
       await AppNotificationService.show(
         title: 'System audio streaming',
         message: 'Audio is being sent to the connected Receivers.',
@@ -374,6 +391,7 @@ class HostController extends GetxController {
       ControlCommandType.streamStart,
       commandArguments,
     );
+    _ensureDiagnosticTimer();
     await AppNotificationService.show(
       title: 'System audio streaming',
       message: 'Audio is being sent to the connected Receivers.',
@@ -404,6 +422,7 @@ class HostController extends GetxController {
 
   Future<void> stopSystemAudioStream() async {
     errorMessage.value = null;
+    _cleanupDiagnosticTimer();
     await _sendControlCommand(
       _receiverAddresses(),
       ControlCommandType.streamStop,
@@ -464,7 +483,7 @@ class HostController extends GetxController {
   }
 
   bool _isValidPairingInput(String value, List<String> addresses) {
-    final codePattern = RegExp(r'^\d{6}$');
+    final codePattern = RegExp(r'^\d{8}$');
     if (codePattern.hasMatch(value)) return true;
     final entries = value.split(',');
     if (entries.length != addresses.length) return false;

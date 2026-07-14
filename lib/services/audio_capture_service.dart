@@ -16,9 +16,15 @@ class AndroidSystemAudioCaptureService implements AudioCaptureService {
 
   @override
   Stream<Uint8List> get pcmChunks =>
-      _streamChannel.receiveBroadcastStream().map(
-        (chunk) => Uint8List.fromList(List<int>.from(chunk as List<dynamic>)),
-      );
+      _streamChannel.receiveBroadcastStream().map((chunk) {
+        try {
+          return Uint8List.fromList(
+            List<int>.from(chunk as List<dynamic>),
+          );
+        } catch (_) {
+          return Uint8List(0);
+        }
+      }).where((bytes) => bytes.isNotEmpty);
 
   bool _isCapturing = false;
 

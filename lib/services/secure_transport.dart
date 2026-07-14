@@ -1,4 +1,6 @@
+import 'dart:collection';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -78,12 +80,15 @@ class EncryptedAudioPacketCodec {
       packet[1] == _magic[1] &&
       packet[2] == _magic[2];
 
+  static final _random = Random.secure();
+
   static Future<List<int>> _nonce(AudioPacket packet, String sessionId) async {
     final digest = await _hash.hash(utf8.encode(sessionId));
     final nonce = Uint8List(12);
     nonce.setRange(0, 3, digest.bytes);
     nonce[3] = packet.type.index;
     ByteData.sublistView(nonce).setUint64(4, packet.sequence, Endian.big);
+    nonce[0] ^= _random.nextInt(256);
     return nonce;
   }
 }
@@ -92,7 +97,7 @@ class ReplayGuard {
   ReplayGuard({this.maxEntries = 4096});
 
   final int maxEntries;
-  final Set<String> _seen = <String>{};
+  final LinkedHashSet<String> _seen = LinkedHashSet<String>();
 
   bool accept(String nonce) {
     if (!_seen.add(nonce)) return false;

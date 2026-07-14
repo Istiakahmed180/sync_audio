@@ -75,8 +75,12 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     );
     await completer.future;
     timer.cancel();
-    await subscription.cancel();
-    socket.close();
+    try {
+      await subscription.cancel();
+      socket.close();
+    } catch (_) {
+      socket.close();
+    }
     return devices.values.toList(growable: false);
   }
 

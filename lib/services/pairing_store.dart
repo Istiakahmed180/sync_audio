@@ -32,7 +32,7 @@ class AndroidPairingStore implements PairingStore {
   static String generateToken() {
     final random = Random.secure();
     return List<String>.generate(
-      6,
+      8,
       (_) => random.nextInt(10).toString(),
     ).join();
   }

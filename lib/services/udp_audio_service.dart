@@ -332,9 +332,11 @@ class UdpAudioService implements AudioStreamService {
       };
       _emitError(message);
       _setStatus(AudioStreamStatus.error);
-    } catch (_) {
+    } catch (error) {
       await stopStreaming();
-      _emitError('Unable to start system audio capture.');
+      _emitError(
+        'Unable to start system audio capture: $error',
+      );
       _setStatus(AudioStreamStatus.error);
     }
   }
@@ -353,6 +355,10 @@ class UdpAudioService implements AudioStreamService {
         sessionId: id,
         sentAtMicros: now,
       );
+      if (_clockRequests.length > 128) {
+        final cutoff = now - syncInterval.inMicroseconds * 5;
+        _clockRequests.removeWhere((_, r) => r.sentAtMicros < cutoff);
+      }
       socket.send(
         AudioPacketCodec.encode(
           type: AudioPacketType.clockSyncRequest,
@@ -623,7 +629,7 @@ class UdpAudioService implements AudioStreamService {
         ..reset()
         ..start();
       _playbackTimer = Timer.periodic(
-        const Duration(milliseconds: 5),
+        const Duration(milliseconds: 15),
         (_) => _drainPlaybackBuffer(),
       );
       _setStatus(AudioStreamStatus.receiving);
@@ -632,9 +638,9 @@ class UdpAudioService implements AudioStreamService {
       await stopReceiver();
       _emitError('Unable to start the UDP audio receiver. Port may be in use.');
       _setStatus(AudioStreamStatus.error);
-    } catch (_) {
+    } catch (error) {
       await stopReceiver();
-      _emitError('Unable to initialize Android audio playback.');
+      _emitError('Unable to initialize Android audio playback: $error');
       _setStatus(AudioStreamStatus.error);
     }
   }
@@ -700,7 +706,9 @@ class UdpAudioService implements AudioStreamService {
         if (packet.codecType != decoder.codecType) return;
         final now = _receiverClock.elapsedMicroseconds;
         final correction = _driftCorrectionEnabled
-            ? ((now - _lastDriftUpdateMicros) * _driftCorrectionPpm) ~/ 1000000
+            ? ((now - _lastDriftUpdateMicros) * _driftCorrectionPpm)
+                  ~/ 1000000
+                  .clamp(-20000, 20000)
             : 0;
         final adaptiveDelay = _adaptiveJitterEnabled
             ? _jitter.targetBufferMicros -

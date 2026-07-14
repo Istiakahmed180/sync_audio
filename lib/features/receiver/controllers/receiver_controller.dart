@@ -151,12 +151,19 @@ class ReceiverController extends GetxController {
   }
 
   Future<void> _loadPairingToken() async {
-    final existing = await _pairingStore.readToken();
-    final token = existing ?? AndroidPairingStore.generateToken();
-    pairingToken.value = token;
-    _pairingTokenValue = token;
-    if (existing == null) await _pairingStore.writeToken(token);
-    _service.setPairingToken(token);
+    try {
+      final existing = await _pairingStore.readToken();
+      final token = existing ?? AndroidPairingStore.generateToken();
+      pairingToken.value = token;
+      _pairingTokenValue = token;
+      if (existing == null) await _pairingStore.writeToken(token);
+      _service.setPairingToken(token);
+    } catch (_) {
+      final token = AndroidPairingStore.generateToken();
+      pairingToken.value = token;
+      _pairingTokenValue = token;
+      _service.setPairingToken(token);
+    }
   }
 
   Future<void> startServer() async {
@@ -233,7 +240,8 @@ class ReceiverController extends GetxController {
     if (event.command.type == ControlCommandType.ping) {
       lastSyncPing.value = event.command.line;
     }
-    _bufferStatusTimer ??= Timer.periodic(
+    _bufferStatusTimer?.cancel();
+    _bufferStatusTimer = Timer.periodic(
       const Duration(seconds: 2),
       (_) => _sendBufferStatus(),
     );

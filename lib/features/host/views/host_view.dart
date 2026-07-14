@@ -99,10 +99,10 @@ class HostView extends GetView<HostController> {
             TextField(
               controller: controller.pairingTokenController,
               keyboardType: TextInputType.number,
-              maxLength: 6,
+              maxLength: 8,
               decoration: const InputDecoration(
                 labelText: 'Receiver pairing code (required)',
-                hintText: '123456',
+                hintText: '12345678',
                 counterText: '',
                 helperText:
                     'This code will be assigned to the next Receiver you add.',
@@ -127,7 +127,8 @@ class HostView extends GetView<HostController> {
                         child: _ReceiverTargetCard(
                           address: address,
                           pairingController:
-                              controller.receiverPairingControllers[address]!,
+                              controller.receiverPairingControllers[address] ??
+                              TextEditingController(),
                           onRemove: () => controller.removeReceiverIp(address),
                           session: controller.receiverSessionFor(address),
                           onConnect: () => controller.connectReceiver(address),
@@ -257,6 +258,7 @@ class HostView extends GetView<HostController> {
               decoration: InputDecoration(
                 labelText: 'Add receiver IP',
                 hintText: '192.168.1.11',
+                helperText: 'Receivers added in connection setup are reused here.',
                 suffixIcon: IconButton(
                   tooltip: 'Add receiver',
                   onPressed: controller.addReceiverIp,
@@ -457,10 +459,10 @@ class _ReceiverTargetCard extends StatelessWidget {
                       TextField(
                         controller: pairingController,
                         keyboardType: TextInputType.number,
-                        maxLength: 6,
+                        maxLength: 8,
                         decoration: const InputDecoration(
                           labelText: 'Pairing code',
-                          hintText: '123456',
+                          hintText: '12345678',
                           counterText: '',
                           isDense: true,
                         ),
