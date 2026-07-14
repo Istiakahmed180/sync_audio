@@ -100,7 +100,7 @@ class HostController extends GetxController {
     final audioService = _audioService;
     if (audioService == null || _diagnosticTimer != null) return;
     _diagnosticTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
+      const Duration(milliseconds: 1000),
       (_) => unawaited(_refreshDiagnostics(audioService)),
     );
   }
@@ -142,11 +142,11 @@ class HostController extends GetxController {
         (message) => errorMessage.value = message,
       );
       _sessionSubscription = audioService.sessionChanges.listen(_updateSession);
-      _diagnosticTimer = Timer.periodic(
-        const Duration(milliseconds: 500),
-        (_) => unawaited(_refreshDiagnostics(audioService)),
-      );
-    }
+    _diagnosticTimer = Timer.periodic(
+      const Duration(milliseconds: 1000),
+      (_) => unawaited(_refreshDiagnostics(audioService)),
+    );
+  }
   }
 
   Future<void> connect() async {
@@ -215,12 +215,8 @@ class HostController extends GetxController {
     if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
       return _showError('Enter the 8-digit pairing code for $address.');
     }
-    final pairingCodes = <String, String>{
-      for (final ip in configuredReceiverIps)
-        ip: receiverPairingControllers[ip]?.text.trim() ?? '',
-    };
     _service.setPairingToken(null);
-    _service.setPairingTokens(pairingCodes);
+    _service.setPairingTokens({address: pairingCode});
     final calibration = await _calibrationStore.read(address) ?? 0;
     await _service.connectToReceivers(
       receivers: [

@@ -57,7 +57,7 @@ class ControlCommand {
         ControlCommandType.ping => count == 2,
         ControlCommandType.pong => count == 3,
         ControlCommandType.streamPrepare ||
-        ControlCommandType.streamStart => count == 2 || count == 3,
+        ControlCommandType.streamStart => count >= 2 && count <= 4,
         ControlCommandType.streamStop => count == 1,
         ControlCommandType.setPlaybackOffset => count == 1,
         ControlCommandType.bufferStatus => count == 2,

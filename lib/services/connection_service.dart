@@ -80,6 +80,7 @@ class TcpConnectionService implements ConnectionService {
       <String, EncryptedControlChannel>{};
   final Map<int, _PingRequest> _pendingPings = <int, _PingRequest>{};
   final Stopwatch _controlClock = Stopwatch()..start();
+  final Map<String, Future<void>> _lineQueues = <String, Future<void>>{};
   final String _localSessionId =
       'sync-${DateTime.now().microsecondsSinceEpoch}';
   int _pingSequence = 0;
@@ -185,7 +186,10 @@ class TcpConnectionService implements ConnectionService {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen(
-          (line) => unawaited(_handleLine(id, line)),
+          (line) {
+            _lineQueues[id] = (_lineQueues[id] ?? Future.value())
+                .then((_) => _handleLine(id, line));
+          },
           onError: (_) => _handleSocketClosed(id, socket),
           onDone: () => _handleSocketClosed(id, socket),
         );
@@ -380,7 +384,7 @@ class TcpConnectionService implements ConnectionService {
       await socket.flush();
     } on SocketException catch (error) {
       _emitError(
-        _friendlySocketError(error, 'Unable to send the message', socket.port),
+        _friendlySocketError(error, 'Unable to send the message', socket.remotePort),
       );
       await _handleSocketClosed(receiverId, socket);
     }
@@ -615,6 +619,7 @@ class TcpConnectionService implements ConnectionService {
   }
 
   Future<void> _closeSocket(String id) async {
+    _lineQueues.remove(id);
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id)?.destroy();
     _secureChannels.remove(id);

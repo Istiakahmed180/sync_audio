@@ -96,7 +96,10 @@ class AdaptiveJitterBuffer {
     if (sequence == null) return null;
     final packet = _packets[sequence];
     if (packet == null) {
-      if (_packets.isEmpty) return null;
+      if (_packets.isEmpty) {
+        _missingSinceMicros = 0;
+        return null;
+      }
       _missingSinceMicros = _missingSinceMicros == 0
           ? nowMicros
           : _missingSinceMicros;

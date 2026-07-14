@@ -68,11 +68,15 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     final timer = Timer(timeout, () {
       if (!completer.isCompleted) completer.complete();
     });
-    socket.send(
-      utf8.encode('$_request|$nonce'),
-      InternetAddress('255.255.255.255'),
-      discoveryPort,
-    );
+    try {
+      socket.send(
+        utf8.encode('$_request|$nonce'),
+        InternetAddress('255.255.255.255'),
+        discoveryPort,
+      );
+    } catch (_) {
+      completer.complete();
+    }
     await completer.future;
     timer.cancel();
     try {

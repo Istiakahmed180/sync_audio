@@ -240,8 +240,7 @@ class ReceiverController extends GetxController {
     if (event.command.type == ControlCommandType.ping) {
       lastSyncPing.value = event.command.line;
     }
-    _bufferStatusTimer?.cancel();
-    _bufferStatusTimer = Timer.periodic(
+    _bufferStatusTimer ??= Timer.periodic(
       const Duration(seconds: 2),
       (_) => _sendBufferStatus(),
     );

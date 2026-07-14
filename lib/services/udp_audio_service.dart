@@ -301,6 +301,7 @@ class UdpAudioService implements AudioStreamService {
         _updateSession(session);
       }
       _sessions.removeWhere((id, _) => !activeIds.contains(id));
+      _socket?.close();
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       _udpSubscription = _socket!.listen(_handleHostSocketEvent);
       _streaming = true;
@@ -546,10 +547,8 @@ class UdpAudioService implements AudioStreamService {
       );
     }
     _sessions.clear();
-    if (!_receiving) {
-      _socket?.close();
-      _socket = null;
-    }
+    _socket?.close();
+    _socket = null;
     _setStatus(AudioStreamStatus.stopped);
   }
 
@@ -618,6 +617,7 @@ class UdpAudioService implements AudioStreamService {
     _setStatus(AudioStreamStatus.starting);
     try {
       await playbackService.start();
+      _socket?.close();
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
       _receiving = true;
       _clockSynchronized = false;
@@ -679,8 +679,10 @@ class UdpAudioService implements AudioStreamService {
     if (packet == null) return;
     switch (packet.type) {
       case AudioPacketType.clockSyncRequest:
+        final socket = _socket;
+        if (socket == null || !_receiving) return;
         final now = _receiverClock.elapsedMicroseconds;
-        _socket!.send(
+        socket.send(
           AudioPacketCodec.encode(
             type: AudioPacketType.clockSyncResponse,
             sequence: packet.sequence,
@@ -772,10 +774,8 @@ class UdpAudioService implements AudioStreamService {
     _securitySessionId = null;
     await _udpSubscription?.cancel();
     _udpSubscription = null;
-    if (!_streaming) {
-      _socket?.close();
-      _socket = null;
-    }
+    _socket?.close();
+    _socket = null;
     await playbackService.stop();
     _setStatus(AudioStreamStatus.stopped);
   }
