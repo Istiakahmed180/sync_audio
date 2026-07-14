@@ -371,13 +371,15 @@ class _ConnectionInfoCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () {
-                  final shareText =
-                      'I\'m "$deviceName" — connect to:\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
-                  Share.share(shareText, subject: 'Sync Audio — $deviceName');
-                },
+                onPressed: hasData
+                    ? () {
+                        final shareText =
+                            'I\'m "$deviceName" — connect to:\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
+                        Share.share(shareText, subject: 'Sync Audio — $deviceName');
+                      }
+                    : null,
                 icon: const Icon(Icons.share_rounded),
-                label: const Text('Share via app'),
+                label: Text(hasData ? 'Share via app' : 'Start server to share'),
               ),
             ),
           ],
@@ -400,6 +402,9 @@ class _CopyableRow extends StatelessWidget {
   final IconData icon;
   final TextStyle? valueStyle;
 
+  bool get _isValid => value.isNotEmpty &&
+      value != 'Not available' && value != 'Loading…';
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -418,18 +423,20 @@ class _CopyableRow extends StatelessWidget {
           ),
         ),
         IconButton(
-          tooltip: 'Copy $label',
+          tooltip: _isValid ? 'Copy $label' : 'Not available yet',
           icon: const Icon(Icons.copy_rounded, size: 20),
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: value));
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('$label copied'),
-                duration: const Duration(seconds: 1),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          },
+          onPressed: _isValid
+              ? () {
+                  Clipboard.setData(ClipboardData(text: value));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('$label copied'),
+                      duration: const Duration(seconds: 1),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              : null,
         ),
       ],
     );
