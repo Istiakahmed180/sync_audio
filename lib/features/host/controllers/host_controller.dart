@@ -367,8 +367,10 @@ class HostController extends GetxController {
         );
         _nativeHostActive = true;
       } catch (_) {
-        errorMessage.value =
-            'Native low-latency audio is unavailable; using Dart fallback.';
+        // Informational: fallback to Dart audio path, not an error.
+        debugPrint(
+          'Native low-latency audio is unavailable; using Dart fallback.',
+        );
       }
     }
     if (_nativeHostActive) {

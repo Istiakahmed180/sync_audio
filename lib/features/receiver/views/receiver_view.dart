@@ -67,7 +67,6 @@ class ReceiverView extends GetView<ReceiverController> {
               ),
             ),
             const SizedBox(height: 20),
-            const SizedBox(height: 20),
             Obx(() => _DetailCard(ipAddress: controller.localIpAddress.value)),
             const SizedBox(height: 12),
             Obx(

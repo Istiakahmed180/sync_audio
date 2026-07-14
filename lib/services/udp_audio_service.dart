@@ -768,6 +768,8 @@ class UdpAudioService implements AudioStreamService {
     _jitter.reset();
     _clockSynchronized = false;
     _receiverClock.stop();
+    _sessionKey = null;
+    _securitySessionId = null;
     await _udpSubscription?.cancel();
     _udpSubscription = null;
     if (!_streaming) {
@@ -787,7 +789,7 @@ class UdpAudioService implements AudioStreamService {
     if (!_sessionController.isClosed) _sessionController.add(session);
   }
 
-  String _sessionId(String ipAddress, int port) => ipAddress;
+  String _sessionId(String ipAddress, int port) => '$ipAddress:$port';
 
   void _setStatus(AudioStreamStatus value) {
     _status = value;
