@@ -37,8 +37,10 @@ void main() {
     final service = FakeConnectionService();
     Get.put(ReceiverController(connectionService: service));
     await tester.pumpWidget(const GetMaterialApp(home: ReceiverView()));
-    expect(find.widgetWithText(FilledButton, 'Start Receiver'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pump();
+    expect(find.widgetWithText(FilledButton, 'Start Receiver'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -200));
     await tester.pump();
     expect(find.widgetWithText(FilledButton, 'Stop Receiver'), findsOneWidget);
     expect(find.text('IP Address'), findsOneWidget);

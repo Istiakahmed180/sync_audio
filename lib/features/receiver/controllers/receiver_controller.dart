@@ -56,6 +56,7 @@ class ReceiverController extends GetxController {
   final pairingToken = 'Loading…'.obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
+  final deviceName = 'My Speaker'.obs;
   final isServerRunning = false.obs;
   final isConnectedToHost = false.obs;
   final lastReceivedMessage = ''.obs;
@@ -179,7 +180,7 @@ class ReceiverController extends GetxController {
     if (isServerRunning.value) {
       await _discoveryService.startResponder(
         deviceId: address ?? 'receiver',
-        deviceName: 'Sync Audio Receiver',
+        deviceName: deviceName.value,
         controlPort: defaultPort,
       );
     }

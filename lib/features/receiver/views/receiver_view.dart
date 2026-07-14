@@ -70,8 +70,24 @@ class ReceiverView extends GetView<ReceiverController> {
               ),
             ),
             const SizedBox(height: 20),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: TextFormField(
+                initialValue: controller.deviceName.value,
+                onChanged: (value) => controller.deviceName.value = value,
+                decoration: const InputDecoration(
+                  labelText: 'Your device name',
+                  hintText: 'Living Room Speaker',
+                  helperText: 'This identifies your device to the Host.',
+                  prefixIcon: Icon(Icons.speaker_rounded),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Obx(
               () => _ConnectionInfoCard(
+                deviceName: controller.deviceName.value,
                 ipAddress: controller.localIpAddress.value,
                 pairingCode: controller.pairingToken.value,
               ),
@@ -200,10 +216,12 @@ class ReceiverView extends GetView<ReceiverController> {
 
 class _ConnectionInfoCard extends StatelessWidget {
   const _ConnectionInfoCard({
+    required this.deviceName,
     required this.ipAddress,
     required this.pairingCode,
   });
 
+  final String deviceName;
   final String ipAddress;
   final String pairingCode;
 
@@ -286,8 +304,8 @@ class _ConnectionInfoCard extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: () {
                   final shareText =
-                      'Sync Audio Receiver\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
-                  Share.share(shareText, subject: 'Sync Audio Connection');
+                      'I\'m "$deviceName" — connect to:\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
+                  Share.share(shareText, subject: 'Sync Audio — $deviceName');
                 },
                 icon: const Icon(Icons.share_rounded),
                 label: const Text('Share via app'),
