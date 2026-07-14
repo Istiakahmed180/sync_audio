@@ -74,6 +74,7 @@ class TcpConnectionService implements ConnectionService {
       <String, _ControlTarget>{};
   final Map<String, Timer> _reconnectTimers = <String, Timer>{};
   final Set<String> _connecting = <String>{};
+  final Set<String> _establishedConnections = <String>{};
   final Map<String, Timer> _pingTimers = <String, Timer>{};
   final Map<String, EncryptedControlChannel> _secureChannels =
       <String, EncryptedControlChannel>{};
@@ -161,6 +162,7 @@ class TcpConnectionService implements ConnectionService {
     final oldSocket = _sockets[id];
     if (oldSocket != null && !identical(oldSocket, socket)) oldSocket.destroy();
     _sockets[id] = socket;
+    if (desired) _establishedConnections.add(id);
     final existing = _sessions[id];
     final targetIpAddress = existing?.ipAddress ?? socket.remoteAddress.address;
     final targetPort = existing?.port ?? socket.remotePort;
@@ -203,6 +205,7 @@ class TcpConnectionService implements ConnectionService {
   @override
   Future<void> stopServer() async {
     _desiredReceivers.clear();
+    _establishedConnections.clear();
     _cancelReconnectTimers();
     _cancelPingTimers();
     await _closeAllSockets();
@@ -268,16 +271,15 @@ class TcpConnectionService implements ConnectionService {
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
-      _scheduleReconnect(id);
+      if (_establishedConnections.contains(id)) _scheduleReconnect(id);
     } on TimeoutException {
       _emitError('Connection to ${target.ipAddress} timed out.');
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
-      _scheduleReconnect(id);
+      if (_establishedConnections.contains(id)) _scheduleReconnect(id);
     } finally {
       _connecting.remove(id);
-      _setGlobalStatus(ConnectionStatus.error);
     }
   }
 
@@ -310,6 +312,7 @@ class TcpConnectionService implements ConnectionService {
   @override
   Future<void> disconnectFrom(String receiverId) async {
     _desiredReceivers.remove(receiverId);
+    _establishedConnections.remove(receiverId);
     _reconnectTimers.remove(receiverId)?.cancel();
     await _closeSocket(receiverId);
     final session = _sessions[receiverId];
@@ -330,6 +333,7 @@ class TcpConnectionService implements ConnectionService {
   @override
   Future<void> disconnect() async {
     _desiredReceivers.clear();
+    _establishedConnections.clear();
     _cancelReconnectTimers();
     _cancelPingTimers();
     await _closeAllSockets();
@@ -459,6 +463,16 @@ class TcpConnectionService implements ConnectionService {
         );
       case ControlCommandType.pong:
         _handlePong(sourceId, command);
+      case ControlCommandType.error:
+        if (command.arguments.firstOrNull == 'PAIRING_REQUIRED') {
+          _desiredReceivers.remove(sourceId);
+          _reconnectTimers.remove(sourceId)?.cancel();
+          _establishedConnections.remove(sourceId);
+          _emitError(
+            'Pairing rejected by receiver. Check the pairing code and connect again.',
+          );
+          unawaited(_closeSocket(sourceId));
+        }
       default:
         break;
     }
@@ -574,7 +588,10 @@ class TcpConnectionService implements ConnectionService {
         session.copyWith(controlStatus: ControlConnectionStatus.disconnected),
       );
     }
-    if (_desiredReceivers.containsKey(id)) _scheduleReconnect(id);
+    if (_desiredReceivers.containsKey(id) &&
+        _establishedConnections.contains(id)) {
+      _scheduleReconnect(id);
+    }
     _setGlobalStatus(
       isConnected
           ? ConnectionStatus.connected

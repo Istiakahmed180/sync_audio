@@ -53,4 +53,21 @@ void main() {
     await hostTwo.dispose();
     await receiver.dispose();
   });
+
+  test('pairing rejection stops reconnect instead of looping', () async {
+    final receiver = TcpConnectionService()..setPairingToken('123456');
+    final host = TcpConnectionService()..setPairingToken('wrong-code');
+    await receiver.startServer(port: 5057);
+    final error = host.errors.firstWhere(
+      (message) => message.contains('Pairing rejected'),
+    );
+
+    await host.connect(ipAddress: '127.0.0.1', port: 5057);
+    expect(await error.timeout(const Duration(seconds: 2)), contains('again'));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(host.isConnected, isFalse);
+
+    await host.dispose();
+    await receiver.dispose();
+  });
 }
