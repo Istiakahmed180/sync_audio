@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/constants/app_constants.dart';
 import '../../../models/audio_stream_status.dart';
@@ -67,18 +70,11 @@ class ReceiverView extends GetView<ReceiverController> {
               ),
             ),
             const SizedBox(height: 20),
-            Obx(() => _DetailCard(ipAddress: controller.localIpAddress.value)),
-            const SizedBox(height: 12),
             Obx(
-              () => _MessageCard(
-                label: 'Pairing code',
-                value: controller.pairingToken.value,
+              () => _ConnectionInfoCard(
+                ipAddress: controller.localIpAddress.value,
+                pairingCode: controller.pairingToken.value,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Give this code to the Host. It is required before a connection can be accepted.',
-              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
             Obx(
@@ -202,22 +198,155 @@ class ReceiverView extends GetView<ReceiverController> {
   }
 }
 
-class _DetailCard extends StatelessWidget {
-  const _DetailCard({required this.ipAddress});
+class _ConnectionInfoCard extends StatelessWidget {
+  const _ConnectionInfoCard({
+    required this.ipAddress,
+    required this.pairingCode,
+  });
+
   final String ipAddress;
+  final String pairingCode;
+
+  String get _connectionInfo => '$ipAddress:5050:$pairingCode';
+
   @override
-  Widget build(BuildContext context) => Card(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        children: [
-          _DetailRow(label: 'Local IP address', value: ipAddress),
-          const _DetailRow(label: 'Listening port', value: '5050'),
-        ],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasData = ipAddress.isNotEmpty && ipAddress != 'Not available' &&
+        pairingCode.isNotEmpty && pairingCode != 'Loading…';
+
+    return Card(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 20,
+                    color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Share with Host',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (hasData) ...[
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: QrImageView(
+                    data: _connectionInfo,
+                    version: QrVersions.auto,
+                    size: 200,
+                    gapless: false,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Scan this QR code from the Host device',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+            ],
+            _CopyableRow(
+              label: 'IP Address',
+              value: ipAddress,
+              icon: Icons.wifi_rounded,
+            ),
+            const SizedBox(height: 12),
+            _CopyableRow(
+              label: 'Pairing Code',
+              value: pairingCode,
+              icon: Icons.vpn_key_rounded,
+              valueStyle: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontFamily: 'monospace',
+                letterSpacing: 4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Give this code to the Host. It is required before a connection can be accepted.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  final shareText =
+                      'Sync Audio Receiver\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
+                  Share.share(shareText, subject: 'Sync Audio Connection');
+                },
+                icon: const Icon(Icons.share_rounded),
+                label: const Text('Share via app'),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _CopyableRow extends StatelessWidget {
+  const _CopyableRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.valueStyle,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final TextStyle? valueStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: theme.textTheme.labelSmall),
+              const SizedBox(height: 2),
+              Text(value, style: valueStyle ?? theme.textTheme.bodyLarge),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Copy $label',
+          icon: const Icon(Icons.copy_rounded, size: 20),
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: value));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$label copied'),
+                duration: const Duration(seconds: 1),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
 }
 
 class _DetailRow extends StatelessWidget {

@@ -41,6 +41,6 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pump();
     expect(find.widgetWithText(FilledButton, 'Stop Receiver'), findsOneWidget);
-    expect(find.text('Local IP address'), findsOneWidget);
+    expect(find.text('IP Address'), findsOneWidget);
   });
 }
