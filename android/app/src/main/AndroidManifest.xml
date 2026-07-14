@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <application
         android:label="sync_audio"
         android:name="${applicationName}"
@@ -12,6 +13,10 @@
             android:name=".SystemAudioCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+        <service
+            android:name=".NetworkKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

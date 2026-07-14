@@ -11,6 +11,7 @@ import '../../../services/connection_service.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/audio_codec.dart';
+import '../../../services/background_connection_service.dart';
 import '../../../services/pairing_store.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/latency_metrics.dart';
@@ -158,6 +159,7 @@ class ReceiverController extends GetxController {
       await startAudioReceiver();
     }
     if (isServerRunning.value) {
+      await BackgroundConnectionService.start();
       await AppNotificationService.show(
         title: 'Receiver ready',
         message: 'Share this device IP and pairing code with the Host.',
@@ -176,6 +178,7 @@ class ReceiverController extends GetxController {
     isServerRunning.value = false;
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;
+    await BackgroundConnectionService.stop();
     await AppNotificationService.show(
       title: 'Receiver stopped',
       message: 'The control and audio listeners are closed.',

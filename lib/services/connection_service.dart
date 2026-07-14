@@ -407,10 +407,12 @@ class TcpConnectionService implements ConnectionService {
         return;
       }
     }
-    if (!_receivedMessagesController.isClosed) {
+    final command = ControlCommand.parse(line);
+    // Control packets (PING/PONG, HELLO, stream commands, etc.) are internal
+    // protocol traffic and must not replace the user's last test message.
+    if (command == null && !_receivedMessagesController.isClosed) {
       _receivedMessagesController.add(line);
     }
-    final command = ControlCommand.parse(line);
     if (command == null) return;
     if (!_controlEventController.isClosed) {
       _controlEventController.add(

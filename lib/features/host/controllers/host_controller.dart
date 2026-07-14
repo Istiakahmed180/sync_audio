@@ -9,6 +9,7 @@ import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/audio_codec.dart';
+import '../../../services/background_connection_service.dart';
 import '../../../services/calibration_store.dart';
 import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
@@ -181,6 +182,14 @@ class HostController extends GetxController {
   void _handleStatus(ConnectionStatus status) {
     final previous = _lastNotifiedConnectionStatus;
     connectionStatus.value = status;
+    if (status == ConnectionStatus.connecting ||
+        status == ConnectionStatus.connected) {
+      unawaited(BackgroundConnectionService.start());
+    } else if (status == ConnectionStatus.disconnected ||
+        status == ConnectionStatus.error ||
+        status == ConnectionStatus.stopped) {
+      unawaited(BackgroundConnectionService.stop());
+    }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
     if (status == ConnectionStatus.connecting) {

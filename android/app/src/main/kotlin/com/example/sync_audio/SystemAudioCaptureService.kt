@@ -158,7 +158,7 @@ class SystemAudioCaptureService : Service() {
             Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("Sync Audio")
                 .setContentText("Capturing system audio")
-                .setSmallIcon(applicationInfo.icon)
+                .setSmallIcon(R.drawable.ic_stat_sync_audio)
                 .setOngoing(true)
                 .build()
         } else {
@@ -166,7 +166,7 @@ class SystemAudioCaptureService : Service() {
             Notification.Builder(this)
                 .setContentTitle("Sync Audio")
                 .setContentText("Capturing system audio")
-                .setSmallIcon(applicationInfo.icon)
+                .setSmallIcon(R.drawable.ic_stat_sync_audio)
                 .setOngoing(true)
                 .build()
         }

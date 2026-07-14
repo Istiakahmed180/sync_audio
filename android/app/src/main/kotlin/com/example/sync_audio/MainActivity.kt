@@ -65,6 +65,25 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/background_service")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val intent = Intent(this, NetworkKeepAliveService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(null)
+                    }
+                    "stop" -> {
+                        stopService(Intent(this, NetworkKeepAliveService::class.java))
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, nativeAudioChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -410,7 +429,7 @@ class MainActivity : FlutterActivity() {
             Notification.Builder(this)
         }
         val notification = builder
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_sync_audio)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
