@@ -118,17 +118,17 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 12),
-            Obx(
-              () => Column(
+             Obx(
+               () => Column(
                 children: controller.configuredReceiverIps
+                    .where((a) => controller.receiverPairingControllers.containsKey(a))
                     .map(
                       (address) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _ReceiverTargetCard(
                           address: address,
                           pairingController:
-                              controller.receiverPairingControllers[address] ??
-                              TextEditingController(),
+                              controller.receiverPairingControllers[address]!,
                           onRemove: () => controller.removeReceiverIp(address),
                           session: controller.receiverSessionFor(address),
                           onConnect: () => controller.connectReceiver(address),

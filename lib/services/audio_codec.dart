@@ -139,16 +139,17 @@ class NativeOpusAudioEncoder implements AudioEncoder {
     if (!OpusRuntime.isAvailable) {
       throw StateError('Native Opus is unavailable on this device.');
     }
-    _encoder = BufferedOpusEncoder(
+    final encoder = BufferedOpusEncoder(
       sampleRate: config.sampleRate,
       channels: config.channels,
       application: Application.audio,
       maxInputBufferSizeBytes: config.frameBytes,
     );
-    _encoder!.encoderCtl(
+    encoder.encoderCtl(
       request: OPUS_SET_BITRATE_REQUEST,
       value: config.bitrate,
     );
+    _encoder = encoder;
   }
 
   @override
@@ -160,9 +161,13 @@ class NativeOpusAudioEncoder implements AudioEncoder {
         'Opus frames must be exactly ${config.frameBytes} bytes.',
       );
     }
-    _encoder!.inputBuffer.setAll(0, pcm);
-    _encoder!.inputBufferIndex = pcm.length;
-    return _encoder!.encode();
+    final encoder = _encoder;
+    if (encoder == null) {
+      throw StateError('Opus encoder is not initialized.');
+    }
+    encoder.inputBuffer.setAll(0, pcm);
+    encoder.inputBufferIndex = pcm.length;
+    return encoder.encode();
   }
 
   @override
@@ -196,7 +201,11 @@ class NativeOpusAudioDecoder implements AudioDecoder {
 
   @override
   Future<Uint8List> decode(Uint8List encoded) async {
-    final pcm = _decoder!.decode(input: encoded);
+    final decoder = _decoder;
+    if (decoder == null) {
+      throw StateError('Opus decoder is not initialized.');
+    }
+    final pcm = decoder.decode(input: encoded);
     return Uint8List.fromList(
       pcm.buffer.asUint8List(pcm.offsetInBytes, pcm.lengthInBytes),
     );

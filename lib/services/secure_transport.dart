@@ -117,16 +117,19 @@ class EncryptedControlChannel {
 
   static final _cipher = AesGcm.with256bits();
   static final _hash = Sha256();
+  static final _random = Random.secure();
   final SecretKey key;
   final String sessionId;
   final String role;
   final ReplayGuard replayGuard = ReplayGuard();
+  final int _counterBase = _random.nextInt(1 << 30);
   int _counter = 0;
 
   Future<String> encrypt(String line) async {
     final digest = await _hash.hash(utf8.encode('$sessionId|$role'));
     final nonce = Uint8List(12)..setRange(0, 4, digest.bytes);
-    final counterBytes = ByteData(8)..setUint64(0, _counter++, Endian.big);
+    final counterBytes = ByteData(8)
+      ..setUint64(0, _counterBase + _counter++, Endian.big);
     nonce.setRange(4, 12, counterBytes.buffer.asUint8List());
     final box = await _cipher.encrypt(
       utf8.encode(line),

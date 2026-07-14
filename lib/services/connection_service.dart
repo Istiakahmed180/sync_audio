@@ -523,7 +523,8 @@ class TcpConnectionService implements ConnectionService {
 
   @override
   void setPairingToken(String? token) {
-    _pairingToken = token?.trim().isEmpty == true ? null : token?.trim();
+    _pairingToken =
+        token == null || token.trim().isEmpty ? null : token.trim();
   }
 
   @override

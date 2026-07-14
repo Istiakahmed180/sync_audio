@@ -113,8 +113,28 @@ class AdaptiveJitterBuffer {
     _missingSinceMicros = 0;
     if (enabled && nowMicros < packet.timestampMicros) return null;
     _packets.remove(sequence);
+    _onPacketRemoved(packet.timestampMicros);
     nextSequence = (sequence + 1) & 0xFFFFFFFF;
     return packet;
+  }
+
+  void _onPacketRemoved(int ts) {
+    if (_haveTimestamps && (ts == _minTimestamp || ts == _maxTimestamp)) {
+      _recalcTimestamps();
+    }
+  }
+
+  void _recalcTimestamps() {
+    if (_packets.isEmpty) {
+      _haveTimestamps = false;
+      return;
+    }
+    _minTimestamp = _packets.values
+        .map((p) => p.timestampMicros)
+        .reduce((a, b) => a < b ? a : b);
+    _maxTimestamp = _packets.values
+        .map((p) => p.timestampMicros)
+        .reduce((a, b) => a > b ? a : b);
   }
 
   void reset() {
@@ -135,7 +155,12 @@ class AdaptiveJitterBuffer {
   int _oldestSequence() =>
       _packets.keys.reduce((a, b) => _isBehind(a, b) ? a : b);
 
-  void _removeOldest() => _packets.remove(_oldestSequence());
+  void _removeOldest() {
+    final oldestSeq = _oldestSequence();
+    final packet = _packets[oldestSeq];
+    _packets.remove(oldestSeq);
+    if (packet != null) _onPacketRemoved(packet.timestampMicros);
+  }
 
   bool _isBehind(int sequence, int reference) {
     final difference = (reference - sequence) & 0xFFFFFFFF;
