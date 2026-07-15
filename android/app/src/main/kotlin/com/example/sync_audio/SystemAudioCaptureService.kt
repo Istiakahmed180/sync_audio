@@ -15,6 +15,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 
 class SystemAudioCaptureService : Service() {
     private val audioLock = Any()
@@ -29,19 +30,10 @@ class SystemAudioCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, -1) ?: -1
-        val projectionData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent?.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent?.getParcelableExtra(EXTRA_PROJECTION_DATA)
-        }
-        if (resultCode < 0 || projectionData == null) {
-            SystemAudioPcmBus.emitError("SYSTEM_AUDIO_START_FAILED", "MediaProjection data is missing")
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
+        // Android requires a foreground service started with
+        // startForegroundService() to promote itself immediately. Do this
+        // before reading/validating MediaProjection extras so the process is
+        // not killed while the projection hand-off is in progress.
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -53,8 +45,37 @@ class SystemAudioCaptureService : Service() {
                 @Suppress("DEPRECATION")
                 startForeground(NOTIFICATION_ID, buildNotification())
             }
+        } catch (error: Exception) {
+            Log.e(TAG, "Unable to promote audio capture service", error)
+            SystemAudioPcmBus.emitError(
+                "SYSTEM_AUDIO_START_FAILED",
+                "Unable to promote audio capture to a foreground service",
+            )
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, -1) ?: -1
+        // The projection result contains framework-owned binder state. On
+        // some Android 13+ builds, the typed Intent getter returns null after
+        // the result is forwarded through a service Intent unless the bundle
+        // class loader is explicitly initialized.
+        val projectionData = intent?.extras?.let { extras ->
+            extras.classLoader = Intent::class.java.classLoader
+            @Suppress("DEPRECATION")
+            extras.getParcelable(EXTRA_PROJECTION_DATA) as? Intent
+        }
+        if (resultCode < 0 || projectionData == null) {
+            Log.e(TAG, "MediaProjection result data is missing; keys=${intent?.extras?.keySet()}")
+            SystemAudioPcmBus.emitError("SYSTEM_AUDIO_START_FAILED", "MediaProjection data is missing")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        try {
             startCapture(resultCode, projectionData)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.e(TAG, "Unable to start system audio capture", error)
             SystemAudioPcmBus.emitError("SYSTEM_AUDIO_START_FAILED", "Unable to start system audio capture")
             stopSelf()
         }
@@ -177,5 +198,6 @@ class SystemAudioCaptureService : Service() {
         const val EXTRA_PROJECTION_DATA = "sync_audio.projection_data"
         private const val CHANNEL_ID = "sync_audio_system_audio"
         private const val NOTIFICATION_ID = 505
+        private const val TAG = "SyncAudioCapture"
     }
 }
