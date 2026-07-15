@@ -66,6 +66,8 @@ class HostController extends GetxController {
   final errorMessage = RxnString();
   final audioStatus = AudioStreamStatus.idle.obs;
   final receiverCount = 0.obs;
+  final isDiscoveringReceivers = false.obs;
+  final discoveryStatus = 'Searching for Receivers…'.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
@@ -82,6 +84,8 @@ class HostController extends GetxController {
   StreamSubscription<String>? _audioErrorSubscription;
   StreamSubscription<ReceiverSession>? _sessionSubscription;
   Timer? _diagnosticTimer;
+  Timer? _discoveryTimer;
+  bool _discoveryInProgress = false;
   Worker? _errorSnackbarWorker;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   ConnectionStatus? _lastNotifiedConnectionStatus;
@@ -243,6 +247,20 @@ class HostController extends GetxController {
         (_) => unawaited(_refreshDiagnostics(audioService)),
       );
     }
+  }
+
+  void startDiscoveryPolling() {
+    if (_discoveryTimer != null) return;
+    unawaited(discoverReceivers());
+    _discoveryTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => unawaited(discoverReceivers()),
+    );
+  }
+
+  void stopDiscoveryPolling() {
+    _discoveryTimer?.cancel();
+    _discoveryTimer = null;
   }
 
   Future<void> connect() async {
@@ -624,17 +642,28 @@ class HostController extends GetxController {
   }
 
   Future<void> discoverReceivers() async {
-    errorMessage.value = null;
-    final devices = await _discoveryService.discover();
-    if (devices.isEmpty) {
-      _showError('No receivers were found on this Wi-Fi network.');
-      return;
-    }
-    for (final device in devices) {
-      if (!configuredReceiverIps.contains(device.ipAddress)) {
-        configuredReceiverIps.add(device.ipAddress);
-        receiverPairingControllers[device.ipAddress] = TextEditingController();
+    if (_discoveryInProgress) return;
+    _discoveryInProgress = true;
+    isDiscoveringReceivers.value = true;
+    try {
+      final devices = await _discoveryService.discover();
+      for (final device in devices) {
+        if (!configuredReceiverIps.contains(device.ipAddress)) {
+          configuredReceiverIps.add(device.ipAddress);
+          receiverPairingControllers[device.ipAddress] =
+              TextEditingController();
+        }
       }
+      discoveryStatus.value = devices.isEmpty
+          ? 'Searching for Receivers…'
+          : '${devices.length} Receiver${devices.length == 1 ? '' : 's'} found';
+    } catch (_) {
+      // Discovery is best-effort. A blocked broadcast must not show a false
+      // error snackbar or interrupt manual/QR setup.
+      discoveryStatus.value = 'Searching for Receivers…';
+    } finally {
+      _discoveryInProgress = false;
+      isDiscoveringReceivers.value = false;
     }
   }
 
@@ -728,6 +757,7 @@ class HostController extends GetxController {
     _audioErrorSubscription?.cancel();
     _sessionSubscription?.cancel();
     _diagnosticTimer?.cancel();
+    stopDiscoveryPolling();
     _errorSnackbarWorker?.dispose();
     _controlSessionSubscription.cancel();
     receiverIpController.dispose();
