@@ -58,12 +58,17 @@ class MainActivity : FlutterActivity() {
                         val message = call.argument<String>("message")
                         val id = call.argument<Int>("id") ?: 1001
                         if (message == null) {
-                            result.error("INVALID_NOTIFICATION", "Notification message is missing", null)
+                            result.error(
+                                "INVALID_NOTIFICATION",
+                                "Notification message is missing",
+                                null
+                            )
                         } else {
                             showStatusNotification(id, title, message)
                             result.success(null)
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -79,10 +84,12 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+
                     "stop" -> {
                         stopService(Intent(this, NetworkKeepAliveService::class.java))
                         result.success(null)
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -98,8 +105,13 @@ class MainActivity : FlutterActivity() {
                         val sessionId = call.argument<String>("sessionId")
                         val pairingToken = call.argument<String>("pairingToken")
                         if (codec != "pcm16" || destinations.isNullOrEmpty() || port == null || sessionId == null ||
-                            (encrypted && pairingToken.isNullOrEmpty())) {
-                            result.error("NATIVE_PATH_UNAVAILABLE", "Native path currently supports PCM16 with optional AES-GCM", null)
+                            (encrypted && pairingToken.isNullOrEmpty())
+                        ) {
+                            result.error(
+                                "NATIVE_PATH_UNAVAILABLE",
+                                "Native path currently supports PCM16 with optional AES-GCM",
+                                null
+                            )
                             return@setMethodCallHandler
                         }
                         try {
@@ -117,6 +129,7 @@ class MainActivity : FlutterActivity() {
                             result.error("NATIVE_HOST_INIT_FAILED", error.message, null)
                         }
                     }
+
                     "stopNativeHostStream" -> {
                         stopService(Intent(this, SystemAudioCaptureService::class.java))
                         nativeSender?.stop()
@@ -125,6 +138,7 @@ class MainActivity : FlutterActivity() {
                         pendingNativeSender = null
                         result.success(null)
                     }
+
                     "startNativeReceiver" -> {
                         val port = call.argument<Int>("port")
                         val mode = call.argument<String>("latencyMode") ?: "balanced"
@@ -148,14 +162,17 @@ class MainActivity : FlutterActivity() {
                             result.error("NATIVE_RECEIVER_INIT_FAILED", error.message, null)
                         }
                     }
+
                     "stopNativeReceiver" -> {
                         nativeReceiver?.stop()
                         nativeReceiver = null
                         result.success(null)
                     }
+
                     "getNativeDiagnostics" -> result.success(
                         nativeReceiver?.diagnostics() ?: mapOf("path" to "dart_fallback"),
                     )
+
                     else -> result.notImplemented()
                 }
             }
@@ -167,9 +184,14 @@ class MainActivity : FlutterActivity() {
                             initializeAudioTrack()
                             result.success(null)
                         } catch (_: Exception) {
-                            result.error("AUDIO_INIT_FAILED", "Unable to initialize AudioTrack", null)
+                            result.error(
+                                "AUDIO_INIT_FAILED",
+                                "Unable to initialize AudioTrack",
+                                null
+                            )
                         }
                     }
+
                     "writePcm" -> {
                         val data = call.argument<ByteArray>("data")
                         if (data == null) {
@@ -178,15 +200,18 @@ class MainActivity : FlutterActivity() {
                         }
                         audioExecutor.execute {
                             val written = synchronized(audioLock) {
-                                audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING) ?: -1
+                                audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
+                                    ?: -1
                             }
                             runOnUiThread { result.success(written) }
                         }
                     }
+
                     "stop" -> {
                         stopAudioTrack()
                         result.success(null)
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -212,6 +237,7 @@ class MainActivity : FlutterActivity() {
                         nativeSender = null
                         result.success(null)
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -229,6 +255,7 @@ class MainActivity : FlutterActivity() {
                             result.success(value.toInt())
                         }
                     }
+
                     "write" -> {
                         val receiverId = call.argument<String>("receiverId")
                         val calibration = call.argument<Number>("calibrationMicros")
@@ -241,6 +268,7 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -259,6 +287,7 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -293,7 +322,12 @@ class MainActivity : FlutterActivity() {
         cipher.init(Cipher.ENCRYPT_MODE, pairingKey())
         val nonce = cipher.iv
         val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
-        val value = "${Base64.encodeToString(nonce, Base64.NO_WRAP)}:${Base64.encodeToString(encrypted, Base64.NO_WRAP)}"
+        val value = "${Base64.encodeToString(nonce, Base64.NO_WRAP)}:${
+            Base64.encodeToString(
+                encrypted,
+                Base64.NO_WRAP
+            )
+        }"
         preferences.edit().putString(PAIRING_VALUE_KEY, value).remove("pairing_token").apply()
     }
 
@@ -311,7 +345,11 @@ class MainActivity : FlutterActivity() {
             val nonce = Base64.decode(parts[0], Base64.NO_WRAP)
             val encrypted = Base64.decode(parts[1], Base64.NO_WRAP)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, pairingKey(), javax.crypto.spec.GCMParameterSpec(128, nonce))
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                pairingKey(),
+                javax.crypto.spec.GCMParameterSpec(128, nonce)
+            )
             String(cipher.doFinal(encrypted), Charsets.UTF_8)
         } catch (_: Exception) {
             null
@@ -322,24 +360,58 @@ class MainActivity : FlutterActivity() {
         result: MethodChannel.Result,
         nativeSender: NativeUdpAudioSender? = null,
     ) {
-        Log.i("SyncAudioCapture", "requestSystemAudioCapture inFlight=$projectionRequestInFlight pending=${pendingSystemAudioStartResult != null}")
+        Log.i(
+            "SyncAudioCapture",
+            "requestSystemAudioCapture inFlight=$projectionRequestInFlight pending=${pendingSystemAudioStartResult != null}"
+        )
         if (projectionRequestInFlight || pendingSystemAudioStartResult != null) {
-            result.error("SYSTEM_AUDIO_START_IN_PROGRESS", "System audio capture is already starting", null)
+            result.error(
+                "SYSTEM_AUDIO_START_IN_PROGRESS",
+                "System audio capture is already starting",
+                null
+            )
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.error(
+                "SYSTEM_AUDIO_UNSUPPORTED",
+                "System audio capture requires Android 10 or newer",
+                null
+            )
             return
         }
         pendingNativeSender = nativeSender
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            result.error("SYSTEM_AUDIO_UNSUPPORTED", "System audio capture requires Android 10 or newer", null)
-            return
-        }
-        launchProjectionConsent(result)
+        pendingSystemAudioStartResult = result
+        startProjectionFlow()
     }
 
-    private fun launchProjectionConsent(result: MethodChannel.Result) {
-        pendingSystemAudioStartResult = result
+    private fun startProjectionFlow() {
+        val result = pendingSystemAudioStartResult ?: return
         projectionRequestInFlight = true
-        val manager = getSystemService(MediaProjectionManager::class.java)
-        startActivityForResult(manager.createScreenCaptureIntent(), projectionRequestCode)
+        try {
+            // Promote the capture service to a foreground service before the
+            // system consent dialog appears. This avoids Android 14+ background
+            // foreground-service start restrictions once the dialog result returns.
+            val prepareIntent = Intent(this, SystemAudioCaptureService::class.java)
+                .setAction(SystemAudioCaptureService.ACTION_PREPARE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(prepareIntent)
+            } else {
+                startService(prepareIntent)
+            }
+            val manager = getSystemService(MediaProjectionManager::class.java)
+            startActivityForResult(manager.createScreenCaptureIntent(), projectionRequestCode)
+        } catch (error: Exception) {
+            pendingSystemAudioStartResult = null
+            projectionRequestInFlight = false
+            pendingNativeSender?.stop()
+            pendingNativeSender = null
+            result.error(
+                "SYSTEM_AUDIO_START_FAILED",
+                "Unable to start system audio capture: ${error.message}",
+                null,
+            )
+        }
     }
 
     @Deprecated("Deprecated in Android API")
@@ -352,16 +424,27 @@ class MainActivity : FlutterActivity() {
         projectionRequestInFlight = false
         if (result == null) return
         if (resultCode != Activity.RESULT_OK || data == null) {
+            stopService(Intent(this, SystemAudioCaptureService::class.java))
             pendingNativeSender?.stop()
             pendingNativeSender = null
-            result.error("MEDIA_PROJECTION_DENIED", "System audio capture permission was denied", null)
+            result.error(
+                "MEDIA_PROJECTION_DENIED",
+                "System audio capture permission was denied",
+                null,
+            )
             return
         }
         try {
-            val projectionManager = getSystemService(MediaProjectionManager::class.java)
-            SystemAudioCaptureService.pendingProjection =
-                projectionManager.getMediaProjection(resultCode, data)
+            pendingNativeSender?.start()
+            nativeSender = pendingNativeSender
+            pendingNativeSender = null
+            // Keep a static copy of the consent result as a fallback; some
+            // Android 13+ builds drop the parcelable extra when the Intent is
+            // forwarded into the foreground service.
+            SystemAudioCaptureService.pendingResultCode = resultCode
+            SystemAudioCaptureService.pendingProjectionData = data
             val serviceIntent = Intent(this, SystemAudioCaptureService::class.java)
+                .setAction(SystemAudioCaptureService.ACTION_START)
                 .putExtra(SystemAudioCaptureService.EXTRA_RESULT_CODE, resultCode)
                 .putExtra(SystemAudioCaptureService.EXTRA_PROJECTION_DATA, data)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -369,12 +452,18 @@ class MainActivity : FlutterActivity() {
             } else {
                 startService(serviceIntent)
             }
-            pendingNativeSender?.start()
-            nativeSender = pendingNativeSender
-            pendingNativeSender = null
             result.success(null)
-        } catch (_: Exception) {
-            result.error("SYSTEM_AUDIO_START_FAILED", "Unable to start system audio capture", null)
+        } catch (error: Exception) {
+            stopService(Intent(this, SystemAudioCaptureService::class.java))
+            nativeSender?.stop()
+            nativeSender = null
+            pendingNativeSender?.stop()
+            pendingNativeSender = null
+            result.error(
+                "SYSTEM_AUDIO_START_FAILED",
+                "Unable to start system audio capture: ${error.message}",
+                null,
+            )
         }
     }
 
@@ -397,14 +486,18 @@ class MainActivity : FlutterActivity() {
         }
         if (requestCode != microphonePermissionRequestCode) return
         val result = pendingSystemAudioStartResult
-        pendingSystemAudioStartResult = null
         if (result == null) return
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            launchProjectionConsent(result)
+            startProjectionFlow()
         } else {
+            pendingSystemAudioStartResult = null
             pendingNativeSender?.stop()
             pendingNativeSender = null
-            result.error("MICROPHONE_PERMISSION_DENIED", "Audio capture permission was denied", null)
+            result.error(
+                "MICROPHONE_PERMISSION_DENIED",
+                "Audio capture permission was denied",
+                null,
+            )
         }
     }
 

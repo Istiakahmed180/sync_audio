@@ -15,16 +15,21 @@ class AndroidSystemAudioCaptureService implements AudioCaptureService {
   static const _streamChannel = EventChannel('sync_audio/system_audio_stream');
 
   @override
-  Stream<Uint8List> get pcmChunks =>
-      _streamChannel.receiveBroadcastStream().map((chunk) {
-        try {
-          return Uint8List.fromList(
-            List<int>.from(chunk as List<dynamic>),
-          );
-        } catch (_) {
-          return Uint8List(0);
-        }
-      }).where((bytes) => bytes.isNotEmpty).handleError((_) {});
+  Stream<Uint8List> get pcmChunks => _streamChannel
+      .receiveBroadcastStream()
+      .map(_decodeChunk)
+      .where((bytes) => bytes.isNotEmpty);
+
+  Uint8List _decodeChunk(dynamic chunk) {
+    if (chunk is Uint8List) return chunk;
+    if (chunk is List<int>) return Uint8List.fromList(chunk);
+    if (chunk is List<dynamic>) {
+      try {
+        return Uint8List.fromList(List<int>.from(chunk));
+      } catch (_) {}
+    }
+    return Uint8List(0);
+  }
 
   bool _isCapturing = false;
 

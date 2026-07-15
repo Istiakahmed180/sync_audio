@@ -315,7 +315,7 @@ class UdpAudioService implements AudioStreamService {
       _synchronizeReceivers();
       _captureSubscription = captureService.pcmChunks.listen(
         _sendPcmPacket,
-        onError: (_) => unawaited(_handleCaptureError()),
+        onError: (Object error) => unawaited(_handleCaptureError(error)),
       );
       await captureService.start();
       _setStatus(AudioStreamStatus.streaming);
@@ -332,7 +332,9 @@ class UdpAudioService implements AudioStreamService {
           'Audio capture permission was denied.',
         'SYSTEM_AUDIO_UNSUPPORTED' =>
           'System audio capture requires Android 10 or newer.',
-        _ => 'Unable to start system audio capture.',
+        'SYSTEM_AUDIO_START_FAILED' =>
+          'Unable to start system audio capture: ${error.message}',
+        _ => 'Unable to start system audio capture: ${error.message}',
       };
       _emitError(message);
       _setStatus(AudioStreamStatus.error);
@@ -438,9 +440,9 @@ class UdpAudioService implements AudioStreamService {
     }
   }
 
-  Future<void> _handleCaptureError() async {
+  Future<void> _handleCaptureError(Object error) async {
     await stopStreaming();
-    _emitError('System audio capture failed.');
+    _emitError('System audio capture failed: $error');
     _setStatus(AudioStreamStatus.error);
   }
 
