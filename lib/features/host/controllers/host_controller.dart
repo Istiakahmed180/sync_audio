@@ -86,8 +86,10 @@ class HostController extends GetxController {
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _suppressNextDisconnectedNotification = false;
+  bool _startingSystemAudio = false;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
+  bool get isStartingSystemAudio => _startingSystemAudio;
 
   bool get isConnecting =>
       connectionStatus.value == ConnectionStatus.connecting;
@@ -392,6 +394,16 @@ class HostController extends GetxController {
   }
 
   Future<void> startSystemAudioStream() async {
+    if (_startingSystemAudio) return;
+    _startingSystemAudio = true;
+    try {
+      await _startSystemAudioStream();
+    } finally {
+      _startingSystemAudio = false;
+    }
+  }
+
+  Future<void> _startSystemAudioStream() async {
     errorMessage.value = null;
     _nativeHostActive = false;
     final audioService = _audioService;
@@ -415,9 +427,6 @@ class HostController extends GetxController {
     receiverCount.value = addresses.length;
     await audioService.selectCodec(codecPreference.value);
     final pairingText = _pairingInputFor(addresses);
-    final nativeEligible =
-        audioService.activeCodecType == AudioCodecType.pcm16 &&
-        !pairingText.contains('=');
     await audioService.configureLatency(
       mode: latencyMode.value,
       adaptiveJitter: adaptiveJitter.value,
@@ -434,49 +443,12 @@ class HostController extends GetxController {
       _streamSessionId,
       '0',
       audioService.activeCodecType.name,
-      if (nativeEligible) 'native',
     ];
     await _sendControlCommand(
       addresses,
       ControlCommandType.streamPrepare,
       commandArguments,
     );
-    if (nativeEligible) {
-      try {
-        await _nativeAudioRuntime.startNativeHostStream(
-          destinations: addresses,
-          port: port,
-          codec: audioService.activeCodecType,
-          encrypted: pairingText.isNotEmpty,
-          latencyMode: latencyMode.value,
-          sessionId: _streamSessionId,
-          pairingToken: pairingText.isEmpty ? null : pairingText,
-        );
-        _nativeHostActive = true;
-      } catch (_) {
-        assert(() {
-          debugPrint(
-            'Native low-latency audio is unavailable; using Dart fallback.',
-          );
-          return true;
-        }());
-      }
-    }
-    if (_nativeHostActive) {
-      _startStats();
-      await _sendControlCommand(
-        addresses,
-        ControlCommandType.streamStart,
-        commandArguments,
-      );
-      _ensureDiagnosticTimer();
-      await AppNotificationService.show(
-        title: 'System audio streaming',
-        message: 'Audio is being sent to the connected Receivers.',
-        id: 1002,
-      );
-      return;
-    }
     await audioService.startStreaming(ipAddresses: addresses, port: port);
     _startStats();
     await _sendControlCommand(

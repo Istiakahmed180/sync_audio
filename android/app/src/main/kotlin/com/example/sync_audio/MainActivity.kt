@@ -12,6 +12,7 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.util.Log
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -41,6 +42,7 @@ class MainActivity : FlutterActivity() {
     private val audioLock = Any()
     private var audioTrack: AudioTrack? = null
     private var pendingSystemAudioStartResult: MethodChannel.Result? = null
+    private var projectionRequestInFlight = false
     private var pendingNativeSender: NativeUdpAudioSender? = null
     private var nativeSender: NativeUdpAudioSender? = null
     private var nativeReceiver: NativeUdpAudioReceiver? = null
@@ -320,16 +322,14 @@ class MainActivity : FlutterActivity() {
         result: MethodChannel.Result,
         nativeSender: NativeUdpAudioSender? = null,
     ) {
+        Log.i("SyncAudioCapture", "requestSystemAudioCapture inFlight=$projectionRequestInFlight pending=${pendingSystemAudioStartResult != null}")
+        if (projectionRequestInFlight || pendingSystemAudioStartResult != null) {
+            result.error("SYSTEM_AUDIO_START_IN_PROGRESS", "System audio capture is already starting", null)
+            return
+        }
         pendingNativeSender = nativeSender
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             result.error("SYSTEM_AUDIO_UNSUPPORTED", "System audio capture requires Android 10 or newer", null)
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-        ) {
-            pendingSystemAudioStartResult = result
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), microphonePermissionRequestCode)
             return
         }
         launchProjectionConsent(result)
@@ -337,6 +337,7 @@ class MainActivity : FlutterActivity() {
 
     private fun launchProjectionConsent(result: MethodChannel.Result) {
         pendingSystemAudioStartResult = result
+        projectionRequestInFlight = true
         val manager = getSystemService(MediaProjectionManager::class.java)
         startActivityForResult(manager.createScreenCaptureIntent(), projectionRequestCode)
     }
@@ -345,8 +346,10 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != projectionRequestCode) return
+        Log.i("SyncAudioCapture", "projection result resultCode=$resultCode data=${data != null}")
         val result = pendingSystemAudioStartResult
         pendingSystemAudioStartResult = null
+        projectionRequestInFlight = false
         if (result == null) return
         if (resultCode != Activity.RESULT_OK || data == null) {
             pendingNativeSender?.stop()
@@ -355,6 +358,9 @@ class MainActivity : FlutterActivity() {
             return
         }
         try {
+            val projectionManager = getSystemService(MediaProjectionManager::class.java)
+            SystemAudioCaptureService.pendingProjection =
+                projectionManager.getMediaProjection(resultCode, data)
             val serviceIntent = Intent(this, SystemAudioCaptureService::class.java)
                 .putExtra(SystemAudioCaptureService.EXTRA_RESULT_CODE, resultCode)
                 .putExtra(SystemAudioCaptureService.EXTRA_PROJECTION_DATA, data)

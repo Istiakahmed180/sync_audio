@@ -463,6 +463,7 @@ class HostView extends GetView<HostController> {
                 icon: Icons.graphic_eq_rounded,
                 onPressed:
                     !controller.isConnected ||
+                        controller.isStartingSystemAudio ||
                         controller.audioStatus.value ==
                             AudioStreamStatus.streaming
                     ? null
