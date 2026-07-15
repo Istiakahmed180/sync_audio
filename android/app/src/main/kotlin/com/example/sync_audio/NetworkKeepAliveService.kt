@@ -8,10 +8,26 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
+import android.net.wifi.WifiManager
 
 class NetworkKeepAliveService : Service() {
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
     override fun onCreate() {
         super.onCreate()
+        val powerManager = getSystemService(PowerManager::class.java)
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "sync_audio:connection",
+        ).apply { setReferenceCounted(false) }
+        val wifiManager = applicationContext.getSystemService(WifiManager::class.java)
+        @Suppress("DEPRECATION")
+        wifiLock = wifiManager.createWifiLock(
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+            "sync_audio:connection_wifi",
+        ).apply { setReferenceCounted(false) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(
@@ -49,7 +65,24 @@ class NetworkKeepAliveService : Service() {
             @Suppress("DEPRECATION")
             startForeground(NOTIFICATION_ID, notification)
         }
+        if (wakeLock?.isHeld != true) wakeLock?.acquire()
+        @Suppress("DEPRECATION")
+        if (wifiLock?.isHeld != true) wifiLock?.acquire()
         return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Keep the foreground service alive if the user swipes the task away.
+        super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        @Suppress("DEPRECATION")
+        wifiLock?.let { if (it.isHeld) it.release() }
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wifiLock = null
+        wakeLock = null
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

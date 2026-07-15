@@ -287,6 +287,7 @@ class HostController extends GetxController {
     errorMessage.value = null;
     _nativeHostActive = false;
     await _service.disconnect();
+    await BackgroundConnectionService.stop();
   }
 
   Future<void> connectReceiver(String address) async {
@@ -329,10 +330,6 @@ class HostController extends GetxController {
     if (status == ConnectionStatus.connecting ||
         status == ConnectionStatus.connected) {
       unawaited(BackgroundConnectionService.start());
-    } else if (status == ConnectionStatus.disconnected ||
-        status == ConnectionStatus.error ||
-        status == ConnectionStatus.stopped) {
-      unawaited(BackgroundConnectionService.stop());
     }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
