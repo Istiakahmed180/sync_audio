@@ -207,6 +207,11 @@ class HostView extends GetView<HostController> {
               Obx(
                 () => DropdownButtonFormField<AudioCodecPreference>(
                   initialValue: controller.codecPreference.value,
+                  onChanged: controller.isRestartingAudioSettings
+                      ? null
+                      : (value) {
+                          if (value != null) controller.selectCodec(value);
+                        },
                   decoration: const InputDecoration(labelText: 'Audio codec'),
                   items: const [
                     DropdownMenuItem(
@@ -222,15 +227,17 @@ class HostView extends GetView<HostController> {
                       child: Text('Opus'),
                     ),
                   ],
-                  onChanged: (value) {
-                    if (value != null) controller.selectCodec(value);
-                  },
                 ),
               ),
               const SizedBox(height: 8),
               Obx(
                 () => DropdownButtonFormField<LatencyMode>(
                   initialValue: controller.latencyMode.value,
+                  onChanged: controller.isRestartingAudioSettings
+                      ? null
+                      : (value) {
+                          if (value != null) controller.configureLatency(value);
+                        },
                   decoration: const InputDecoration(labelText: 'Latency mode'),
                   items: LatencyMode.values
                       .map(
@@ -240,10 +247,11 @@ class HostView extends GetView<HostController> {
                         ),
                       )
                       .toList(),
-                  onChanged: (value) {
-                    if (value != null) controller.configureLatency(value);
-                  },
                 ),
+              ),
+              Text(
+                'Changing these settings briefly restarts audio on all Receivers.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 8),
               Text(

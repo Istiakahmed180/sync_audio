@@ -91,9 +91,11 @@ class HostController extends GetxController {
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _suppressNextDisconnectedNotification = false;
   bool _startingSystemAudio = false;
+  bool _restartingAudioSettings = false;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
   bool get isStartingSystemAudio => _startingSystemAudio;
+  bool get isRestartingAudioSettings => _restartingAudioSettings;
 
   bool get isConnecting =>
       connectionStatus.value == ConnectionStatus.connecting;
@@ -484,18 +486,36 @@ class HostController extends GetxController {
   }
 
   Future<void> selectCodec(AudioCodecPreference preference) async {
-    codecPreference.value = preference;
-    await _audioService?.selectCodec(preference);
+    if (_restartingAudioSettings) return;
+    final wasStreaming = _audioService?.isStreaming ?? false;
+    _restartingAudioSettings = wasStreaming;
+    try {
+      if (wasStreaming) await stopSystemAudioStream();
+      codecPreference.value = preference;
+      await _audioService?.selectCodec(preference);
+      if (wasStreaming) await startSystemAudioStream();
+    } finally {
+      _restartingAudioSettings = false;
+    }
   }
 
   Future<void> configureLatency(LatencyMode mode) async {
-    latencyMode.value = mode;
-    await _audioService?.configureLatency(
-      mode: mode,
-      adaptiveJitter: adaptiveJitter.value,
-      driftCorrection: driftCorrection.value,
-      maximumDriftCorrectionPpm: maximumDriftCorrectionPpm.value,
-    );
+    if (_restartingAudioSettings) return;
+    final wasStreaming = _audioService?.isStreaming ?? false;
+    _restartingAudioSettings = wasStreaming;
+    try {
+      if (wasStreaming) await stopSystemAudioStream();
+      latencyMode.value = mode;
+      await _audioService?.configureLatency(
+        mode: mode,
+        adaptiveJitter: adaptiveJitter.value,
+        driftCorrection: driftCorrection.value,
+        maximumDriftCorrectionPpm: maximumDriftCorrectionPpm.value,
+      );
+      if (wasStreaming) await startSystemAudioStream();
+    } finally {
+      _restartingAudioSettings = false;
+    }
   }
 
   Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
