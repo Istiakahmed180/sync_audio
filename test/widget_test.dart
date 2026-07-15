@@ -55,7 +55,6 @@ void main() {
 
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Scheduled Streaming'), findsOneWidget);
-    expect(find.text('Usage Statistics'), findsOneWidget);
 
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
@@ -67,6 +66,5 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -700));
     await tester.pumpAndSettle();
     expect(find.text('About'), findsOneWidget);
-    expect(find.text('Connection Help'), findsOneWidget);
   });
 }

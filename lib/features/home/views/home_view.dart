@@ -58,27 +58,6 @@ class HomeView extends GetView<HomeController> {
               icon: Icons.speaker_group_rounded,
               onTap: () => Get.toNamed(AppRoutes.receiver),
             ),
-            const SizedBox(height: 28),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Quick start\n1. Start Receiver on the speaker devices.\n2. Copy a Receiver IP address and pairing code.\n3. Open Host, enter those details, and connect.\n4. Start system audio after the connection is ready.',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),

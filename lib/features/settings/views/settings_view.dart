@@ -21,47 +21,9 @@ class SettingsView extends GetView<SettingsController> {
         const SizedBox(height: 12),
         _ScheduledStreamingCard(controller: controller),
         const SizedBox(height: 24),
-        _sectionTitle(context, 'Usage Statistics'),
-        const SizedBox(height: 12),
-        _UsageStatsCard(controller: controller),
-        const SizedBox(height: 24),
         _sectionTitle(context, 'About'),
         const SizedBox(height: 12),
         _SettingRow(label: 'Version', value: AppConstants.appVersion),
-        const SizedBox(height: 24),
-        _sectionTitle(context, 'Connection Help'),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Before connecting',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Keep all devices on the same Wi‑Fi network. Start the Receiver first, then use its IP address and pairing code on the Host.',
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'If connection fails',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Check the IP, port, and pairing code. The Host Connect button becomes available again after a failed attempt.',
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     ),
   );
@@ -171,61 +133,6 @@ class _TimePickerRow extends StatelessWidget {
         ),
       ),
     ],
-  );
-}
-
-class _UsageStatsCard extends StatelessWidget {
-  const _UsageStatsCard({required this.controller});
-  final SettingsController controller;
-  @override
-  Widget build(BuildContext context) => Obx(
-    () => Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _StatRow(
-              label: 'Total stream time',
-              value: _formatMinutes(controller.totalStreamTimeMinutes.value),
-            ),
-            const Divider(),
-            _StatRow(
-              label: 'Data sent',
-              value: '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
-            ),
-            const Divider(),
-            _StatRow(
-              label: 'Packets lost',
-              value: '${controller.totalPacketsLost.value}',
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-
-  static String _formatMinutes(int mins) {
-    if (mins < 60) return '$mins min';
-    final h = mins ~/ 60;
-    final m = mins % 60;
-    return '${h}h ${m}m';
-  }
-}
-
-class _StatRow extends StatelessWidget {
-  const _StatRow({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-      ],
-    ),
   );
 }
 
