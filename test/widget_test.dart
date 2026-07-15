@@ -20,7 +20,7 @@ void main() {
     expect(find.text('Host Device'), findsOneWidget);
   });
 
-  testWidgets('host screen displays IP and port fields', (tester) async {
+  testWidgets('host screen displays connection setup', (tester) async {
     final service = FakeConnectionService();
     Get.put(HostController(connectionService: service));
     await tester.pumpWidget(const GetMaterialApp(home: HostView()));
@@ -29,10 +29,8 @@ void main() {
     expect(find.text('Receiver pairing code (required)'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -500));
     await tester.pump();
-    expect(
-      find.widgetWithText(FilledButton, 'Send Test Message'),
-      findsOneWidget,
-    );
+    expect(find.text('System audio'), findsOneWidget);
+    expect(find.text('Send Test Message'), findsNothing);
   });
 
   testWidgets('receiver screen displays server controls', (tester) async {

@@ -167,161 +167,33 @@ class HostView extends GetView<HostController> {
                       .toList(),
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Each Receiver has its own connection control.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 28),
-              Text(
-                'Paired Devices',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
               const SizedBox(height: 8),
-              Obx(
-                () => controller.pairedDevices.isEmpty
-                    ? Text(
-                        'No paired devices yet. Connect to save them here.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      )
-                    : Column(
-                        children: controller.pairedDevices
-                            .map(
-                              (d) => Card(
-                                child: ListTile(
-                                  leading: const Icon(Icons.speaker_rounded),
-                                  title: Text(d.name),
-                                  subtitle: Text(
-                                    '${d.ipAddress}:${d.port} · ${_formatDate(d.lastConnected)}',
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.link_rounded),
-                                        tooltip: 'Connect',
-                                        onPressed: () {
-                                          controller
-                                                  .receiverIpInputController
-                                                  .text =
-                                              d.ipAddress;
-                                          controller.portController.text =
-                                              '${d.port}';
-                                          controller.addReceiverIp();
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 18,
-                                        ),
-                                        tooltip: 'Remove',
-                                        onPressed: () => controller
-                                            .removeReceiverIp(d.ipAddress),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Group Presets',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Obx(
-                () => Column(
-                  children: [
-                    ...controller.savedGroups.map(
-                      (g) => Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.group_rounded),
-                          title: Text(g.name),
-                          subtitle: Text('${g.deviceIps.length} devices'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.play_arrow_rounded),
-                                tooltip: 'Apply & Connect',
-                                onPressed: () => controller.applyGroup(g),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 18,
-                                ),
-                                tooltip: 'Delete',
-                                onPressed: () => controller.deleteGroup(g.name),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Obx(
+                  () => TextButton.icon(
+                    onPressed: controller.isDiscoveringReceivers.value
+                        ? null
+                        : controller.discoverReceivers,
+                    icon: controller.isDiscoveringReceivers.value
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.wifi_find_rounded),
+                    label: Text(
+                      controller.isDiscoveringReceivers.value
+                          ? 'Searching…'
+                          : 'Search again',
                     ),
-                    if (controller.configuredReceiverIps.isNotEmpty)
-                      Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.add_rounded),
-                          title: const Text('Save current as group'),
-                          onTap: () => _showSaveGroupDialog(context),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Test message is available after the Receiver connection is established.',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Test message',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller.testMessageController,
-                enabled: true,
-                maxLines: 2,
-                decoration: const InputDecoration(labelText: 'Message to send'),
-              ),
-              const SizedBox(height: 16),
               Obx(
-                () => AppPrimaryButton(
-                  label: 'Send Test Message',
-                  icon: Icons.send_rounded,
-                  onPressed: controller.isConnected
-                      ? controller.sendTestMessage
-                      : null,
+                () => Text(
+                  controller.discoveryStatus.value,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
               const SizedBox(height: 28),
@@ -384,70 +256,6 @@ class HostView extends GetView<HostController> {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: controller.receiverIpInputController,
-                keyboardType: TextInputType.number,
-                onSubmitted: (_) => controller.addReceiverIp(),
-                decoration: InputDecoration(
-                  labelText: 'Add receiver IP',
-                  hintText: '192.168.1.11',
-                  helperText:
-                      'Receivers added in connection setup are reused here.',
-                  suffixIcon: IconButton(
-                    tooltip: 'Add receiver',
-                    onPressed: controller.addReceiverIp,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Obx(
-                  () => TextButton.icon(
-                    onPressed: controller.isDiscoveringReceivers.value
-                        ? null
-                        : controller.discoverReceivers,
-                    icon: controller.isDiscoveringReceivers.value
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.wifi_find_rounded),
-                    label: Text(
-                      controller.isDiscoveringReceivers.value
-                          ? 'Searching…'
-                          : 'Search again',
-                    ),
-                  ),
-                ),
-              ),
-              Obx(
-                () => Text(
-                  controller.discoveryStatus.value,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              const SizedBox(height: 4),
-              TextField(
-                controller: controller.portController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Port',
-                  hintText: '5050',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller.audioPortController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Audio UDP port',
-                  hintText: '5051',
-                ),
-              ),
-              const SizedBox(height: 12),
               Obx(
                 () => Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -489,18 +297,6 @@ class HostView extends GetView<HostController> {
                       .toList(),
                 ),
               ),
-              Obx(
-                () => controller.diagnostics.isEmpty
-                    ? const SizedBox.shrink()
-                    : Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            'Diagnostics · latency ${(controller.diagnostics['estimatedTotalLatencyMicros'] as int? ?? 0) ~/ 1000} ms · RTT ${(controller.diagnostics['roundTripTimeMicros'] as int? ?? 0) ~/ 1000} ms · buffer ${controller.diagnostics['currentJitterBufferPackets'] ?? 0} packets · loss ${(controller.diagnostics['packetLossPercent'] as num? ?? 0).toStringAsFixed(1)}%',
-                          ),
-                        ),
-                      ),
-              ),
               const SizedBox(height: 12),
               Obx(
                 () => AppPrimaryButton(
@@ -537,15 +333,6 @@ class HostView extends GetView<HostController> {
                             : 'Connect a Receiver, then start system audio when you are ready.'
                       : 'Connect a Receiver before starting system audio.',
                   style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Obx(
-                () => _MessageCard(
-                  label: 'Last sent message',
-                  value: controller.lastSentMessage.value.isEmpty
-                      ? 'None yet'
-                      : controller.lastSentMessage.value,
                 ),
               ),
               const SizedBox(height: 12),
@@ -590,27 +377,6 @@ class _HostDiscoveryLifecycleState extends State<_HostDiscoveryLifecycle> {
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-class _MessageCard extends StatelessWidget {
-  const _MessageCard({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) => Card(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 6),
-          Text(value),
-        ],
-      ),
-    ),
-  );
 }
 
 class _ReceiverTargetCard extends StatelessWidget {
@@ -830,45 +596,4 @@ class _InfoMessage extends StatelessWidget {
       child: Text(text, textAlign: TextAlign.center),
     ),
   );
-}
-
-void _showSaveGroupDialog(BuildContext context) {
-  final controller = Get.find<HostController>();
-  final nameController = TextEditingController();
-  showDialog(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Save Group'),
-      content: TextField(
-        controller: nameController,
-        decoration: const InputDecoration(
-          hintText: 'eg. Living Room + Kitchen',
-        ),
-        autofocus: true,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final name = nameController.text.trim();
-            if (name.isNotEmpty) controller.saveCurrentAsGroup(name);
-            Navigator.pop(ctx);
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    ),
-  );
-}
-
-String _formatDate(DateTime d) {
-  final now = DateTime.now();
-  final diff = now.difference(d);
-  if (diff.inMinutes < 1) return 'Just now';
-  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-  if (diff.inDays < 1) return '${diff.inHours}h ago';
-  return '${diff.inDays}d ago';
 }
