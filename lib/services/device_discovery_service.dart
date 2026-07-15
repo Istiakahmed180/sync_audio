@@ -35,7 +35,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
 
   @override
   Future<List<AudioDevice>> discover({
-    Duration timeout = const Duration(milliseconds: 900),
+    Duration timeout = const Duration(milliseconds: 1800),
   }) async {
     final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     socket.broadcastEnabled = true;
@@ -69,11 +69,27 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       if (!completer.isCompleted) completer.complete();
     });
     try {
-      socket.send(
-        utf8.encode('$_request|$nonce'),
-        InternetAddress('255.255.255.255'),
-        discoveryPort,
-      );
+      final payload = utf8.encode('$_request|$nonce');
+      final targets = <String>{'255.255.255.255'};
+      for (final network in await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      )) {
+        for (final interfaceAddress in network.addresses) {
+          final broadcast = _directedBroadcast(interfaceAddress);
+          if (broadcast != null) targets.add(broadcast);
+        }
+      }
+      // Some access points drop the limited broadcast but allow a subnet
+      // directed broadcast. Send a few times because Wi-Fi can drop UDP.
+      for (var attempt = 0; attempt < 3; attempt++) {
+        for (final target in targets) {
+          socket.send(payload, InternetAddress(target), discoveryPort);
+        }
+        if (attempt < 2) {
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+        }
+      }
     } catch (_) {
       completer.complete();
     }
@@ -88,6 +104,15 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     return devices.values.toList(growable: false);
   }
 
+  String? _directedBroadcast(InternetAddress address) {
+    final rawAddress = address.rawAddress;
+    if (rawAddress.length != 4) return null;
+    // Most home/mobile Wi-Fi networks are /24. Keep the limited broadcast
+    // too, since it covers networks with a different subnet mask.
+    final bytes = [...rawAddress.sublist(0, 3), 255];
+    return bytes.join('.');
+  }
+
   @override
   Future<void> startResponder({
     required String deviceId,
@@ -100,7 +125,10 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       discoveryPort,
       reuseAddress: true,
     );
-    final address = await _ipAddressService.findPrivateIpv4Address() ?? '';
+    // Resolve the preferred address before starting the responder so custom
+    // address providers retain their validation behavior. The actual reply
+    // address is taken from the receiving interface below.
+    await _ipAddressService.findPrivateIpv4Address();
     _deviceId = deviceId;
     _deviceName = deviceName;
     _controlPort = controlPort;
@@ -115,7 +143,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
           _response,
           _deviceId,
           _deviceName,
-          address,
+          // Use the address of the interface that received the request. This
+          // matters on phones with Wi-Fi, VPN, and mobile interfaces enabled.
+          datagram.address.address,
           '$_controlPort',
           request[1],
         ].join('|');
