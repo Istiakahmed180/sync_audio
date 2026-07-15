@@ -101,12 +101,12 @@ class UdpAudioService implements AudioStreamService {
   AudioDecoder decoder;
   final Duration jitterBuffer;
   final Duration syncInterval;
-  LatencyMode _latencyMode = LatencyMode.balanced;
+  LatencyMode _latencyMode = LatencyMode.ultraLow;
   bool _adaptiveJitterEnabled = true;
   bool _driftCorrectionEnabled = true;
   int _maximumDriftCorrectionPpm = 200;
   final _metrics = LatencyMetricsTracker();
-  final _jitter = AdaptiveJitterBuffer();
+  final _jitter = AdaptiveJitterBuffer(mode: LatencyMode.ultraLow);
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
@@ -340,9 +340,7 @@ class UdpAudioService implements AudioStreamService {
       _setStatus(AudioStreamStatus.error);
     } catch (error) {
       await stopStreaming();
-      _emitError(
-        'Unable to start system audio capture: $error',
-      );
+      _emitError('Unable to start system audio capture: $error');
       _setStatus(AudioStreamStatus.error);
     }
   }
@@ -716,8 +714,8 @@ class UdpAudioService implements AudioStreamService {
         if (packet.codecType != decoder.codecType) return;
         final now = _receiverClock.elapsedMicroseconds;
         final correction = _driftCorrectionEnabled
-            ? (((now - _lastDriftUpdateMicros) * _driftCorrectionPpm)
-                  ~/ 1000000)
+            ? (((now - _lastDriftUpdateMicros) * _driftCorrectionPpm) ~/
+                      1000000)
                   .clamp(-20000, 20000)
             : 0;
         final adaptiveDelay = _adaptiveJitterEnabled
@@ -752,7 +750,8 @@ class UdpAudioService implements AudioStreamService {
       _jitter.configure(mode: LatencyMode.stable, enabled: true);
       _consecutiveUnderruns = 0;
       _consecutiveGoodFrames = 0;
-    } else if (_consecutiveGoodFrames >= 500 && _latencyMode != LatencyMode.ultraLow) {
+    } else if (_consecutiveGoodFrames >= 500 &&
+        _latencyMode != LatencyMode.ultraLow) {
       _latencyMode = _latencyMode == LatencyMode.stable
           ? LatencyMode.balanced
           : LatencyMode.ultraLow;

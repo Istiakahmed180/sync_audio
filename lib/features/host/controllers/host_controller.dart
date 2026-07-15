@@ -72,7 +72,7 @@ class HostController extends GetxController {
   final configuredReceiverIps = <String>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
-  final latencyMode = LatencyMode.balanced.obs;
+  final latencyMode = LatencyMode.ultraLow.obs;
   final adaptiveJitter = true.obs;
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
@@ -461,6 +461,7 @@ class HostController extends GetxController {
       _streamSessionId,
       '0',
       audioService.activeCodecType.name,
+      latencyMode.value.name,
     ];
     await _sendControlCommand(
       addresses,

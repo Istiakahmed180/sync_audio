@@ -39,9 +39,9 @@ class ReceiverController extends GetxController {
                : PlaceholderDeviceDiscoveryService()),
        _pairingStore =
            pairingStore ??
-            (Get.isRegistered<PairingStore>()
-                ? Get.find<PairingStore>()
-                : SharedPrefsPairingStore()),
+           (Get.isRegistered<PairingStore>()
+               ? Get.find<PairingStore>()
+               : SharedPrefsPairingStore()),
        _nativeAudioRuntime =
            nativeAudioRuntime ??
            (Get.isRegistered<NativeAudioRuntime>()
@@ -298,12 +298,26 @@ class ReceiverController extends GetxController {
             sessionId: sessionId,
           );
         }
-        if (event.command.arguments.length == 3) {
+        if (event.command.arguments.length >= 3) {
           final requested = event.command.arguments[2];
           await _audioService?.selectCodec(
             requested == AudioCodecType.opus.name
                 ? AudioCodecPreference.opus
                 : AudioCodecPreference.pcm,
+          );
+        }
+        if (event.command.arguments.length >= 4 &&
+            event.command.arguments[3] != 'native') {
+          final requestedMode = event.command.arguments[3].toLowerCase();
+          final mode = LatencyMode.values.firstWhere(
+            (candidate) => candidate.name.toLowerCase() == requestedMode,
+            orElse: () => LatencyMode.ultraLow,
+          );
+          await _audioService?.configureLatency(
+            mode: mode,
+            adaptiveJitter: true,
+            driftCorrection: true,
+            maximumDriftCorrectionPpm: 200,
           );
         }
         if (isServerRunning.value && nativeRequested) {
@@ -313,7 +327,7 @@ class ReceiverController extends GetxController {
           try {
             await _nativeAudioRuntime.startNativeReceiver(
               port: AppConstants.audioPort,
-              latencyMode: LatencyMode.balanced,
+              latencyMode: LatencyMode.ultraLow,
               sessionId: sessionId,
               pairingToken: _pairingTokenValue,
             );
