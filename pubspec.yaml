@@ -37,6 +37,7 @@ dependencies:
   cryptography: ^2.9.0
   cryptography_flutter: ^2.3.4
   qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.11
   share_plus: ^10.1.4
   shared_preferences: ^2.3.4
 

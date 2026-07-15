@@ -11,6 +11,7 @@ import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
+import 'qr_scanner_view.dart';
 
 class HostView extends GetView<HostController> {
   const HostView({super.key});
@@ -69,11 +70,28 @@ class HostView extends GetView<HostController> {
               ),
             ),
             const SizedBox(height: 20),
-            Text(
-              'Connection setup',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Connection setup',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Scan QR'),
+                  onPressed: () async {
+                    final data = await Navigator.of(context).push<String>(
+                      MaterialPageRoute(builder: (_) => const QrScannerView()),
+                    );
+                    if (data != null && context.mounted) {
+                      controller.addReceiverFromQrData(data);
+                    }
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(

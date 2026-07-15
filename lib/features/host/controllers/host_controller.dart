@@ -589,6 +589,40 @@ class HostController extends GetxController {
     receiverPairingControllers.remove(address)?.dispose();
   }
 
+  /// Applies the Receiver QR payload: IP address:port:pairing code.
+  bool addReceiverFromQrData(String rawData) {
+    final parts = rawData.trim().split(':');
+    if (parts.length != 3) {
+      _showError('Invalid Receiver QR code.');
+      return false;
+    }
+    final address = parts[0].trim();
+    final port = int.tryParse(parts[1].trim());
+    final pairingCode = parts[2].trim();
+    final parsedIp = InternetAddress.tryParse(address);
+    if (parsedIp == null || parsedIp.type != InternetAddressType.IPv4) {
+      _showError('QR code contains an invalid Receiver IP address.');
+      return false;
+    }
+    if (port == null || port < 1 || port > 65535) {
+      _showError('QR code contains an invalid Receiver port.');
+      return false;
+    }
+    if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
+      _showError('QR code contains an invalid pairing code.');
+      return false;
+    }
+    portController.text = '$port';
+    pairingTokenController.text = pairingCode;
+    if (!configuredReceiverIps.contains(address)) {
+      configuredReceiverIps.add(address);
+    }
+    receiverPairingControllers[address] ??= TextEditingController();
+    receiverPairingControllers[address]!.text = pairingCode;
+    errorMessage.value = null;
+    return true;
+  }
+
   Future<void> discoverReceivers() async {
     errorMessage.value = null;
     final devices = await _discoveryService.discover();
