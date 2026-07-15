@@ -87,6 +87,11 @@ class ReceiverController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // The connection service is app-scoped. Re-entering this screen should
+    // reflect an already-running receiver instead of resetting the UI.
+    connectionStatus.value = _service.status;
+    isServerRunning.value = _service.isServerRunning;
+    isConnectedToHost.value = _service.isConnected;
     _pairingReady = _loadPairingToken();
     _messageSubscription = _service.receivedMessages.listen((message) {
       lastReceivedMessage.value = message;
@@ -405,8 +410,6 @@ class ReceiverController extends GetxController {
 
   @override
   void onClose() {
-    unawaited(_service.stopServer());
-    unawaited(_discoveryService.stopResponder());
     _messageSubscription.cancel();
     _statusSubscription.cancel();
     _errorSubscription.cancel();
@@ -416,8 +419,6 @@ class ReceiverController extends GetxController {
     _controlSessionSubscription.cancel();
     _bufferStatusTimer?.cancel();
     _errorSnackbarWorker?.dispose();
-    unawaited(_audioService?.stopReceiver());
-    unawaited(_nativeAudioRuntime.stopNativeReceiver());
     messageController.dispose();
     super.onClose();
   }

@@ -202,6 +202,13 @@ class HostController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Host connections are app-scoped; opening this screen is only a view of
+    // the current session and must not reset an existing background stream.
+    connectionStatus.value = _service.status;
+    receiverSessions.assignAll(_service.controlSessions);
+    if (_audioService != null) {
+      audioStatus.value = _audioService.status;
+    }
     _statusSubscription = _service.statusChanges.listen(_handleStatus);
     _errorSubscription = _service.errors.listen((message) {
       errorMessage.value = message;
@@ -709,8 +716,6 @@ class HostController extends GetxController {
 
   @override
   void onClose() {
-    unawaited(_service.disconnect());
-    unawaited(_nativeAudioRuntime.stopNativeHostStream());
     _statusSubscription.cancel();
     _errorSubscription.cancel();
     _audioStatusSubscription?.cancel();
