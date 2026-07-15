@@ -43,9 +43,7 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pump();
     expect(find.widgetWithText(FilledButton, 'Stop Receiver'), findsOneWidget);
-    await tester.drag(find.byType(ListView), const Offset(0, -200));
-    await tester.pump();
-    expect(find.text('PCM audio receiver'), findsOneWidget);
+    expect(find.text('Share with Host'), findsOneWidget);
   });
 
   testWidgets('settings screen displays all sections and schedule controls', (

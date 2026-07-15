@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../app/constants/app_constants.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
@@ -92,76 +91,6 @@ class ReceiverView extends GetView<ReceiverController> {
                 pairingCode: controller.pairingToken.value,
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Message Host',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Send your connection info or a custom message directly to the Host inside the app.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller.messageController,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Your message',
-                      hintText: 'Send a message to the Host…',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  tooltip: 'Send message',
-                  onPressed: controller.isConnectedToHost.value
-                      ? controller.sendMessageToHost
-                      : null,
-                  icon: const Icon(Icons.send_rounded),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Obx(
-              () => controller.lastSentMessage.value.isEmpty
-                  ? const SizedBox.shrink()
-                  : Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.check_circle_outline,
-                                size: 18, color: Colors.green),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Sent: ${controller.lastSentMessage.value}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-            ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: controller.isConnectedToHost.value
-                    ? controller.prepareConnectionInfo
-                    : null,
-                icon: const Icon(Icons.info_outline, size: 18),
-                label: const Text('Auto-fill my connection info'),
-              ),
-            ),
-            const SizedBox(height: 16),
             Obx(
               () => AppPrimaryButton(
                 label:
@@ -197,91 +126,6 @@ class ReceiverView extends GetView<ReceiverController> {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
-            const SizedBox(height: 28),
-            Text('Buffer Health', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Obx(() => _BufferHealthCard(
-              isReceiving: controller.isAudioReceiverRunning.value,
-            )),
-            const SizedBox(height: 28),
-            Text(
-              'PCM audio receiver',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Receive mono PCM packets over UDP and play them through Android AudioTrack.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            const _DetailRow(
-              label: 'Audio UDP port',
-              value: '${AppConstants.audioPort}',
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Audio status'),
-                  StatusBadge(label: controller.audioStatus.value.label),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => AppPrimaryButton(
-                label: 'Start Audio Receiver',
-                icon: Icons.volume_up_rounded,
-                onPressed: controller.isAudioReceiverRunning.value
-                    ? null
-                    : controller.startAudioReceiver,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => AppPrimaryButton(
-                label: 'Stop Audio Receiver',
-                icon: Icons.volume_off_rounded,
-                onPressed: controller.isAudioReceiverRunning.value
-                    ? controller.stopAudioReceiver
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Obx(
-              () => _MessageCard(
-                label: 'Connected host',
-                value: controller.isConnectedToHost.value
-                    ? 'Host connected'
-                    : 'No host connected',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => _MessageCard(
-                label: 'Last sync ping',
-                value: controller.lastSyncPing.value.isEmpty
-                    ? 'None yet'
-                    : controller.lastSyncPing.value,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => _MessageCard(
-                label: 'Last received message',
-                value: controller.lastReceivedMessage.value.isEmpty
-                    ? 'None yet'
-                    : controller.lastReceivedMessage.value,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const _InfoMessage(
-              text:
-                  'Start Receiver also starts the timestamped UDP audio receiver. The host synchronizes this device before playback begins.',
-            ),
           ],
         ),
       ),
@@ -305,8 +149,11 @@ class _ConnectionInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasData = ipAddress.isNotEmpty && ipAddress != 'Not available' &&
-        pairingCode.isNotEmpty && pairingCode != 'Loading…';
+    final hasData =
+        ipAddress.isNotEmpty &&
+        ipAddress != 'Not available' &&
+        pairingCode.isNotEmpty &&
+        pairingCode != 'Loading…';
 
     return Card(
       color: theme.colorScheme.surfaceContainerHighest,
@@ -316,8 +163,11 @@ class _ConnectionInfoCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.info_outline, size: 20,
-                    color: theme.colorScheme.primary),
+                Icon(
+                  Icons.info_outline,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Share with Host',
@@ -381,11 +231,16 @@ class _ConnectionInfoCard extends StatelessWidget {
                     ? () {
                         final shareText =
                             'I\'m "$deviceName" — connect to:\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
-                        Share.share(shareText, subject: 'Sync Audio — $deviceName');
+                        Share.share(
+                          shareText,
+                          subject: 'Sync Audio — $deviceName',
+                        );
                       }
                     : null,
                 icon: const Icon(Icons.share_rounded),
-                label: Text(hasData ? 'Share via app' : 'Start server to share'),
+                label: Text(
+                  hasData ? 'Share via app' : 'Start server to share',
+                ),
               ),
             ),
           ],
@@ -408,8 +263,8 @@ class _CopyableRow extends StatelessWidget {
   final IconData icon;
   final TextStyle? valueStyle;
 
-  bool get _isValid => value.isNotEmpty &&
-      value != 'Not available' && value != 'Loading…';
+  bool get _isValid =>
+      value.isNotEmpty && value != 'Not available' && value != 'Loading…';
 
   @override
   Widget build(BuildContext context) {
@@ -447,95 +302,4 @@ class _CopyableRow extends StatelessWidget {
       ],
     );
   }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 9),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-      ],
-    ),
-  );
-}
-
-class _MessageCard extends StatelessWidget {
-  const _MessageCard({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(title: Text(label), subtitle: Text(value)),
-  );
-}
-
-class _InfoMessage extends StatelessWidget {
-  const _InfoMessage({required this.text});
-  final String text;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Text(text, textAlign: TextAlign.center),
-    ),
-  );
-}
-
-class _BufferHealthCard extends StatelessWidget {
-  const _BufferHealthCard({required this.isReceiving});
-  final bool isReceiving;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = isReceiving ? 'Active' : 'Idle';
-    final color = isReceiving ? Colors.green : Colors.grey;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Status', style: TextStyle(fontWeight: FontWeight.w500)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: color.withAlpha(30), borderRadius: BorderRadius.circular(12)),
-                  child: Text(status, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (isReceiving) ...[
-              LinearProgressIndicator(
-                value: _bufferHealth(isReceiving),
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                color: _bufferColor(isReceiving),
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _bufferLabel(isReceiving),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ] else
-              Text('Start audio to monitor buffer', style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
-      ),
-    );
-  }
-
-  double _bufferHealth(bool r) => r ? 0.65 : 0;
-  Color _bufferColor(bool r) => r ? Colors.orange : Colors.grey;
-  String _bufferLabel(bool r) => r ? 'Buffer: Normal' : 'No data';
 }
