@@ -786,19 +786,33 @@ class HostController extends GetxController {
     int deltaMilliseconds,
   ) async {
     final audioService = _audioService;
-    if (audioService == null) return;
     final calibrationMicros =
         session.playbackCalibrationMicros + deltaMilliseconds * 1000;
-    final audioSession = audioService.receiverSessions
-        .cast<ReceiverSession?>()
-        .firstWhere(
-          (candidate) => candidate?.ipAddress == session.ipAddress,
-          orElse: () => null,
-        );
-    await audioService.setReceiverCalibration(
-      receiverId: audioSession?.id ?? session.id,
-      calibrationMicros: calibrationMicros,
+    // Update the control session immediately so the card reflects the button
+    // press even while the UDP/control commands are in flight.
+    final controlIndex = receiverSessions.indexWhere(
+      (item) =>
+          item.ipAddress == session.ipAddress && item.id == item.ipAddress,
     );
+    if (controlIndex != -1) {
+      receiverSessions[controlIndex] = receiverSessions[controlIndex].copyWith(
+        playbackCalibrationMicros: calibrationMicros,
+      );
+      receiverSessions.refresh();
+    }
+    final audioSession =
+        (audioService?.receiverSessions ?? const <ReceiverSession>[])
+            .cast<ReceiverSession?>()
+            .firstWhere(
+              (candidate) => candidate?.ipAddress == session.ipAddress,
+              orElse: () => null,
+            );
+    if (audioService != null) {
+      await audioService.setReceiverCalibration(
+        receiverId: audioSession?.id ?? session.id,
+        calibrationMicros: calibrationMicros,
+      );
+    }
     await _calibrationStore.write(session.id, calibrationMicros);
     final currentIndex = receiverSessions.indexWhere(
       (s) => s.ipAddress == session.ipAddress,
@@ -839,7 +853,6 @@ class HostController extends GetxController {
       status: audio.status,
       clockOffsetMicros: audio.clockOffsetMicros,
       clockDriftPpm: audio.clockDriftPpm,
-      playbackCalibrationMicros: audio.playbackCalibrationMicros,
       roundTripTimeMicros: audio.roundTripTimeMicros,
       lastSyncMicros: audio.lastSyncMicros,
     );
