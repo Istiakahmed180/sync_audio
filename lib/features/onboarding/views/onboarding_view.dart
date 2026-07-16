@@ -290,7 +290,7 @@ class _ReceiverPage extends StatelessWidget {
           const SizedBox(height: 8),
           _FeatureItem(
             icon: Icons.qr_code_rounded,
-            text: 'Scan the Host\'s QR code or enter the pairing code',
+            text: 'The Host scans your QR code, or you share the pairing code',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
@@ -367,7 +367,7 @@ class _ReadyPage extends StatelessWidget {
                 const SizedBox(height: 12),
                 _ReadyTip(
                   icon: Icons.qr_code_rounded,
-                  text: 'Scan the QR code or enter the pairing code from the Host',
+                  text: 'The Host scans your QR code to connect',
                   scheme: scheme,
                 ),
               ],
