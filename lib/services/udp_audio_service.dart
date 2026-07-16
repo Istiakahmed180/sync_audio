@@ -321,26 +321,26 @@ class UdpAudioService implements AudioStreamService {
       _setStatus(AudioStreamStatus.streaming);
     } on SocketException {
       await stopStreaming();
-      _emitError('Unable to start UDP audio. Check the network connection.');
+      _emitError('Could not open the audio port. Check your network connection.');
       _setStatus(AudioStreamStatus.error);
     } on PlatformException catch (error) {
       await stopStreaming();
       final message = switch (error.code) {
         'MEDIA_PROJECTION_DENIED' =>
-          'System audio capture permission was denied.',
+          'Permission not granted. Tap "Start" again and accept the screen recording dialog to share audio.',
         'MICROPHONE_PERMISSION_DENIED' =>
-          'Audio capture permission was denied.',
+          'Microphone access was not allowed. Tap "Start" again and accept the permission to share audio.',
         'SYSTEM_AUDIO_UNSUPPORTED' =>
-          'System audio capture requires Android 10 or newer.',
+          'This Android version is too old. Audio sharing needs Android 10 or higher.',
         'SYSTEM_AUDIO_START_FAILED' =>
-          'Unable to start system audio capture: ${error.message}',
-        _ => 'Unable to start system audio capture: ${error.message}',
+          'Could not start audio sharing. ${error.message}. Please try again.',
+        _ => 'Could not start audio sharing. ${error.message}. Please try again.',
       };
       _emitError(message);
       _setStatus(AudioStreamStatus.error);
     } catch (error) {
       await stopStreaming();
-      _emitError('Unable to start system audio capture: $error');
+      _emitError('Could not start audio sharing. Please try again.');
       _setStatus(AudioStreamStatus.error);
     }
   }
@@ -440,7 +440,7 @@ class UdpAudioService implements AudioStreamService {
 
   Future<void> _handleCaptureError(Object error) async {
     await stopStreaming();
-    _emitError('System audio capture failed: $error');
+    _emitError('Audio sharing stopped unexpectedly. Please try again.');
     _setStatus(AudioStreamStatus.error);
   }
 
@@ -642,11 +642,11 @@ class UdpAudioService implements AudioStreamService {
       _udpSubscription = _socket!.listen(_handleReceiverSocketEvent);
     } on SocketException {
       await stopReceiver();
-      _emitError('Unable to start the UDP audio receiver. Port may be in use.');
+      _emitError('Could not open the audio port. Try restarting the app.');
       _setStatus(AudioStreamStatus.error);
     } catch (error) {
       await stopReceiver();
-      _emitError('Unable to initialize Android audio playback: $error');
+      _emitError('Could not start audio playback. Please try again.');
       _setStatus(AudioStreamStatus.error);
     }
   }

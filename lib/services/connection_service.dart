@@ -142,7 +142,7 @@ class TcpConnectionService implements ConnectionService {
       _emitError(
         _friendlySocketError(
           error,
-          'Unable to start the receiver server',
+          'Could not start the Receiver server',
           port,
         ),
       );
@@ -201,7 +201,7 @@ class TcpConnectionService implements ConnectionService {
             receiverId: id,
             token: _pairingTokens[id] ?? _pairingToken,
           ).catchError((_) {
-            _emitError('Handshake with receiver $id failed.');
+            _emitError('Connection to receiver failed. Check the pairing code and try again.');
             _handleSocketClosed(id, socket);
           }),
         );
@@ -278,13 +278,13 @@ class TcpConnectionService implements ConnectionService {
         socket.destroy();
       }
     } on SocketException {
-      _emitError('Unable to connect to ${target.ipAddress}:${target.port}.');
+      _emitError('Could not connect to ${target.ipAddress}:${target.port}. Check the address and try again.');
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
       if (_establishedConnections.contains(id)) _scheduleReconnect(id);
     } on TimeoutException {
-      _emitError('Connection to ${target.ipAddress} timed out.');
+      _emitError('Connection to ${target.ipAddress} timed out. Make sure the device is on the same Wi‑Fi network.');
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
@@ -376,7 +376,7 @@ class TcpConnectionService implements ConnectionService {
   }) async {
     final socket = _sockets[receiverId];
     if (socket == null) {
-      _emitError('Receiver $receiverId is not connected.');
+      _emitError('Receiver is not connected.');
       return;
     }
     try {
@@ -384,7 +384,7 @@ class TcpConnectionService implements ConnectionService {
       await socket.flush();
     } on SocketException catch (error) {
       _emitError(
-        _friendlySocketError(error, 'Unable to send the message', socket.remotePort),
+          _friendlySocketError(error, 'Could not send the message', socket.remotePort),
       );
       await _handleSocketClosed(receiverId, socket);
     }
@@ -479,7 +479,7 @@ class TcpConnectionService implements ConnectionService {
       case ControlCommandType.error:
         if (command.arguments.firstOrNull == 'PAIRING_REQUIRED') {
           _emitError(
-            'Pairing rejected by receiver. Check the pairing code and connect again.',
+            'Wrong pairing code. Check the code on the Receiver and try again.',
           );
           await disconnectFrom(sourceId);
         }
@@ -649,7 +649,7 @@ class TcpConnectionService implements ConnectionService {
   }
 
   void _handleServerError(Object error) =>
-      _emitError('The receiver server encountered a socket error.');
+      _emitError('Receiver server lost the connection. Tap Stop and Start again.');
 
   void _handleServerDone() {
     _serverRunning = false;
@@ -693,13 +693,13 @@ class TcpConnectionService implements ConnectionService {
   ) {
     if (error.osError?.errorCode == 111 ||
         error.message.toLowerCase().contains('refused')) {
-      return 'Connection refused on port $port.';
+      return 'Cannot connect on port $port. Make sure the Receiver is running.';
     }
     if (error.osError?.errorCode == 98 ||
         error.message.toLowerCase().contains('address already in use')) {
-      return 'Port $port is already in use.';
+      return 'Port $port is in use. Try restarting the app.';
     }
-    return '$fallback. Check the IP address, port, and Wi-Fi connection.';
+    return '$fallback. Check the IP address, port, and Wi‑Fi connection.';
   }
 
   Future<void> dispose() async {
