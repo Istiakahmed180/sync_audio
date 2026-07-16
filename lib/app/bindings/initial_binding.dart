@@ -10,6 +10,7 @@ import '../../services/device_discovery_service.dart';
 import '../../services/synchronization_service.dart';
 import '../../services/calibration_store.dart';
 import '../../services/pairing_store.dart';
+import '../../services/scheduled_streaming_service.dart';
 import '../../services/native_audio_runtime.dart';
 import '../../services/ios_audio_capture_service.dart';
 import '../../services/ios_audio_playback_service.dart';
@@ -40,6 +41,8 @@ class InitialBinding extends Bindings {
     Get.lazyPut<CalibrationStore>(SharedPrefsCalibrationStore.new, fenix: true);
     Get.lazyPut<PairingStore>(SharedPrefsPairingStore.new, fenix: true);
     Get.lazyPut<NativeAudioRuntime>(NativeAudioRuntime.new, fenix: true);
+    Get.lazyPut<ScheduledStreamingService>(
+      ScheduledStreamingService.new, fenix: true);
   }
 
   static AudioCaptureService _captureServiceFactory() {

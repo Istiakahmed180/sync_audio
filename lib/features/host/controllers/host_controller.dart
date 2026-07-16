@@ -16,6 +16,7 @@ import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/paired_device_store.dart';
+import '../../../services/scheduled_streaming_service.dart';
 import '../../../shared/widgets/app_error_notifier.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 import '../../../services/udp_audio_service.dart';
@@ -252,6 +253,9 @@ class HostController extends GetxController {
         (_) => unawaited(_refreshDiagnostics(audioService)),
       );
     }
+    if (Get.isRegistered<ScheduledStreamingService>()) {
+      Get.find<ScheduledStreamingService>().start();
+    }
   }
 
   void startDiscoveryPolling() {
@@ -275,7 +279,10 @@ class HostController extends GetxController {
 
   void toggleDiscoveryPolling() {
     if (isDiscoveryPolling.value) {
-      stopDiscoveryPolling();
+    stopDiscoveryPolling();
+    if (Get.isRegistered<ScheduledStreamingService>()) {
+      Get.find<ScheduledStreamingService>().stop();
+    }
     } else {
       startDiscoveryPolling();
     }

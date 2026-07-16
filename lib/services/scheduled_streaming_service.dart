@@ -1,0 +1,120 @@
+import 'dart:async';
+
+import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../features/host/controllers/host_controller.dart';
+import '../models/audio_stream_status.dart';
+import '../models/connection_status.dart';
+
+class ScheduledStreamingService {
+  Timer? _timer;
+  bool _wasStreamingBySchedule = false;
+  DateTime? _lastScheduledStart;
+
+  static const _checkInterval = Duration(seconds: 30);
+
+  Future<({bool enabled, int startH, int startM, int stopH, int stopM})?>
+      _loadSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('scheduled_enabled') ?? false;
+    if (!enabled) return null;
+    final startH = prefs.getInt('sched_start_hour') ?? 8;
+    final startM = prefs.getInt('sched_start_min') ?? 0;
+    final stopH = prefs.getInt('sched_stop_hour') ?? 22;
+    final stopM = prefs.getInt('sched_stop_min') ?? 0;
+    return (enabled: enabled, startH: startH, startM: startM, stopH: stopH, stopM: stopM);
+  }
+
+  bool _inWindow(int startH, int startM, int stopH, int stopM) {
+    final now = DateTime.now();
+    var start = DateTime(now.year, now.month, now.day, startH, startM);
+    var stop = DateTime(now.year, now.month, now.day, stopH, stopM);
+    if (start.isAfter(stop)) {
+      stop = stop.add(const Duration(days: 1));
+    }
+    if (now.isAfter(stop)) {
+      start = start.add(const Duration(days: 1));
+      stop = stop.add(const Duration(days: 1));
+    }
+    if (now.isAtSameMomentAs(start) || now.isAfter(start)) {
+      stop = DateTime(now.year, now.month, now.day, stopH, stopM);
+      if (start.isAfter(stop)) {
+        stop = stop.add(const Duration(days: 1));
+      }
+      if (now.isBefore(stop)) return true;
+    }
+    return false;
+  }
+
+  void start() {
+    _timer?.cancel();
+    _wasStreamingBySchedule = false;
+    _timer = Timer.periodic(_checkInterval, (_) {
+      unawaited(_checkAndApply());
+    });
+  }
+
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+    _wasStreamingBySchedule = false;
+  }
+
+  Future<void> _checkAndApply() async {
+    try {
+      final schedule = await _loadSchedule();
+      if (schedule == null) {
+        if (_wasStreamingBySchedule) {
+          await _stopHostAudio();
+          _wasStreamingBySchedule = false;
+        }
+        return;
+      }
+
+      final inWindow = _inWindow(
+        schedule.startH,
+        schedule.startM,
+        schedule.stopH,
+        schedule.stopM,
+      );
+
+      if (!Get.isRegistered<HostController>()) return;
+
+      final host = Get.find<HostController>();
+      if (!host.isConnected) return;
+
+      final isStreaming =
+          host.audioStatus.value == AudioStreamStatus.streaming;
+      final isConnecting =
+          host.connectionStatus.value == ConnectionStatus.connecting;
+
+      if (inWindow && !isStreaming && !isConnecting) {
+        if (_lastScheduledStart != null) {
+          final elapsed = DateTime.now().difference(_lastScheduledStart!);
+          if (elapsed < const Duration(minutes: 5)) return;
+        }
+        _lastScheduledStart = DateTime.now();
+        await host.startSystemAudioStream();
+        if (host.audioStatus.value == AudioStreamStatus.streaming) {
+          _wasStreamingBySchedule = true;
+        }
+      } else if (!inWindow && isStreaming && _wasStreamingBySchedule) {
+        await host.stopSystemAudioStream();
+        _wasStreamingBySchedule = false;
+      }
+    } catch (_) {
+      // Scheduling is best-effort; never crash the app.
+    }
+  }
+
+  Future<void> _stopHostAudio() async {
+    try {
+      if (!Get.isRegistered<HostController>()) return;
+      final host = Get.find<HostController>();
+      if (host.audioStatus.value == AudioStreamStatus.streaming) {
+        await host.stopSystemAudioStream();
+      }
+    } catch (_) {}
+  }
+}
