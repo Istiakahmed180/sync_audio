@@ -70,8 +70,7 @@ class ReceiverView extends GetView<ReceiverController> {
             ),
             const SizedBox(height: 20),
             Obx(
-              () => controller.audioStatus.value ==
-                      AudioStreamStatus.receiving
+              () => controller.audioStatus.value == AudioStreamStatus.receiving
                   ? _AudioReceivingCard(
                       audioStatus: controller.audioStatus.value,
                     )
@@ -81,8 +80,8 @@ class ReceiverView extends GetView<ReceiverController> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: TextFormField(
-                initialValue: controller.deviceName.value,
-                onChanged: (value) => controller.deviceName.value = value,
+                controller: controller.deviceNameController,
+                onChanged: controller.setDeviceName,
                 decoration: const InputDecoration(
                   labelText: 'Your device name',
                   hintText: 'Living Room Speaker',
@@ -352,15 +351,20 @@ class _AudioReceivingCard extends StatelessWidget {
                       ),
                       const Spacer(),
                       if (isReceiving) ...[
-                        Icon(Icons.fiber_manual_record, size: 8, color: Colors.red.shade400),
+                        Icon(
+                          Icons.fiber_manual_record,
+                          size: 8,
+                          color: Colors.red.shade400,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           'LIVE',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Colors.red.shade400,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.5,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Colors.red.shade400,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
                         ),
                       ],
                     ],
@@ -374,9 +378,7 @@ class _AudioReceivingCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Audio is playing in sync from the Host.',
-                  ),
+                  const Text('Audio is playing in sync from the Host.'),
                 ],
               ),
             ),

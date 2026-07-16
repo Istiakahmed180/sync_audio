@@ -43,6 +43,7 @@ class ReceiverSession {
     required this.id,
     required this.ipAddress,
     required this.port,
+    this.deviceName,
     this.status = ReceiverSessionStatus.configured,
     this.controlStatus = ControlConnectionStatus.disconnected,
     this.clockOffsetMicros = 0,
@@ -56,6 +57,7 @@ class ReceiverSession {
   final String id;
   final String ipAddress;
   final int port;
+  final String? deviceName;
   final ReceiverSessionStatus status;
   final ControlConnectionStatus controlStatus;
   final int clockOffsetMicros;
@@ -69,6 +71,7 @@ class ReceiverSession {
     String? id,
     String? ipAddress,
     int? port,
+    String? deviceName,
     ReceiverSessionStatus? status,
     ControlConnectionStatus? controlStatus,
     int? clockOffsetMicros,
@@ -81,6 +84,7 @@ class ReceiverSession {
     id: id ?? this.id,
     ipAddress: ipAddress ?? this.ipAddress,
     port: port ?? this.port,
+    deviceName: deviceName ?? this.deviceName,
     status: status ?? this.status,
     controlStatus: controlStatus ?? this.controlStatus,
     clockOffsetMicros: clockOffsetMicros ?? this.clockOffsetMicros,
@@ -98,6 +102,7 @@ class ReceiverSession {
       id == other.id &&
       ipAddress == other.ipAddress &&
       port == other.port &&
+      deviceName == other.deviceName &&
       status == other.status &&
       controlStatus == other.controlStatus &&
       clockOffsetMicros == other.clockOffsetMicros &&
@@ -112,6 +117,7 @@ class ReceiverSession {
     id,
     ipAddress,
     port,
+    deviceName,
     status,
     controlStatus,
     clockOffsetMicros,

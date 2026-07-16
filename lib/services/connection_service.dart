@@ -56,6 +56,14 @@ abstract class ConnectionService {
   void setPairingTokens(Map<String, String> tokens);
 }
 
+extension ConnectionServiceDeviceName on ConnectionService {
+  void setLocalDeviceName(String name) {
+    if (this is TcpConnectionService) {
+      (this as TcpConnectionService).setLocalDeviceName(name);
+    }
+  }
+}
+
 class TcpConnectionService implements ConnectionService {
   TcpConnectionService({IpAddressService? ipAddressService})
     : _ipAddressService = ipAddressService ?? IpAddressService();
@@ -85,6 +93,7 @@ class TcpConnectionService implements ConnectionService {
       'sync-${DateTime.now().microsecondsSinceEpoch}';
   int _pingSequence = 0;
   String? _pairingToken;
+  String _localDeviceName = 'Receiver';
   final Map<String, String> _pairingTokens = <String, String>{};
 
   ServerSocket? _server;
@@ -187,8 +196,9 @@ class TcpConnectionService implements ConnectionService {
         .transform(const LineSplitter())
         .listen(
           (line) {
-            _lineQueues[id] = (_lineQueues[id] ?? Future.value())
-                .then((_) => _handleLine(id, line));
+            _lineQueues[id] = (_lineQueues[id] ?? Future.value()).then(
+              (_) => _handleLine(id, line),
+            );
           },
           onError: (_) => _handleSocketClosed(id, socket),
           onDone: () => _handleSocketClosed(id, socket),
@@ -201,7 +211,9 @@ class TcpConnectionService implements ConnectionService {
             receiverId: id,
             token: _pairingTokens[id] ?? _pairingToken,
           ).catchError((_) {
-            _emitError('Connection to receiver failed. Check the pairing code and try again.');
+            _emitError(
+              'Connection to receiver failed. Check the pairing code and try again.',
+            );
             _handleSocketClosed(id, socket);
           }),
         );
@@ -278,13 +290,17 @@ class TcpConnectionService implements ConnectionService {
         socket.destroy();
       }
     } on SocketException {
-      _emitError('Could not connect to ${target.ipAddress}:${target.port}. Check the address and try again.');
+      _emitError(
+        'Could not connect to ${target.ipAddress}:${target.port}. Check the address and try again.',
+      );
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
       if (_establishedConnections.contains(id)) _scheduleReconnect(id);
     } on TimeoutException {
-      _emitError('Connection to ${target.ipAddress} timed out. Make sure the device is on the same Wi‑Fi network.');
+      _emitError(
+        'Connection to ${target.ipAddress} timed out. Make sure the device is on the same Wi‑Fi network.',
+      );
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
@@ -384,7 +400,11 @@ class TcpConnectionService implements ConnectionService {
       await socket.flush();
     } on SocketException catch (error) {
       _emitError(
-          _friendlySocketError(error, 'Could not send the message', socket.remotePort),
+        _friendlySocketError(
+          error,
+          'Could not send the message',
+          socket.remotePort,
+        ),
       );
       await _handleSocketClosed(receiverId, socket);
     }
@@ -451,7 +471,7 @@ class TcpConnectionService implements ConnectionService {
           receiverId: sourceId,
           message: ControlCommand(
             type: ControlCommandType.helloAck,
-            arguments: [command.arguments.first],
+            arguments: [command.arguments.first, _localDeviceName],
           ).line,
         );
         if (command.arguments.length == 2 && _pairingToken != null) {
@@ -482,6 +502,20 @@ class TcpConnectionService implements ConnectionService {
             'Wrong pairing code. Check the code on the Receiver and try again.',
           );
           await disconnectFrom(sourceId);
+        }
+      case ControlCommandType.helloAck:
+        final session = _sessions[sourceId];
+        final name = command.arguments.length > 1
+            ? command.arguments[1].trim()
+            : '';
+        if (session != null && name.isNotEmpty) {
+          _updateSession(session.copyWith(deviceName: name));
+        }
+      case ControlCommandType.setDeviceName:
+        final session = _sessions[sourceId];
+        final name = command.arguments.first.trim();
+        if (session != null && name.isNotEmpty) {
+          _updateSession(session.copyWith(deviceName: name));
         }
       default:
         break;
@@ -523,8 +557,7 @@ class TcpConnectionService implements ConnectionService {
 
   @override
   void setPairingToken(String? token) {
-    _pairingToken =
-        token == null || token.trim().isEmpty ? null : token.trim();
+    _pairingToken = token == null || token.trim().isEmpty ? null : token.trim();
   }
 
   @override
@@ -532,6 +565,11 @@ class TcpConnectionService implements ConnectionService {
     _pairingTokens
       ..clear()
       ..addAll(tokens.map((key, value) => MapEntry(key, value.trim())));
+  }
+
+  void setLocalDeviceName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isNotEmpty) _localDeviceName = trimmed;
   }
 
   void _evictStalePings() {
@@ -648,8 +686,9 @@ class TcpConnectionService implements ConnectionService {
     _pendingPings.clear();
   }
 
-  void _handleServerError(Object error) =>
-      _emitError('Receiver server lost the connection. Tap Stop and Start again.');
+  void _handleServerError(Object error) => _emitError(
+    'Receiver server lost the connection. Tap Stop and Start again.',
+  );
 
   void _handleServerDone() {
     _serverRunning = false;

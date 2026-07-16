@@ -8,6 +8,7 @@ enum ControlCommandType {
   streamStop,
   setPlaybackOffset,
   setPlaybackVolume,
+  setDeviceName,
   bufferStatus,
   error,
 }
@@ -23,6 +24,7 @@ extension ControlCommandTypeWireName on ControlCommandType {
     ControlCommandType.streamStop => 'STREAM_STOP',
     ControlCommandType.setPlaybackOffset => 'SET_PLAYBACK_OFFSET',
     ControlCommandType.setPlaybackVolume => 'SET_PLAYBACK_VOLUME',
+    ControlCommandType.setDeviceName => 'SET_DEVICE_NAME',
     ControlCommandType.bufferStatus => 'BUFFER_STATUS',
     ControlCommandType.error => 'ERROR',
   };
@@ -54,7 +56,7 @@ class ControlCommand {
 
   static bool _hasValidArgumentCount(ControlCommandType type, int count) =>
       switch (type) {
-        ControlCommandType.helloAck => count == 1,
+        ControlCommandType.helloAck => count == 1 || count == 2,
         ControlCommandType.hello => count == 1 || count == 2,
         ControlCommandType.ping => count == 2,
         ControlCommandType.pong => count == 3,
@@ -63,6 +65,7 @@ class ControlCommand {
         ControlCommandType.streamStop => count == 1,
         ControlCommandType.setPlaybackOffset => count == 1,
         ControlCommandType.setPlaybackVolume => count == 1,
+        ControlCommandType.setDeviceName => count == 1,
         ControlCommandType.bufferStatus => count == 2,
         ControlCommandType.error => count >= 2,
       };

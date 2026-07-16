@@ -93,6 +93,13 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/device_info")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getDeviceName" -> result.success("${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, nativeAudioChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

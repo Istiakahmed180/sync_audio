@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../../app/constants/app_constants.dart';
@@ -20,6 +21,7 @@ import '../../../shared/widgets/app_error_notifier.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 
 class ReceiverController extends GetxController {
+  static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
   ReceiverController({
     ConnectionService? connectionService,
     AudioStreamService? audioService,
@@ -64,6 +66,7 @@ class ReceiverController extends GetxController {
   final lastSyncPing = ''.obs;
   final errorMessage = RxnString();
   final messageController = TextEditingController();
+  final deviceNameController = TextEditingController(text: 'My Speaker');
   final lastSentMessage = ''.obs;
   final audioStatus = AudioStreamStatus.idle.obs;
   final isAudioReceiverRunning = false.obs;
@@ -92,6 +95,7 @@ class ReceiverController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    unawaited(_loadDeviceName());
     // The connection service is app-scoped. Re-entering this screen should
     // reflect an already-running receiver instead of resetting the UI.
     connectionStatus.value = _service.status;
@@ -169,6 +173,24 @@ class ReceiverController extends GetxController {
     }
   }
 
+  Future<void> _loadDeviceName() async {
+    try {
+      final name = await _deviceInfoChannel.invokeMethod<String>(
+        'getDeviceName',
+      );
+      if (name != null &&
+          name.trim().isNotEmpty &&
+          deviceName.value == 'My Speaker') {
+        setDeviceName(name.trim());
+        deviceNameController.text = name.trim();
+      }
+    } on MissingPluginException {
+      // Non-Android platforms keep the editable fallback name.
+    } catch (_) {
+      // Device name is cosmetic; keep the fallback if it is unavailable.
+    }
+  }
+
   Future<void> _loadPairingToken() async {
     try {
       final existing = await _pairingStore.readToken();
@@ -189,6 +211,24 @@ class ReceiverController extends GetxController {
     }
   }
 
+  void setDeviceName(String value) {
+    deviceName.value = value;
+    _service.setLocalDeviceName(value);
+    final hostId = _hostSessionId;
+    final name = value.trim();
+    if (hostId != null && name.isNotEmpty) {
+      unawaited(
+        _service.sendControlCommand(
+          receiverId: hostId,
+          command: ControlCommand(
+            type: ControlCommandType.setDeviceName,
+            arguments: [name],
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> startServer() async {
     if (isServerRunning.value) {
       errorMessage.value = 'The receiver server is already running.';
@@ -196,6 +236,7 @@ class ReceiverController extends GetxController {
     }
     errorMessage.value = null;
     await _pairingReady;
+    _service.setLocalDeviceName(deviceName.value);
     final address = await _service.startServer(port: defaultPort);
     localIpAddress.value = address ?? 'Not available';
     isServerRunning.value = _service.isServerRunning;
@@ -467,6 +508,7 @@ class ReceiverController extends GetxController {
 
   @override
   void onClose() {
+    deviceNameController.dispose();
     _messageSubscription.cancel();
     _statusSubscription.cancel();
     _errorSubscription.cancel();
