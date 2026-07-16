@@ -150,8 +150,8 @@ class _WelcomePage extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             'Turn multiple devices into a synchronized speaker system. '
-            'Stream audio from one device and play it in perfect sync '
-            'across all your other devices.',
+            'Play music on one Android phone and hear it from every '
+            'other device at the same time.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: scheme.onSurfaceVariant,
@@ -190,7 +190,7 @@ class _HostPage extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           Text(
-            'The Host',
+            'Host — send audio',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
@@ -204,28 +204,28 @@ class _HostPage extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              'Use one Android device as the audio source. '
-              'The Host captures system audio and streams it '
-              'to all connected Receivers simultaneously.',
+              'The Host is the device that has the audio you want to share — '
+              'like music, a video, or a podcast. It captures whatever is '
+              'playing and sends it to every Receiver at the same time.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
           ),
           const SizedBox(height: 16),
           _FeatureItem(
             icon: Icons.android_rounded,
-            text: 'Android device with audio capture',
+            text: 'Android only — captures system audio from any app',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
           _FeatureItem(
             icon: Icons.wifi_rounded,
-            text: 'Broadcasts audio over local Wi‑Fi',
+            text: 'Sends audio over your local Wi‑Fi network',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
           _FeatureItem(
-            icon: Icons.connect_without_contact_rounded,
-            text: 'Pairs securely with each Receiver',
+            icon: Icons.pin_rounded,
+            text: 'Shows a pairing code that Receivers use to connect',
             scheme: scheme,
           ),
         ],
@@ -261,7 +261,7 @@ class _ReceiverPage extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           Text(
-            'The Receiver',
+            'Receiver — play audio',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
@@ -275,28 +275,28 @@ class _ReceiverPage extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              'Connect one or more devices as Receivers. '
-              'Each Receiver plays back the Host\'s audio '
-              'in real‑time synchronization.',
+              'Receivers are the speakers — any other phone, tablet, or '
+              'computer that plays back the Host\'s audio. You can connect '
+              'as many Receivers as you want, and they all stay in sync.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
           ),
           const SizedBox(height: 16),
           _FeatureItem(
             icon: Icons.devices_rounded,
-            text: 'Any Android, iOS, or desktop device',
-            scheme: scheme,
-          ),
-          const SizedBox(height: 8),
-          _FeatureItem(
-            icon: Icons.sync_rounded,
-            text: 'Low‑latency synchronized playback',
+            text: 'Works on Android, iOS, macOS, Windows, and Linux',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
           _FeatureItem(
             icon: Icons.qr_code_rounded,
-            text: 'Pair via QR code or pairing code',
+            text: 'Scan the Host\'s QR code or enter the pairing code',
+            scheme: scheme,
+          ),
+          const SizedBox(height: 8),
+          _FeatureItem(
+            icon: Icons.sync_rounded,
+            text: 'Plays audio in sync — all Receivers stay together',
             scheme: scheme,
           ),
         ],
@@ -349,25 +349,25 @@ class _ReadyPage extends StatelessWidget {
               children: [
                 _ReadyTip(
                   icon: Icons.wifi_rounded,
-                  text: 'Make sure all devices are on the same Wi‑Fi network',
+                  text: 'Connect all devices to the same Wi‑Fi network',
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
                 _ReadyTip(
-                  icon: Icons.android_rounded,
-                  text: 'Open the app on one Android device and select Host',
+                  icon: Icons.wifi_tethering_rounded,
+                  text: 'On your Android phone, tap "Host Device" to start sharing audio',
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
                 _ReadyTip(
-                  icon: Icons.speaker_rounded,
-                  text: 'Open the app on other devices and select Receiver',
+                  icon: Icons.speaker_group_rounded,
+                  text: 'On every other device, tap "Receiver Device" to join',
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
                 _ReadyTip(
-                  icon: Icons.pin_rounded,
-                  text: 'Enter the pairing code shown on the Host to connect',
+                  icon: Icons.qr_code_rounded,
+                  text: 'Scan the QR code or enter the pairing code from the Host',
                   scheme: scheme,
                 ),
               ],

@@ -47,14 +47,14 @@ class HomeView extends GetView<HomeController> {
             const SizedBox(height: 12),
             ModeSelectionCard(
               title: 'Host Device',
-              description: 'Send audio to connected receiver devices.',
+              description: 'Android only. Capture and send audio to all Receivers.',
               icon: Icons.wifi_tethering_rounded,
               onTap: () => Get.toNamed(AppRoutes.host),
             ),
             const SizedBox(height: 12),
             ModeSelectionCard(
               title: 'Receiver Device',
-              description: 'Receive and play audio from a host device.',
+              description: 'Join as a speaker — play the Host\'s audio in sync.',
               icon: Icons.speaker_group_rounded,
               onTap: () => Get.toNamed(AppRoutes.receiver),
             ),
