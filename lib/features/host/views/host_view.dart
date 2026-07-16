@@ -81,64 +81,28 @@ class HostView extends GetView<HostController> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('Scan QR'),
-                    onPressed: () async {
-                      final data = await Navigator.of(context).push<String>(
-                        MaterialPageRoute(
-                          builder: (_) => const QrScannerView(),
-                        ),
-                      );
-                      if (data != null && context.mounted) {
-                        controller.addReceiverFromQrData(data);
-                      }
-                    },
-                  ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Use the IP address and pairing code shown on the Receiver screen.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
               const SizedBox(height: 12),
-              TextField(
-                controller: controller.receiverIpInputController,
-                keyboardType: TextInputType.number,
-                onSubmitted: (_) => controller.addReceiverIp(),
-                decoration: InputDecoration(
-                  labelText: 'Receiver IP address',
-                  hintText: '192.168.1.10',
-                  suffixIcon: IconButton(
-                    tooltip: 'Add receiver',
-                    onPressed: controller.addReceiverIp,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
+              FilledButton.icon(
+                onPressed: () async {
+                  final data = await Navigator.of(context).push<String>(
+                    MaterialPageRoute(
+                      builder: (_) => const QrScannerView(),
+                    ),
+                  );
+                  if (data != null && context.mounted) {
+                    controller.addReceiverFromQrData(data);
+                  }
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scan QR Code'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller.pairingTokenController,
-                keyboardType: TextInputType.number,
-                maxLength: 8,
-                decoration: const InputDecoration(
-                  labelText: 'Receiver pairing code (required)',
-                  hintText: '12345678',
-                  counterText: '',
-                  helperText:
-                      'This code will be assigned to the next Receiver you add.',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller.portController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Port',
-                  hintText: '5050',
-                ),
-              ),
+              const SizedBox(height: 8),
+              _ManualSetupSection(controller: controller),
               const SizedBox(height: 12),
               Obx(
                 () => Column(
@@ -396,6 +360,101 @@ class _HostDiscoveryLifecycleState extends State<_HostDiscoveryLifecycle> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+class _ManualSetupSection extends StatefulWidget {
+  const _ManualSetupSection({required this.controller});
+  final HostController controller;
+
+  @override
+  State<_ManualSetupSection> createState() => _ManualSetupSectionState();
+}
+
+class _ManualSetupSectionState extends State<_ManualSetupSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextButton.icon(
+          onPressed: () => setState(() => _expanded = !_expanded),
+          icon: Icon(
+            _expanded ? Icons.expand_less_rounded : Icons.add_rounded,
+            size: 18,
+          ),
+          label: Text(_expanded ? 'Hide manual setup' : 'Add manually'),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: _ManualEntryForm(controller: widget.controller),
+          crossFadeState:
+              _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+        ),
+      ],
+    );
+  }
+}
+
+class _ManualEntryForm extends StatelessWidget {
+  const _ManualEntryForm({required this.controller});
+  final HostController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        children: [
+          Text(
+            'Enter the IP address and pairing code shown on the Receiver screen.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller.receiverIpInputController,
+            keyboardType: TextInputType.number,
+            onSubmitted: (_) => controller.addReceiverIp(),
+            decoration: InputDecoration(
+              labelText: 'Receiver IP address',
+              hintText: '192.168.1.10',
+              suffixIcon: IconButton(
+                tooltip: 'Add receiver',
+                onPressed: controller.addReceiverIp,
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller.pairingTokenController,
+            keyboardType: TextInputType.number,
+            maxLength: 8,
+            decoration: const InputDecoration(
+              labelText: 'Receiver pairing code (required)',
+              hintText: '12345678',
+              counterText: '',
+              helperText:
+                  'This code will be assigned to the next Receiver you add.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller.portController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Port',
+              hintText: '5050',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ReceiverTargetCard extends StatelessWidget {
