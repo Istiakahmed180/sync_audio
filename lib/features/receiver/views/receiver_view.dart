@@ -204,7 +204,7 @@ class _ConnectionInfoCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Scan this QR code from the Host device',
+                'Show this QR code to the Host device to connect',
                 style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
