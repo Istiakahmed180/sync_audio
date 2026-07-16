@@ -50,6 +50,7 @@ class ScheduledStreamingService {
   void start() {
     _timer?.cancel();
     _wasStreamingBySchedule = false;
+    unawaited(_checkAndApply());
     _timer = Timer.periodic(_checkInterval, (_) {
       unawaited(_checkAndApply());
     });
