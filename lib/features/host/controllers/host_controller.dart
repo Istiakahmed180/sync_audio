@@ -682,7 +682,17 @@ class HostController extends GetxController {
     isDiscoveringReceivers.value = true;
     try {
       final devices = await _discoveryService.discover();
+      final localAddresses = await _localIpv4Addresses();
+      for (final address
+          in configuredReceiverIps.where(localAddresses.contains).toList()) {
+        configuredReceiverIps.remove(address);
+        receiverPairingControllers.remove(address)?.dispose();
+      }
       for (final device in devices) {
+        // A UDP discovery response can contain the request sender's address
+        // on some Android/network stacks. Never show the Host itself as a
+        // Receiver, even if the responder returned a wrong address.
+        if (localAddresses.contains(device.ipAddress)) continue;
         if (!configuredReceiverIps.contains(device.ipAddress)) {
           configuredReceiverIps.add(device.ipAddress);
           receiverPairingControllers[device.ipAddress] =
@@ -703,6 +713,21 @@ class HostController extends GetxController {
     } finally {
       _discoveryInProgress = false;
       isDiscoveringReceivers.value = false;
+    }
+  }
+
+  Future<Set<String>> _localIpv4Addresses() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      return interfaces
+          .expand((interface) => interface.addresses)
+          .map((address) => address.address)
+          .toSet();
+    } catch (_) {
+      return const <String>{};
     }
   }
 

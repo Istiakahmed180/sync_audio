@@ -32,6 +32,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
   String? _deviceId;
   String? _deviceName;
   int? _controlPort;
+  String? _responderAddress;
 
   @override
   Future<List<AudioDevice>> discover({
@@ -125,10 +126,10 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       discoveryPort,
       reuseAddress: true,
     );
-    // Resolve the preferred address before starting the responder so custom
-    // address providers retain their validation behavior. The actual reply
-    // address is taken from the receiving interface below.
-    await _ipAddressService.findPrivateIpv4Address();
+    // Resolve the Receiver address before starting the responder. The
+    // datagram's address below is the request sender (the Host), not the
+    // local Receiver address.
+    _responderAddress = await _ipAddressService.findPrivateIpv4Address();
     _deviceId = deviceId;
     _deviceName = deviceName;
     _controlPort = controlPort;
@@ -143,9 +144,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
           _response,
           _deviceId,
           _deviceName,
-          // Use the address of the interface that received the request. This
-          // matters on phones with Wi-Fi, VPN, and mobile interfaces enabled.
-          datagram.address.address,
+          _responderAddress ?? datagram.address.address,
           '$_controlPort',
           request[1],
         ].join('|');
@@ -160,6 +159,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     _responderSubscription = null;
     _responder?.close();
     _responder = null;
+    _responderAddress = null;
   }
 }
 
