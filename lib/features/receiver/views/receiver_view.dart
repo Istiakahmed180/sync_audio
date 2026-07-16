@@ -74,13 +74,6 @@ class ReceiverView extends GetView<ReceiverController> {
             ),
             const SizedBox(height: 12),
             Obx(
-              () => _ConnectionInfoCard(
-                deviceName: controller.deviceName.value,
-                ipAddress: controller.localIpAddress.value,
-                pairingCode: controller.pairingToken.value,
-              ),
-            ),
-            Obx(
               () => AppPrimaryButton(
                 label:
                     controller.connectionStatus.value ==
@@ -106,13 +99,12 @@ class ReceiverView extends GetView<ReceiverController> {
                     : null,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Obx(
-              () => Text(
-                controller.isServerRunning.value
-                    ? 'This Receiver is discoverable and ready for a Host connection.'
-                    : 'Start Receiver to open the control and audio listeners.',
-                style: Theme.of(context).textTheme.bodySmall,
+              () => _ConnectionInfoCard(
+                deviceName: controller.deviceName.value,
+                ipAddress: controller.localIpAddress.value,
+                pairingCode: controller.pairingToken.value,
               ),
             ),
           ],
@@ -209,7 +201,7 @@ class _ConnectionInfoCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Give this code to the Host. It is required before a connection can be accepted.',
+              'The Host needs this pairing code to connect.',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
