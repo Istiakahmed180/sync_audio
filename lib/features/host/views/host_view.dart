@@ -172,20 +172,24 @@ class HostView extends GetView<HostController> {
                 alignment: Alignment.centerLeft,
                 child: Obx(
                   () => TextButton.icon(
-                    onPressed: controller.isDiscoveringReceivers.value
-                        ? null
-                        : controller.discoverReceivers,
+                    onPressed: controller.toggleDiscoveryPolling,
                     icon: controller.isDiscoveringReceivers.value
                         ? const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.wifi_find_rounded),
+                        : Icon(
+                            controller.isDiscoveryPolling.value
+                                ? Icons.stop_circle_outlined
+                                : Icons.wifi_find_rounded,
+                          ),
                     label: Text(
                       controller.isDiscoveringReceivers.value
                           ? 'Searching…'
-                          : 'Search again',
+                          : controller.isDiscoveryPolling.value
+                          ? 'Stop search'
+                          : 'Search',
                     ),
                   ),
                 ),
@@ -374,7 +378,6 @@ class _HostDiscoveryLifecycleState extends State<_HostDiscoveryLifecycle> {
   @override
   void initState() {
     super.initState();
-    widget.controller.startDiscoveryPolling();
   }
 
   @override

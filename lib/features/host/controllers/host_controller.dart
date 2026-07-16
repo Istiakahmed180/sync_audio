@@ -67,7 +67,8 @@ class HostController extends GetxController {
   final audioStatus = AudioStreamStatus.idle.obs;
   final receiverCount = 0.obs;
   final isDiscoveringReceivers = false.obs;
-  final discoveryStatus = 'Searching for Receivers…'.obs;
+  final isDiscoveryPolling = false.obs;
+  final discoveryStatus = 'Search is off. Press Search to find Receivers.'.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
@@ -253,6 +254,8 @@ class HostController extends GetxController {
 
   void startDiscoveryPolling() {
     if (_discoveryTimer != null) return;
+    isDiscoveryPolling.value = true;
+    discoveryStatus.value = 'Searching for Receivers…';
     unawaited(discoverReceivers());
     _discoveryTimer = Timer.periodic(
       const Duration(seconds: 4),
@@ -263,6 +266,17 @@ class HostController extends GetxController {
   void stopDiscoveryPolling() {
     _discoveryTimer?.cancel();
     _discoveryTimer = null;
+    isDiscoveryPolling.value = false;
+    isDiscoveringReceivers.value = false;
+    discoveryStatus.value = 'Search stopped.';
+  }
+
+  void toggleDiscoveryPolling() {
+    if (isDiscoveryPolling.value) {
+      stopDiscoveryPolling();
+    } else {
+      startDiscoveryPolling();
+    }
   }
 
   Future<void> connect() async {
@@ -676,12 +690,16 @@ class HostController extends GetxController {
         }
       }
       discoveryStatus.value = devices.isEmpty
-          ? 'Searching for Receivers…'
+          ? (isDiscoveryPolling.value
+                ? 'Searching for Receivers…'
+                : 'Search stopped.')
           : '${devices.length} Receiver${devices.length == 1 ? '' : 's'} found';
     } catch (_) {
       // Discovery is best-effort. A blocked broadcast must not show a false
       // error snackbar or interrupt manual/QR setup.
-      discoveryStatus.value = 'Searching for Receivers…';
+      discoveryStatus.value = isDiscoveryPolling.value
+          ? 'Searching for Receivers…'
+          : 'Search stopped.';
     } finally {
       _discoveryInProgress = false;
       isDiscoveringReceivers.value = false;
