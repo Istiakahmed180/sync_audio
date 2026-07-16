@@ -83,6 +83,7 @@ class ReceiverController extends GetxController {
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _suppressNextDisconnectedNotification = false;
   bool _hostWasConnected = false;
+  Future<void>? _audioReceiverStartInFlight;
 
   @override
   void onInit() {
@@ -227,7 +228,23 @@ class ReceiverController extends GetxController {
     );
   }
 
-  Future<void> startAudioReceiver() async {
+  Future<void> startAudioReceiver() => _ensureAudioReceiverStarted();
+
+  Future<void> _ensureAudioReceiverStarted() {
+    if (_audioService?.isReceiving ?? false) return Future<void>.value();
+    final inFlight = _audioReceiverStartInFlight;
+    if (inFlight != null) return inFlight;
+
+    late final Future<void> start;
+    start = _startAudioReceiver().whenComplete(() {
+      if (identical(_audioReceiverStartInFlight, start)) {
+        _audioReceiverStartInFlight = null;
+      }
+    });
+    return _audioReceiverStartInFlight!;
+  }
+
+  Future<void> _startAudioReceiver() async {
     errorMessage.value = null;
     final audioService = _audioService;
     if (audioService == null) {
@@ -287,38 +304,48 @@ class ReceiverController extends GetxController {
       case ControlCommandType.streamPrepare:
       case ControlCommandType.streamStart:
         final sessionId = event.command.arguments.first;
+        final isPrepare =
+            event.command.type == ControlCommandType.streamPrepare;
         final nativeRequested =
             event.command.arguments.length >= 4 &&
             event.command.arguments[3] == 'native' &&
             event.command.arguments[2] == AudioCodecType.pcm16.name;
-        final token = _pairingTokenValue;
-        if (token != null) {
-          await _audioService?.setSessionSecurity(
-            pairingToken: token,
-            sessionId: sessionId,
-          );
-        }
-        if (event.command.arguments.length >= 3) {
-          final requested = event.command.arguments[2];
-          await _audioService?.selectCodec(
-            requested == AudioCodecType.opus.name
-                ? AudioCodecPreference.opus
-                : AudioCodecPreference.pcm,
-          );
-        }
-        if (event.command.arguments.length >= 4 &&
-            event.command.arguments[3] != 'native') {
-          final requestedMode = event.command.arguments[3].toLowerCase();
-          final mode = LatencyMode.values.firstWhere(
-            (candidate) => candidate.name.toLowerCase() == requestedMode,
-            orElse: () => LatencyMode.ultraLow,
-          );
-          await _audioService?.configureLatency(
-            mode: mode,
-            adaptiveJitter: true,
-            driftCorrection: true,
-            maximumDriftCorrectionPpm: 200,
-          );
+        if (isPrepare) {
+          // A new Host start can follow a cancelled/failed previous attempt.
+          // Clear any receiver left from that attempt before applying the new
+          // codec and latency settings; those setters reject live receivers.
+          if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {
+            await stopAudioReceiver();
+          }
+          final token = _pairingTokenValue;
+          if (token != null) {
+            await _audioService?.setSessionSecurity(
+              pairingToken: token,
+              sessionId: sessionId,
+            );
+          }
+          if (event.command.arguments.length >= 3) {
+            final requested = event.command.arguments[2];
+            await _audioService?.selectCodec(
+              requested == AudioCodecType.opus.name
+                  ? AudioCodecPreference.opus
+                  : AudioCodecPreference.pcm,
+            );
+          }
+          if (event.command.arguments.length >= 4 &&
+              event.command.arguments[3] != 'native') {
+            final requestedMode = event.command.arguments[3].toLowerCase();
+            final mode = LatencyMode.values.firstWhere(
+              (candidate) => candidate.name.toLowerCase() == requestedMode,
+              orElse: () => LatencyMode.ultraLow,
+            );
+            await _audioService?.configureLatency(
+              mode: mode,
+              adaptiveJitter: true,
+              driftCorrection: true,
+              maximumDriftCorrectionPpm: 200,
+            );
+          }
         }
         if (isServerRunning.value && nativeRequested) {
           if (_audioService?.isReceiving ?? false) {
@@ -335,12 +362,12 @@ class ReceiverController extends GetxController {
             isAudioReceiverRunning.value = true;
           } catch (_) {
             _nativeReceiverActive = false;
-            unawaited(startAudioReceiver());
+            unawaited(_ensureAudioReceiverStarted());
           }
         } else if (isServerRunning.value &&
             !(_audioService?.isReceiving ?? false) &&
             !_nativeReceiverActive) {
-          unawaited(startAudioReceiver());
+          unawaited(_ensureAudioReceiverStarted());
         }
       case ControlCommandType.streamStop:
         if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {

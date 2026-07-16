@@ -389,16 +389,10 @@ class MainActivity : FlutterActivity() {
         val result = pendingSystemAudioStartResult ?: return
         projectionRequestInFlight = true
         try {
-            // Promote the capture service to a foreground service before the
-            // system consent dialog appears. This avoids Android 14+ background
-            // foreground-service start restrictions once the dialog result returns.
-            val prepareIntent = Intent(this, SystemAudioCaptureService::class.java)
-                .setAction(SystemAudioCaptureService.ACTION_PREPARE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(prepareIntent)
-            } else {
-                startService(prepareIntent)
-            }
+            // Do not start the mediaProjection foreground service before the
+            // user grants screen-capture consent. Android 14+ rejects that
+            // pre-consent promotion with a SecurityException. The service is
+            // started from onActivityResult after projection data is available.
             val manager = getSystemService(MediaProjectionManager::class.java)
             startActivityForResult(manager.createScreenCaptureIntent(), projectionRequestCode)
         } catch (error: Exception) {

@@ -479,12 +479,22 @@ class HostController extends GetxController {
       audioService.activeCodecType.name,
       latencyMode.value.name,
     ];
+    await audioService.startStreaming(ipAddresses: addresses, port: port);
+    if (!audioService.isStreaming) {
+      await _sendControlCommand(addresses, ControlCommandType.streamStop, [
+        _streamSessionId,
+      ]);
+      receiverCount.value = 0;
+      return;
+    }
+    // MediaProjection permission is requested inside startStreaming. Notify
+    // Receivers only after capture succeeds, so cancelling the Android dialog
+    // cannot leave a prepared receiver or show a remote codec snackbar.
     await _sendControlCommand(
       addresses,
       ControlCommandType.streamPrepare,
       commandArguments,
     );
-    await audioService.startStreaming(ipAddresses: addresses, port: port);
     _startStats();
     await _sendControlCommand(
       addresses,

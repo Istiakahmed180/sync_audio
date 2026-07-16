@@ -32,26 +32,21 @@ class SystemAudioCaptureService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand startId=$startId action=${intent?.action}")
-        // Android requires a foreground service started with
-        // startForegroundService() to promote itself immediately. Do this
-        // before reading/validating MediaProjection extras so the process is
-        // not killed while the projection hand-off is in progress.
-        try {
-            promoteToForeground()
-        } catch (error: Exception) {
-            Log.e(TAG, "Unable to promote audio capture service", error)
-            SystemAudioPcmBus.emitError(
-                "SYSTEM_AUDIO_START_FAILED",
-                "Unable to promote audio capture to a foreground service: ${error.message}",
-            )
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
         when (intent?.action) {
             ACTION_PREPARE -> {
                 // The service is foreground and waiting for the user to grant
                 // screen-capture consent. Nothing else to do yet.
+                try {
+                    promoteToForeground()
+                } catch (error: Exception) {
+                    Log.e(TAG, "Unable to promote audio capture service", error)
+                    SystemAudioPcmBus.emitError(
+                        "SYSTEM_AUDIO_START_FAILED",
+                        "Unable to promote audio capture to a foreground service: ${error.message}",
+                    )
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 return START_STICKY
             }
             ACTION_START, null -> {
@@ -90,6 +85,12 @@ class SystemAudioCaptureService : Service() {
                         getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                     val projection = projectionManager.getMediaProjection(resultCode, projectionData)
                         ?: error("MediaProjection is unavailable")
+                    // Android 14+ validates the MediaProjection permission
+                    // when a mediaProjection foreground service is promoted.
+                    // Resolve the consent token first, then promote the
+                    // service, otherwise startForeground() rejects the call
+                    // even though the user has just approved screen capture.
+                    promoteToForeground()
                     startCapture(projection)
                     Log.i(TAG, "system audio capture started")
                 } catch (error: Exception) {
