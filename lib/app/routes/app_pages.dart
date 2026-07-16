@@ -8,6 +8,8 @@ import '../../features/receiver/bindings/receiver_binding.dart';
 import '../../features/receiver/views/receiver_view.dart';
 import '../../features/settings/bindings/settings_binding.dart';
 import '../../features/settings/views/settings_view.dart';
+import '../../features/onboarding/bindings/onboarding_binding.dart';
+import '../../features/onboarding/views/onboarding_view.dart';
 import 'app_routes.dart';
 
 abstract class AppPages {
@@ -31,6 +33,11 @@ abstract class AppPages {
       name: AppRoutes.settings,
       page: () => const SettingsView(),
       binding: SettingsBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.onboarding,
+      page: () => const OnboardingView(),
+      binding: OnboardingBinding(),
     ),
   ];
 }
