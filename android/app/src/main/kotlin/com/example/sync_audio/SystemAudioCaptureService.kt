@@ -81,16 +81,15 @@ class SystemAudioCaptureService : Service() {
                     return START_NOT_STICKY
                 }
                 try {
+                    // The MediaProjection binder validates that this process is
+                    // already running as a mediaProjection foreground service.
+                    // Do this after consent (the service is only started from
+                    // onActivityResult), but before getMediaProjection().
+                    promoteToForeground()
                     val projectionManager =
                         getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                     val projection = projectionManager.getMediaProjection(resultCode, projectionData)
                         ?: error("MediaProjection is unavailable")
-                    // Android 14+ validates the MediaProjection permission
-                    // when a mediaProjection foreground service is promoted.
-                    // Resolve the consent token first, then promote the
-                    // service, otherwise startForeground() rejects the call
-                    // even though the user has just approved screen capture.
-                    promoteToForeground()
                     startCapture(projection)
                     Log.i(TAG, "system audio capture started")
                 } catch (error: Exception) {
