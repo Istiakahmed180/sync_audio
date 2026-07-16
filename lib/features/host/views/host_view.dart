@@ -437,13 +437,12 @@ class _ManualEntryForm extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: controller.portController,
-            keyboardType: TextInputType.number,
+          InputDecorator(
             decoration: const InputDecoration(
-              labelText: 'Port',
-              hintText: '5050',
+              labelText: 'Control port',
+              helperText: 'Fixed Receiver control port',
             ),
+            child: Text('${HostController.controlPort}'),
           ),
         ],
       ),

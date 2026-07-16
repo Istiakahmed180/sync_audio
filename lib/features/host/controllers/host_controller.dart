@@ -23,6 +23,7 @@ import '../../../services/udp_audio_service.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
 
 class HostController extends GetxController {
+  static const controlPort = 5050;
   HostController({
     ConnectionService? connectionService,
     AudioStreamService? audioService,
@@ -59,7 +60,9 @@ class HostController extends GetxController {
   final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
   final receiverIpInputController = TextEditingController();
-  final portController = TextEditingController(text: '5050');
+  // Retained for backwards-compatible controller tests; the UI no longer
+  // exposes this because the Receiver control port is fixed at 5050.
+  final portController = TextEditingController(text: '$controlPort');
   final audioPortController = TextEditingController(text: '5051');
   final testMessageController = TextEditingController(text: 'Hello Receiver');
   final connectionStatus = ConnectionStatus.disconnected.obs;
@@ -321,7 +324,7 @@ class HostController extends GetxController {
   Future<void> connect() async {
     errorMessage.value = null;
     final addresses = _receiverAddresses();
-    final port = int.tryParse(portController.text.trim());
+    final port = int.tryParse(portController.text.trim()) ?? controlPort;
     if (addresses.isEmpty) {
       return _showError('Enter the receiver IP address.');
     }
@@ -331,7 +334,7 @@ class HostController extends GetxController {
         return _showError('Enter a valid IPv4 address.');
       }
     }
-    if (port == null || port < 1 || port > 65535) {
+    if (port < 1 || port > 65535) {
       return _showError('Enter a port between 1 and 65535.');
     }
     final pairingText = _pairingInputFor(addresses);
@@ -374,12 +377,12 @@ class HostController extends GetxController {
 
   Future<void> connectReceiver(String address) async {
     errorMessage.value = null;
-    final port = int.tryParse(portController.text.trim());
+    final port = int.tryParse(portController.text.trim()) ?? controlPort;
     final pairingCode = receiverPairingControllers[address]?.text.trim() ?? '';
     if (InternetAddress.tryParse(address)?.type != InternetAddressType.IPv4) {
       return _showError('Enter a valid IPv4 receiver address.');
     }
-    if (port == null || port < 1 || port > 65535) {
+    if (port < 1 || port > 65535) {
       return _showError('Enter a port between 1 and 65535.');
     }
     if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
@@ -719,7 +722,10 @@ class HostController extends GetxController {
       _showError('QR code contains an invalid pairing code.');
       return false;
     }
-    portController.text = '$port';
+    if (port != controlPort) {
+      _showError('This Receiver uses control port $controlPort.');
+      return false;
+    }
     pairingTokenController.text = pairingCode;
     if (!configuredReceiverIps.contains(address)) {
       configuredReceiverIps.add(address);
