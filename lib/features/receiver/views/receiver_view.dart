@@ -9,7 +9,6 @@ import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
-import '../../../shared/widgets/status_badge.dart';
 import '../controllers/receiver_controller.dart';
 
 class ReceiverView extends GetView<ReceiverController> {
@@ -23,22 +22,6 @@ class ReceiverView extends GetView<ReceiverController> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Server status',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                Obx(
-                  () => StatusBadge(
-                    label: controller.connectionStatus.value.label,
-                  ),
-                ),
-              ],
-            ),
             Obx(
               () => controller.errorMessage.value == null
                   ? const SizedBox.shrink()
@@ -47,7 +30,6 @@ class ReceiverView extends GetView<ReceiverController> {
                       onDismiss: () => controller.errorMessage.value = null,
                     ),
             ),
-            const SizedBox(height: 12),
             Obx(
               () => ConnectionOverviewCard(
                 title: 'Receiver connection',

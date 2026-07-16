@@ -6,7 +6,6 @@ import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/latency_metrics.dart';
-import '../../../services/paired_device_store.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
@@ -27,22 +26,6 @@ class HostView extends GetView<HostController> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Connection status',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Obx(
-                    () => StatusBadge(
-                      label: controller.connectionStatus.value.label,
-                    ),
-                  ),
-                ],
-              ),
               Obx(
                 () => controller.errorMessage.value == null
                     ? const SizedBox.shrink()
@@ -51,7 +34,6 @@ class HostView extends GetView<HostController> {
                         onDismiss: () => controller.errorMessage.value = null,
                       ),
               ),
-              const SizedBox(height: 12),
               Obx(
                 () => ConnectionOverviewCard(
                   title: 'Host connection',
@@ -62,85 +44,85 @@ class HostView extends GetView<HostController> {
                   busy: controller.isConnecting,
                   message: switch (controller.connectionStatus.value) {
                     ConnectionStatus.connected =>
-                      'Receiver connection established. You can send a test message or start system audio.',
+                      'Receiver connection established. You can start system audio.',
                     ConnectionStatus.connecting =>
                       'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
                     ConnectionStatus.error =>
-                      'Connection failed. Check the Receiver IP, port, and pairing code, then try again.',
+                      'Connection failed. Check the Receiver IP and pairing code, then try again.',
                     _ =>
-                      'Enter the Receiver IP, port, and required pairing code to begin.',
+                      'Enter the Receiver IP and required pairing code to begin.',
                   },
                 ),
               ),
               const SizedBox(height: 20),
+              Text(
+                'Connect a receiver',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Connection setup',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final data = await Navigator.of(context).push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => const QrScannerView(),
+                          ),
+                        );
+                        if (data != null && context.mounted) {
+                          controller.addReceiverFromQrData(data);
+                        }
+                      },
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Scan QR'),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _ManualSetupSection(controller: controller),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () async {
-                  final data = await Navigator.of(context).push<String>(
-                    MaterialPageRoute(builder: (_) => const QrScannerView()),
-                  );
-                  if (data != null && context.mounted) {
-                    controller.addReceiverFromQrData(data);
-                  }
-                },
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Scan QR Code'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _ManualSetupSection(controller: controller),
-              const SizedBox(height: 12),
-              _PairedDevicesSection(controller: controller),
-              const SizedBox(height: 12),
-              _SavedGroupsSection(controller: controller),
-              const SizedBox(height: 12),
+
               Obx(
-                () => Column(
-                  children: controller.configuredReceiverIps
+                () {
+                  final addresses = controller.configuredReceiverIps
                       .where(
                         (a) => controller.receiverPairingControllers
                             .containsKey(a),
                       )
-                      .map((address) {
-                        final deviceName =
-                            controller.discoveredDeviceNames[address];
-                        final latencyMs =
-                            controller.discoveredDeviceLatencyMs[address];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _ReceiverTargetCard(
-                            address: address,
-                            deviceName: deviceName,
-                            latencyMs: latencyMs,
-                            pairingController:
-                                controller.receiverPairingControllers[address]!,
-                            onRemove: () =>
-                                controller.removeReceiverIp(address),
-                            session: controller.receiverSessionFor(address),
-                            onConnect: () =>
-                                controller.connectReceiver(address),
-                            onDisconnect: () =>
-                                controller.disconnectReceiver(address),
-                          ),
-                        );
-                      })
-                      .toList(),
-                ),
+                      .toList();
+                  if (addresses.isEmpty) {
+                    return const _EmptyReceiverState();
+                  }
+                  return Column(
+                    children: addresses.map((address) {
+                      final deviceName =
+                          controller.discoveredDeviceNames[address];
+                      final latencyMs =
+                          controller.discoveredDeviceLatencyMs[address];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _ReceiverTargetCard(
+                          address: address,
+                          deviceName: deviceName,
+                          latencyMs: latencyMs,
+                          onRemove: () => controller.removeReceiverIp(address),
+                          session: controller.receiverSessionFor(address),
+                          onConnect: () => controller.connectReceiver(address),
+                          onDisconnect: () =>
+                              controller.disconnectReceiver(address),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Obx(
@@ -168,10 +150,13 @@ class HostView extends GetView<HostController> {
                 ),
               ),
               Obx(
-                () => Text(
-                  controller.discoveryStatus.value,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                () => controller.isDiscoveryPolling.value ||
+                        controller.isDiscoveringReceivers.value
+                    ? Text(
+                        controller.discoveryStatus.value,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      )
+                    : const SizedBox.shrink(),
               ),
               const SizedBox(height: 28),
               Text(
@@ -312,8 +297,7 @@ class HostView extends GetView<HostController> {
               ),
               const SizedBox(height: 12),
               const _InfoMessage(
-                text:
-                    'Supported system audio is captured on Android and sent to each receiver with timestamped packets and clock-offset compensation.',
+                text: 'System audio is captured via Android MediaProjection with timestamped packets and clock-offset compensation.',
               ),
             ],
           ),
@@ -377,7 +361,7 @@ class _ManualSetupSectionState extends State<_ManualSetupSection> {
           ),
           label: Text(_expanded ? 'Hide manual setup' : 'Add manually'),
           style: TextButton.styleFrom(
-            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            minimumSize: const Size(double.infinity, 48),
           ),
         ),
         AnimatedCrossFade(
@@ -436,14 +420,7 @@ class _ManualEntryForm extends StatelessWidget {
                   'This code will be assigned to the next Receiver you add.',
             ),
           ),
-          const SizedBox(height: 12),
-          InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Control port',
-              helperText: 'Fixed Receiver control port',
-            ),
-            child: Text('${HostController.controlPort}'),
-          ),
+
         ],
       ),
     );
@@ -453,7 +430,6 @@ class _ManualEntryForm extends StatelessWidget {
 class _ReceiverTargetCard extends StatelessWidget {
   const _ReceiverTargetCard({
     required this.address,
-    required this.pairingController,
     required this.onRemove,
     required this.session,
     required this.onConnect,
@@ -465,7 +441,6 @@ class _ReceiverTargetCard extends StatelessWidget {
   final String address;
   final String? deviceName;
   final int? latencyMs;
-  final TextEditingController pairingController;
   final VoidCallback onRemove;
   final ReceiverSession? session;
   final VoidCallback onConnect;
@@ -547,17 +522,6 @@ class _ReceiverTargetCard extends StatelessWidget {
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: scheme.onSurfaceVariant),
                         ),
-                      TextField(
-                        controller: pairingController,
-                        keyboardType: TextInputType.number,
-                        maxLength: 8,
-                        decoration: const InputDecoration(
-                          labelText: 'Pairing code',
-                          hintText: '12345678',
-                          counterText: '',
-                          isDense: true,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -810,192 +774,6 @@ class _AudioStreamStatusCard extends StatelessWidget {
   }
 }
 
-class _PairedDevicesSection extends StatelessWidget {
-  const _PairedDevicesSection({required this.controller});
-  final HostController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final devices = controller.pairedDevices;
-      if (devices.isEmpty) return const SizedBox.shrink();
-
-      return Card(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.history_rounded,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Recently connected',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: devices.map((device) {
-                  final alreadyAdded = controller.configuredReceiverIps
-                      .contains(device.ipAddress);
-                  return ChoiceChip(
-                    label: Text(
-                      alreadyAdded ? '${device.name} (added)' : device.name,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    selected: alreadyAdded,
-                    avatar: const Icon(Icons.devices_rounded, size: 16),
-                    onSelected: alreadyAdded
-                        ? null
-                        : (_) {
-                            controller.receiverIpInputController.text =
-                                device.ipAddress;
-                            controller.addReceiverIp();
-                          },
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-}
-
-class _SavedGroupsSection extends StatelessWidget {
-  const _SavedGroupsSection({required this.controller});
-
-  final HostController controller;
-
-  Future<void> _saveGroup(BuildContext context) async {
-    final nameController = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Save current receivers'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Group name',
-            hintText: 'Living Room',
-          ),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(nameController.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (name != null && name.isNotEmpty) {
-      await controller.saveCurrentAsGroup(name);
-    }
-    nameController.dispose();
-  }
-
-  Future<void> _confirmDelete(BuildContext context, DeviceGroup group) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete group'),
-        content: Text('Delete "${group.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await controller.deleteGroup(group.name);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final groups = controller.savedGroups;
-      if (groups.isEmpty) return const SizedBox.shrink();
-
-      return Card(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.bookmark_rounded,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Saved groups',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Save current'),
-                    onPressed: () => _saveGroup(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: groups.map((group) {
-                  return InputChip(
-                    label: Text(group.name),
-                    labelStyle: const TextStyle(fontSize: 13),
-                    avatar: const Icon(Icons.speaker_group_rounded, size: 16),
-                    onPressed: () => controller.applyGroup(group),
-                    onDeleted: () => _confirmDelete(context, group),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-}
-
 class _InfoMessage extends StatelessWidget {
   const _InfoMessage({required this.text});
 
@@ -1004,8 +782,40 @@ class _InfoMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Text(text, textAlign: TextAlign.center),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
     ),
   );
+}
+
+class _EmptyReceiverState extends StatelessWidget {
+  const _EmptyReceiverState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(
+              Icons.speaker_group_outlined,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'No receivers added yet. Scan a QR code or add one manually.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

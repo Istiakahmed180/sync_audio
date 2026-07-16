@@ -335,7 +335,7 @@ class HostController extends GetxController {
       }
     }
     if (port < 1 || port > 65535) {
-      return _showError('Enter a port between 1 and 65535.');
+      return _showError('Invalid port configured.');
     }
     final pairingText = _pairingInputFor(addresses);
     if (!_isValidPairingInput(pairingText, addresses)) {
@@ -383,7 +383,7 @@ class HostController extends GetxController {
       return _showError('Enter a valid IPv4 receiver address.');
     }
     if (port < 1 || port > 65535) {
-      return _showError('Enter a port between 1 and 65535.');
+      return _showError('Invalid port configured.');
     }
     if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
       return _showError('Enter the 8-digit pairing code for $address.');
