@@ -136,7 +136,9 @@ class UdpAudioService implements AudioStreamService {
   SecretKey? _sessionKey;
   String? _securitySessionId;
   final _sessionKeyService = SessionKeyService();
-  final _replayGuard = ReplayGuard();
+  // Audio sequence numbers restart for every stream. Keep replay protection
+  // scoped to the active stream instead of the lifetime of this service.
+  ReplayGuard _replayGuard = ReplayGuard();
   int _hostToLocalOffsetMicros = 0;
   bool _clockSynchronized = false;
   int _driftCorrectionPpm = 0;
@@ -216,6 +218,10 @@ class UdpAudioService implements AudioStreamService {
       sessionId: sessionId,
     );
     _securitySessionId = sessionId;
+    // A new STREAM_PREPARE marks a new audio session. The Host resets its
+    // packet sequence at every start, so old nonces must not be rejected in
+    // the new session.
+    _replayGuard = ReplayGuard();
   }
 
   @override
@@ -327,7 +333,9 @@ class UdpAudioService implements AudioStreamService {
       _setStatus(AudioStreamStatus.streaming);
     } on SocketException {
       await stopStreaming();
-      _emitError('Could not open the audio port. Check your network connection.');
+      _emitError(
+        'Could not open the audio port. Check your network connection.',
+      );
       _setStatus(AudioStreamStatus.error);
     } on PlatformException catch (error) {
       await stopStreaming();
@@ -340,7 +348,8 @@ class UdpAudioService implements AudioStreamService {
           'This Android version is too old. Audio sharing needs Android 10 or higher.',
         'SYSTEM_AUDIO_START_FAILED' =>
           'Could not start audio sharing. ${error.message}. Please try again.',
-        _ => 'Could not start audio sharing. ${error.message}. Please try again.',
+        _ =>
+          'Could not start audio sharing. ${error.message}. Please try again.',
       };
       _emitError(message);
       _setStatus(AudioStreamStatus.error);
@@ -808,6 +817,7 @@ class UdpAudioService implements AudioStreamService {
     _receiverClock.stop();
     _sessionKey = null;
     _securitySessionId = null;
+    _replayGuard = ReplayGuard();
     await _udpSubscription?.cancel();
     _udpSubscription = null;
     _socket?.close();

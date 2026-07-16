@@ -84,6 +84,10 @@ class ReceiverController extends GetxController {
   bool _suppressNextDisconnectedNotification = false;
   bool _hostWasConnected = false;
   Future<void>? _audioReceiverStartInFlight;
+  // Control events arrive from a line-ordered socket, but Stream listeners
+  // do not await an async callback. Serialize them so STREAM_START cannot
+  // race STREAM_PREPARE and start the receiver before its session key exists.
+  Future<void> _controlEventQueue = Future<void>.value();
 
   @override
   void onInit() {
@@ -119,9 +123,14 @@ class ReceiverController extends GetxController {
     _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
       if (message != null) showAppErrorSnackbar(message);
     });
-    _controlEventSubscription = _service.controlEvents.listen(
-      _handleControlEvent,
-    );
+    _controlEventSubscription = _service.controlEvents.listen((event) {
+      _controlEventQueue = _controlEventQueue
+          .then((_) => _handleControlEvent(event))
+          .catchError((_) {
+            // Keep processing later control events after a failed stream
+            // transition; the UI/audio error is reported by the transition.
+          });
+    });
     _controlSessionSubscription = _service.controlSessionChanges.listen((
       session,
     ) {
@@ -241,7 +250,8 @@ class ReceiverController extends GetxController {
         _audioReceiverStartInFlight = null;
       }
     });
-    return _audioReceiverStartInFlight!;
+    _audioReceiverStartInFlight = start;
+    return start;
   }
 
   Future<void> _startAudioReceiver() async {
@@ -362,12 +372,12 @@ class ReceiverController extends GetxController {
             isAudioReceiverRunning.value = true;
           } catch (_) {
             _nativeReceiverActive = false;
-            unawaited(_ensureAudioReceiverStarted());
+            await _ensureAudioReceiverStarted();
           }
         } else if (isServerRunning.value &&
             !(_audioService?.isReceiving ?? false) &&
             !_nativeReceiverActive) {
-          unawaited(_ensureAudioReceiverStarted());
+          await _ensureAudioReceiverStarted();
         }
       case ControlCommandType.streamStop:
         if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {
