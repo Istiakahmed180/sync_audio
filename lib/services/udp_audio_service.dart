@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/services.dart';
@@ -64,6 +65,8 @@ abstract class AudioStreamService {
   });
 
   Future<void> applyPlaybackOffset(int offsetMicros);
+
+  Future<void> setPlaybackVolume(double volume);
 
   Future<void> selectCodec(AudioCodecPreference preference);
 
@@ -143,6 +146,7 @@ class UdpAudioService implements AudioStreamService {
   bool _clockSynchronized = false;
   int _driftCorrectionPpm = 0;
   int _lastDriftUpdateMicros = 0;
+  double _playbackVolume = 1.0;
   final bool _autoLatencyEnabled = true;
   int _consecutiveUnderruns = 0;
   int _consecutiveGoodFrames = 0;
@@ -597,6 +601,13 @@ class UdpAudioService implements AudioStreamService {
     _clockSynchronized = true;
   }
 
+  /// Sets the receiver-side gain. This is intentionally applied to the
+  /// decoded PCM so it works independently of the Android media volume.
+  @override
+  Future<void> setPlaybackVolume(double volume) async {
+    _playbackVolume = volume.clamp(0.0, 1.5).toDouble();
+  }
+
   void _sendClockOffset(ReceiverSession session, int sequence) {
     final socket = _socket;
     if (socket == null) return;
@@ -799,12 +810,25 @@ class UdpAudioService implements AudioStreamService {
           final decodeClock = Stopwatch()..start();
           final pcm = await decoder.decode(packet.payload);
           _metrics.decoded(decodeClock.elapsed);
-          await playbackService.writePcm(pcm);
+          await playbackService.writePcm(_applyPlaybackVolume(pcm));
         })
         .catchError((_) {
           _emitError('Audio playback failed on the receiver.');
           _setStatus(AudioStreamStatus.error);
         });
+  }
+
+  Uint8List _applyPlaybackVolume(Uint8List pcm) {
+    final gain = _playbackVolume;
+    if (gain == 1.0) return pcm;
+    final adjusted = Uint8List.fromList(pcm);
+    final data = ByteData.sublistView(adjusted);
+    for (var offset = 0; offset + 1 < adjusted.length; offset += 2) {
+      final sample = data.getInt16(offset, Endian.little);
+      final scaled = (sample * gain).round().clamp(-32768, 32767);
+      data.setInt16(offset, scaled, Endian.little);
+    }
+    return adjusted;
   }
 
   @override
@@ -817,6 +841,7 @@ class UdpAudioService implements AudioStreamService {
     _receiverClock.stop();
     _sessionKey = null;
     _securitySessionId = null;
+    _playbackVolume = 1.0;
     _replayGuard = ReplayGuard();
     await _udpSubscription?.cancel();
     _udpSubscription = null;

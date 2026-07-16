@@ -389,6 +389,12 @@ class ReceiverController extends GetxController {
         if (offset != null && audioService != null) {
           unawaited(audioService.applyPlaybackOffset(offset));
         }
+      case ControlCommandType.setPlaybackVolume:
+        final volume = double.tryParse(event.command.arguments.first);
+        final audioService = _audioService;
+        if (volume != null && audioService != null) {
+          unawaited(audioService.setPlaybackVolume(volume));
+        }
       default:
         break;
     }

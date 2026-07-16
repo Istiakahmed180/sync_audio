@@ -7,6 +7,7 @@ enum ControlCommandType {
   streamStart,
   streamStop,
   setPlaybackOffset,
+  setPlaybackVolume,
   bufferStatus,
   error,
 }
@@ -21,6 +22,7 @@ extension ControlCommandTypeWireName on ControlCommandType {
     ControlCommandType.streamStart => 'STREAM_START',
     ControlCommandType.streamStop => 'STREAM_STOP',
     ControlCommandType.setPlaybackOffset => 'SET_PLAYBACK_OFFSET',
+    ControlCommandType.setPlaybackVolume => 'SET_PLAYBACK_VOLUME',
     ControlCommandType.bufferStatus => 'BUFFER_STATUS',
     ControlCommandType.error => 'ERROR',
   };
@@ -60,6 +62,7 @@ class ControlCommand {
         ControlCommandType.streamStart => count >= 2 && count <= 4,
         ControlCommandType.streamStop => count == 1,
         ControlCommandType.setPlaybackOffset => count == 1,
+        ControlCommandType.setPlaybackVolume => count == 1,
         ControlCommandType.bufferStatus => count == 2,
         ControlCommandType.error => count >= 2,
       };

@@ -163,10 +163,34 @@ class HostController extends GetxController {
     } else if (volume > 0.0) {
       receiverMuted[address] = false;
     }
+    unawaited(
+      _sendReceiverVolume(address, receiverMuted[address] == true ? 0 : volume),
+    );
   }
 
   void toggleMute(String address) {
     receiverMuted[address] = !(receiverMuted[address] ?? false);
+    unawaited(
+      _sendReceiverVolume(
+        address,
+        receiverMuted[address] == true ? 0 : volumeForReceiver(address),
+      ),
+    );
+  }
+
+  Future<void> _sendReceiverVolume(String address, double volume) async {
+    final session = receiverSessions.cast<ReceiverSession?>().firstWhere(
+      (candidate) => candidate?.ipAddress == address,
+      orElse: () => null,
+    );
+    if (session == null) return;
+    await _service.sendControlCommand(
+      receiverId: session.id,
+      command: ControlCommand(
+        type: ControlCommandType.setPlaybackVolume,
+        arguments: [volume.toStringAsFixed(4)],
+      ),
+    );
   }
 
   void _startStats() {
