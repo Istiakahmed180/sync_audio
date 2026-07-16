@@ -97,6 +97,14 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getDeviceName" -> result.success("${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                    "getDeviceInfo" -> result.success(
+                        mapOf(
+                            "manufacturer" to Build.MANUFACTURER,
+                            "model" to Build.MODEL,
+                            "androidVersion" to Build.VERSION.RELEASE,
+                            "sdk" to Build.VERSION.SDK_INT,
+                        ),
+                    )
                     else -> result.notImplemented()
                 }
             }

@@ -4,12 +4,14 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/host/controllers/host_controller.dart';
+import '../features/receiver/controllers/receiver_controller.dart';
 import '../models/audio_stream_status.dart';
 import '../models/connection_status.dart';
 
 class ScheduledStreamingService {
   Timer? _timer;
   bool _wasStreamingBySchedule = false;
+  bool _wasReceivingBySchedule = false;
   DateTime? _lastScheduledStart;
 
   static const _checkInterval = Duration(seconds: 30);
@@ -46,6 +48,7 @@ class ScheduledStreamingService {
   void start() {
     _timer?.cancel();
     _wasStreamingBySchedule = false;
+    _wasReceivingBySchedule = false;
     unawaited(_checkAndApply());
     _timer = Timer.periodic(_checkInterval, (_) {
       unawaited(_checkAndApply());
@@ -56,6 +59,7 @@ class ScheduledStreamingService {
     _timer?.cancel();
     _timer = null;
     _wasStreamingBySchedule = false;
+    _wasReceivingBySchedule = false;
   }
 
   Future<void> checkNow() => _checkAndApply();
@@ -68,6 +72,10 @@ class ScheduledStreamingService {
           await _stopHostAudio();
           _wasStreamingBySchedule = false;
         }
+        if (_wasReceivingBySchedule) {
+          await _stopReceiverAudio();
+          _wasReceivingBySchedule = false;
+        }
         return;
       }
 
@@ -78,7 +86,10 @@ class ScheduledStreamingService {
         schedule.stopM,
       );
 
-      if (!Get.isRegistered<HostController>()) return;
+      if (!Get.isRegistered<HostController>()) {
+        await _checkReceiverWindow(inWindow);
+        return;
+      }
 
       final host = Get.find<HostController>();
       if (!host.isConnected) return;
@@ -103,6 +114,28 @@ class ScheduledStreamingService {
       }
     } catch (_) {
       // Scheduling is best-effort; never crash the app.
+    }
+  }
+
+  Future<void> _checkReceiverWindow(bool inWindow) async {
+    if (!Get.isRegistered<ReceiverController>()) return;
+    final receiver = Get.find<ReceiverController>();
+    if (!receiver.isConnectedToHost.value) return;
+    final isReceiving = receiver.isAudioReceiverRunning.value;
+    if (inWindow && !isReceiving) {
+      await receiver.startAudioReceiver();
+      _wasReceivingBySchedule = receiver.isAudioReceiverRunning.value;
+    } else if (!inWindow && isReceiving) {
+      await receiver.stopAudioReceiver();
+      _wasReceivingBySchedule = false;
+    }
+  }
+
+  Future<void> _stopReceiverAudio() async {
+    if (!Get.isRegistered<ReceiverController>()) return;
+    final receiver = Get.find<ReceiverController>();
+    if (receiver.isAudioReceiverRunning.value) {
+      await receiver.stopAudioReceiver();
     }
   }
 

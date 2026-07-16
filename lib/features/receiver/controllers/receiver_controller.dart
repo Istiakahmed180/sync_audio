@@ -16,6 +16,7 @@ import '../../../services/audio_codec.dart';
 import '../../../services/background_connection_service.dart';
 import '../../../services/pairing_store.dart';
 import '../../../services/native_audio_runtime.dart';
+import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../shared/widgets/app_error_notifier.dart';
 import '../../../shared/widgets/app_notification_service.dart';
@@ -96,6 +97,9 @@ class ReceiverController extends GetxController {
   void onInit() {
     super.onInit();
     unawaited(_loadDeviceName());
+    if (Get.isRegistered<ScheduledStreamingService>()) {
+      Get.find<ScheduledStreamingService>().start();
+    }
     // The connection service is app-scoped. Re-entering this screen should
     // reflect an already-running receiver instead of resetting the UI.
     connectionStatus.value = _service.status;
@@ -508,6 +512,9 @@ class ReceiverController extends GetxController {
 
   @override
   void onClose() {
+    if (Get.isRegistered<ScheduledStreamingService>()) {
+      Get.find<ScheduledStreamingService>().stop();
+    }
     deviceNameController.dispose();
     _messageSubscription.cancel();
     _statusSubscription.cancel();

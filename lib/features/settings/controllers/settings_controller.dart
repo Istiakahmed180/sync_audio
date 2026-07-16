@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/scheduled_streaming_service.dart';
 
 class SettingsController extends GetxController {
+  static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
   final themeMode = ThemeMode.system.obs;
   final isScheduledEnabled = false.obs;
   final scheduleStartHour = 8.obs;
@@ -14,11 +16,33 @@ class SettingsController extends GetxController {
   final totalStreamTimeMinutes = 0.obs;
   final totalDataSentMb = 0.0.obs;
   final totalPacketsLost = 0.obs;
+  final deviceManufacturer = 'Unknown'.obs;
+  final deviceModel = 'Unknown'.obs;
+  final androidVersion = 'Unknown'.obs;
+  final androidSdk = 'Unknown'.obs;
 
   @override
   void onInit() {
     super.onInit();
     _load();
+    _loadDeviceInfo();
+  }
+
+  Future<void> _loadDeviceInfo() async {
+    try {
+      final info = await _deviceInfoChannel.invokeMapMethod<String, Object>(
+        'getDeviceInfo',
+      );
+      if (info == null) return;
+      deviceManufacturer.value = '${info['manufacturer'] ?? 'Unknown'}';
+      deviceModel.value = '${info['model'] ?? 'Unknown'}';
+      androidVersion.value = '${info['androidVersion'] ?? 'Unknown'}';
+      androidSdk.value = '${info['sdk'] ?? 'Unknown'}';
+    } on MissingPluginException {
+      // Keep platform-neutral fallback values.
+    } catch (_) {
+      // Device information is cosmetic.
+    }
   }
 
   Future<void> _load() async {

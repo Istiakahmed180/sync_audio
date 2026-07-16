@@ -28,6 +28,28 @@ class SettingsView extends GetView<SettingsController> {
           const SizedBox(height: 8),
           Obx(
             () => _SettingRow(
+              label: 'Device',
+              value: controller.deviceModel.value,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Obx(
+            () => _SettingRow(
+              label: 'Manufacturer',
+              value: controller.deviceManufacturer.value,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Obx(
+            () => _SettingRow(
+              label: 'Android',
+              value:
+                  '${controller.androidVersion.value} (SDK ${controller.androidSdk.value})',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Obx(
+            () => _SettingRow(
               label: 'Total stream time',
               value: _formatMinutes(controller.totalStreamTimeMinutes.value),
             ),
