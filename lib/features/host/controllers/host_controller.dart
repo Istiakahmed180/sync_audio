@@ -179,7 +179,8 @@ class HostController extends GetxController {
     final elapsed = DateTime.now().difference(_statsStartTime);
     final minutes = elapsed.inMinutes;
     if (minutes <= 0) return;
-    final totalMb = 0.0;
+    final totalBytes = (diagnostics['totalBytesSent'] as int? ?? 0);
+    final totalMb = totalBytes / (1024 * 1024);
     final lossCount = (diagnostics['droppedPacketCount'] as int? ?? 0);
     if (Get.isRegistered<SettingsController>()) {
       Get.find<SettingsController>().addStreamStats(

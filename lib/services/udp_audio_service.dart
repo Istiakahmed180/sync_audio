@@ -132,6 +132,7 @@ class UdpAudioService implements AudioStreamService {
   Stopwatch? _streamClock;
   final Stopwatch _receiverClock = Stopwatch();
   int _droppedPackets = 0;
+  int _totalBytesSent = 0;
   SecretKey? _sessionKey;
   String? _securitySessionId;
   final _sessionKeyService = SessionKeyService();
@@ -181,7 +182,11 @@ class UdpAudioService implements AudioStreamService {
   LatencyMetricsSnapshot get latencyMetrics => _metrics.snapshot();
 
   @override
-  Map<String, Object> get diagnosticsSnapshot => latencyMetrics.toRedactedMap();
+  Map<String, Object> get diagnosticsSnapshot {
+    final map = latencyMetrics.toRedactedMap();
+    map['totalBytesSent'] = _totalBytesSent;
+    return map;
+  }
 
   @override
   LatencyMode get latencyMode => _latencyMode;
@@ -281,6 +286,7 @@ class UdpAudioService implements AudioStreamService {
       _packetSequence = 0;
       _clockSequence = 0;
       _droppedPackets = 0;
+      _totalBytesSent = 0;
       _pendingEncoderPcm = Uint8List(0);
       _jitter.reset();
       await encoder.reset();
@@ -523,6 +529,7 @@ class UdpAudioService implements AudioStreamService {
           );
     for (final destination in _destinations) {
       socket.send(wirePacket, destination, _destinationPort);
+      _totalBytesSent += wirePacket.length;
     }
     _metrics.packetSent();
     for (final session in _sessions.values.where(
