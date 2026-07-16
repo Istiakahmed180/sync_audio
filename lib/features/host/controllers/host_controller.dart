@@ -281,10 +281,7 @@ class HostController extends GetxController {
 
   void toggleDiscoveryPolling() {
     if (isDiscoveryPolling.value) {
-    stopDiscoveryPolling();
-    if (Get.isRegistered<ScheduledStreamingService>()) {
-      Get.find<ScheduledStreamingService>().stop();
-    }
+      stopDiscoveryPolling();
     } else {
       startDiscoveryPolling();
     }
@@ -850,6 +847,9 @@ class HostController extends GetxController {
     _sessionSubscription?.cancel();
     _diagnosticTimer?.cancel();
     stopDiscoveryPolling();
+    if (Get.isRegistered<ScheduledStreamingService>()) {
+      Get.find<ScheduledStreamingService>().stop();
+    }
     _errorSnackbarWorker?.dispose();
     _controlSessionSubscription.cancel();
     receiverIpController.dispose();
