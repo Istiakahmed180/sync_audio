@@ -148,21 +148,29 @@ class HostView extends GetView<HostController> {
                             .containsKey(a),
                       )
                       .map(
-                        (address) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _ReceiverTargetCard(
-                            address: address,
-                            pairingController:
-                                controller.receiverPairingControllers[address]!,
-                            onRemove: () =>
-                                controller.removeReceiverIp(address),
-                            session: controller.receiverSessionFor(address),
-                            onConnect: () =>
-                                controller.connectReceiver(address),
-                            onDisconnect: () =>
-                                controller.disconnectReceiver(address),
-                          ),
-                        ),
+                        (address) {
+                          final deviceName =
+                              controller.discoveredDeviceNames[address];
+                          final latencyMs =
+                              controller.discoveredDeviceLatencyMs[address];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _ReceiverTargetCard(
+                              address: address,
+                              deviceName: deviceName,
+                              latencyMs: latencyMs,
+                              pairingController:
+                                  controller.receiverPairingControllers[address]!,
+                              onRemove: () =>
+                                  controller.removeReceiverIp(address),
+                              session: controller.receiverSessionFor(address),
+                              onConnect: () =>
+                                  controller.connectReceiver(address),
+                              onDisconnect: () =>
+                                  controller.disconnectReceiver(address),
+                            ),
+                          );
+                        },
                       )
                       .toList(),
                 ),
@@ -398,19 +406,54 @@ class _ReceiverTargetCard extends StatelessWidget {
     required this.session,
     required this.onConnect,
     required this.onDisconnect,
+    this.deviceName,
+    this.latencyMs,
   });
 
   final String address;
+  final String? deviceName;
+  final int? latencyMs;
   final TextEditingController pairingController;
   final VoidCallback onRemove;
   final ReceiverSession? session;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
 
+  String get _displayName => (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
+
+  Widget _signalIndicator(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isConnected = session?.controlStatus == ControlConnectionStatus.connected;
+    if (isConnected) {
+      return Icon(Icons.link_rounded, size: 14, color: scheme.primary);
+    }
+    if (latencyMs == null) {
+      return Icon(Icons.wifi_rounded, size: 14, color: scheme.outline);
+    }
+    final ms = latencyMs!;
+    if (ms <= 20) {
+      return Icon(Icons.wifi_rounded, size: 14, color: Colors.green);
+    } else if (ms <= 50) {
+      return Icon(Icons.wifi_rounded, size: 14, color: Colors.orange);
+    } else {
+      return Icon(Icons.wifi_find_rounded, size: 14, color: Colors.red);
+    }
+  }
+
+  String _signalLabel() {
+    if (session?.controlStatus == ControlConnectionStatus.connected) return 'Connected';
+    if (latencyMs == null) return 'Unknown';
+    final ms = latencyMs!;
+    if (ms <= 20) return 'Excellent';
+    if (ms <= 50) return 'Good';
+    return 'Weak';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: scheme.surfaceContainerHighest,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 6, 4),
         child: Column(
@@ -423,12 +466,34 @@ class _ReceiverTargetCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        address,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _displayName,
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          _signalIndicator(context),
+                          const SizedBox(width: 4),
+                          Text(
+                            _signalLabel(),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                       ),
+                      if (deviceName != null && deviceName!.isNotEmpty)
+                        Text(
+                          address,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
                       TextField(
                         controller: pairingController,
                         keyboardType: TextInputType.number,

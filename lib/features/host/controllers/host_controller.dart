@@ -71,6 +71,8 @@ class HostController extends GetxController {
   final discoveryStatus = 'Search is off. Press Search to find Receivers.'.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
+  final discoveredDeviceNames = <String, String>{}.obs;
+  final discoveredDeviceLatencyMs = <String, int>{}.obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
   final latencyMode = LatencyMode.ultraLow.obs;
@@ -649,6 +651,8 @@ class HostController extends GetxController {
 
   void removeReceiverIp(String address) {
     configuredReceiverIps.remove(address);
+    discoveredDeviceNames.remove(address);
+    discoveredDeviceLatencyMs.remove(address);
     receiverPairingControllers.remove(address)?.dispose();
   }
 
@@ -703,6 +707,8 @@ class HostController extends GetxController {
         // on some Android/network stacks. Never show the Host itself as a
         // Receiver, even if the responder returned a wrong address.
         if (localAddresses.contains(device.ipAddress)) continue;
+        discoveredDeviceNames[device.ipAddress] = device.name;
+        discoveredDeviceLatencyMs[device.ipAddress] = device.latencyMs;
         if (!configuredReceiverIps.contains(device.ipAddress)) {
           configuredReceiverIps.add(device.ipAddress);
           receiverPairingControllers[device.ipAddress] =
