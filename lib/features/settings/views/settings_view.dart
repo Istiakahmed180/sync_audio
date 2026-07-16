@@ -42,12 +42,14 @@ class SettingsView extends GetView<SettingsController> {
           const SizedBox(height: 8),
           Obx(
             () => _SettingRow(
-              label: 'Android',
+              label: 'Android version',
               value:
                   '${controller.androidVersion.value} (SDK ${controller.androidSdk.value})',
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 24),
+          _sectionTitle(context, 'Statistics'),
+          const SizedBox(height: 12),
           Obx(
             () => _SettingRow(
               label: 'Total stream time',

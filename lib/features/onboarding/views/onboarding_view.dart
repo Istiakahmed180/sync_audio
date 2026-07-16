@@ -213,7 +213,7 @@ class _HostPage extends StatelessWidget {
           const SizedBox(height: 16),
           _FeatureItem(
             icon: Icons.android_rounded,
-            text: 'Android only — captures system audio from any app',
+            text: 'Android only — captures supported app audio',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
@@ -225,7 +225,7 @@ class _HostPage extends StatelessWidget {
           const SizedBox(height: 8),
           _FeatureItem(
             icon: Icons.pin_rounded,
-            text: 'Shows a pairing code that Receivers use to connect',
+            text: 'Connects to Receivers using their QR code or pairing code',
             scheme: scheme,
           ),
         ],
@@ -284,7 +284,7 @@ class _ReceiverPage extends StatelessWidget {
           const SizedBox(height: 16),
           _FeatureItem(
             icon: Icons.devices_rounded,
-            text: 'Works on Android, iOS, macOS, Windows, and Linux',
+            text: 'Works on Android devices',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
