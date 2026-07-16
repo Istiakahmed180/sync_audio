@@ -15,7 +15,7 @@ class ScheduledStreamingService {
   static const _checkInterval = Duration(seconds: 30);
 
   Future<({bool enabled, int startH, int startM, int stopH, int stopM})?>
-      _loadSchedule() async {
+  _loadSchedule() async {
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('scheduled_enabled') ?? false;
     if (!enabled) return null;
@@ -23,28 +23,24 @@ class ScheduledStreamingService {
     final startM = prefs.getInt('sched_start_min') ?? 0;
     final stopH = prefs.getInt('sched_stop_hour') ?? 22;
     final stopM = prefs.getInt('sched_stop_min') ?? 0;
-    return (enabled: enabled, startH: startH, startM: startM, stopH: stopH, stopM: stopM);
+    return (
+      enabled: enabled,
+      startH: startH,
+      startM: startM,
+      stopH: stopH,
+      stopM: stopM,
+    );
   }
 
   bool _inWindow(int startH, int startM, int stopH, int stopM) {
     final now = DateTime.now();
-    var start = DateTime(now.year, now.month, now.day, startH, startM);
-    var stop = DateTime(now.year, now.month, now.day, stopH, stopM);
-    if (start.isAfter(stop)) {
-      stop = stop.add(const Duration(days: 1));
-    }
-    if (now.isAfter(stop)) {
-      start = start.add(const Duration(days: 1));
-      stop = stop.add(const Duration(days: 1));
-    }
-    if (now.isAtSameMomentAs(start) || now.isAfter(start)) {
-      stop = DateTime(now.year, now.month, now.day, stopH, stopM);
-      if (start.isAfter(stop)) {
-        stop = stop.add(const Duration(days: 1));
-      }
-      if (now.isBefore(stop)) return true;
-    }
-    return false;
+    final current = now.hour * 60 + now.minute;
+    final start = startH * 60 + startM;
+    final stop = stopH * 60 + stopM;
+    if (start == stop) return true;
+    if (start < stop) return current >= start && current < stop;
+    // Overnight window, for example 10:00 PM to 6:00 AM.
+    return current >= start || current < stop;
   }
 
   void start() {
@@ -61,6 +57,8 @@ class ScheduledStreamingService {
     _timer = null;
     _wasStreamingBySchedule = false;
   }
+
+  Future<void> checkNow() => _checkAndApply();
 
   Future<void> _checkAndApply() async {
     try {
@@ -85,8 +83,7 @@ class ScheduledStreamingService {
       final host = Get.find<HostController>();
       if (!host.isConnected) return;
 
-      final isStreaming =
-          host.audioStatus.value == AudioStreamStatus.streaming;
+      final isStreaming = host.audioStatus.value == AudioStreamStatus.streaming;
       final isConnecting =
           host.connectionStatus.value == ConnectionStatus.connecting;
 
@@ -100,7 +97,7 @@ class ScheduledStreamingService {
         if (host.audioStatus.value == AudioStreamStatus.streaming) {
           _wasStreamingBySchedule = true;
         }
-      } else if (!inWindow && isStreaming && _wasStreamingBySchedule) {
+      } else if (!inWindow && isStreaming) {
         await host.stopSystemAudioStream();
         _wasStreamingBySchedule = false;
       }

@@ -36,7 +36,8 @@ class SettingsView extends GetView<SettingsController> {
           Obx(
             () => _SettingRow(
               label: 'Data sent',
-              value: '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
+              value:
+                  '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
             ),
           ),
           const SizedBox(height: 8),
@@ -139,9 +140,12 @@ class _AdvancedSettingsCardState extends State<_AdvancedSettingsCard> {
           ),
           AnimatedCrossFade(
             firstChild: const SizedBox(width: double.infinity),
-            secondChild: _ScheduledStreamingContent(controller: widget.controller),
-            crossFadeState:
-                _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            secondChild: _ScheduledStreamingContent(
+              controller: widget.controller,
+            ),
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 200),
           ),
         ],
@@ -210,24 +214,34 @@ class _TimePickerRow extends StatelessWidget {
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: hour.value, minute: minute.value),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+        child: child!,
+      ),
     );
     if (time != null) onChanged(time.hour, time.minute);
   }
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(label),
-      TextButton.icon(
-        onPressed: () => _pickTime(context),
-        icon: const Icon(Icons.access_time, size: 18),
-        label: Text(
-          '${hour.value.toString().padLeft(2, '0')}:${minute.value.toString().padLeft(2, '0')}',
+  Widget build(BuildContext context) => Obx(
+    () => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label),
+        TextButton.icon(
+          onPressed: () => _pickTime(context),
+          icon: const Icon(Icons.access_time, size: 18),
+          label: Text(_formatTime(hour.value, minute.value)),
         ),
-      ),
-    ],
+      ],
+    ),
   );
+
+  String _formatTime(int hour, int minute) {
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $period';
+  }
 }
 
 class _SettingRow extends StatelessWidget {

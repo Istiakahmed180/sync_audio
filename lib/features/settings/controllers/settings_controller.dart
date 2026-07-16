@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/scheduled_streaming_service.dart';
+
 class SettingsController extends GetxController {
   final themeMode = ThemeMode.system.obs;
   final isScheduledEnabled = false.obs;
@@ -48,6 +50,7 @@ class SettingsController extends GetxController {
     isScheduledEnabled.value = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('scheduled_enabled', value);
+    await _refreshSchedule();
   }
 
   Future<void> scheduleStartTime(int hour, int minute) async {
@@ -56,6 +59,7 @@ class SettingsController extends GetxController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('sched_start_hour', hour);
     await prefs.setInt('sched_start_min', minute);
+    await _refreshSchedule();
   }
 
   Future<void> scheduleStopTime(int hour, int minute) async {
@@ -64,6 +68,13 @@ class SettingsController extends GetxController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('sched_stop_hour', hour);
     await prefs.setInt('sched_stop_min', minute);
+    await _refreshSchedule();
+  }
+
+  Future<void> _refreshSchedule() async {
+    if (Get.isRegistered<ScheduledStreamingService>()) {
+      await Get.find<ScheduledStreamingService>().checkNow();
+    }
   }
 
   void addStreamStats(int minutes, double dataMb, int lostPackets) {
