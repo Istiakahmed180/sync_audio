@@ -109,7 +109,7 @@ class HostController extends GetxController {
   final receiverMuted = <String, bool>{}.obs;
   final pairedDevices = <PairedDevice>[].obs;
   final savedGroups = <DeviceGroup>[].obs;
-  final _statsStartTime = DateTime.now();
+  DateTime? _statsStartTime;
   bool _statsActive = false;
 
   /// The TCP control service and UDP audio service use different session IDs
@@ -195,17 +195,23 @@ class HostController extends GetxController {
 
   void _startStats() {
     _statsActive = true;
+    _statsStartTime = DateTime.now();
   }
 
   void _stopStats() {
     if (!_statsActive) return;
     _statsActive = false;
-    final elapsed = DateTime.now().difference(_statsStartTime);
+    final startedAt = _statsStartTime;
+    _statsStartTime = null;
+    if (startedAt == null) return;
+    final elapsed = DateTime.now().difference(startedAt);
     final minutes = elapsed.inMinutes;
     if (minutes <= 0) return;
-    final totalBytes = (diagnostics['totalBytesSent'] as int? ?? 0);
+    final currentDiagnostics =
+        _audioService?.diagnosticsSnapshot ?? diagnostics;
+    final totalBytes = (currentDiagnostics['totalBytesSent'] as int? ?? 0);
     final totalMb = totalBytes / (1024 * 1024);
-    final lossCount = (diagnostics['droppedPacketCount'] as int? ?? 0);
+    final lossCount = (currentDiagnostics['droppedPacketCount'] as int? ?? 0);
     if (Get.isRegistered<SettingsController>()) {
       Get.find<SettingsController>().addStreamStats(
         minutes,

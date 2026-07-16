@@ -839,9 +839,6 @@ class UdpAudioService implements AudioStreamService {
     _jitter.reset();
     _clockSynchronized = false;
     _receiverClock.stop();
-    _sessionKey = null;
-    _securitySessionId = null;
-    _playbackVolume = 1.0;
     _replayGuard = ReplayGuard();
     await _udpSubscription?.cancel();
     _udpSubscription = null;
