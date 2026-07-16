@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsController extends GetxController {
   final themeMode = ThemeMode.system.obs;
-  final audioQuality = 'Default'.obs;
   final isScheduledEnabled = false.obs;
   final scheduleStartHour = 8.obs;
   final scheduleStartMinute = 0.obs;
