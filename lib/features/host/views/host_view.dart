@@ -6,6 +6,7 @@ import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/latency_metrics.dart';
+import '../../../services/paired_device_store.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
@@ -31,45 +32,52 @@ class HostView extends GetView<HostController> {
                 children: [
                   Text(
                     'Connection status',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    style: Theme
+                        .of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Obx(
-                    () => StatusBadge(
-                      label: controller.connectionStatus.value.label,
-                    ),
+                        () =>
+                        StatusBadge(
+                          label: controller.connectionStatus.value.label,
+                        ),
                   ),
                 ],
               ),
               Obx(
-                () => controller.errorMessage.value == null
+                    () =>
+                controller.errorMessage.value == null
                     ? const SizedBox.shrink()
                     : AppErrorBanner(
-                        message: controller.errorMessage.value!,
-                        onDismiss: () => controller.errorMessage.value = null,
-                      ),
+                  message: controller.errorMessage.value!,
+                  onDismiss: () => controller.errorMessage.value = null,
+                ),
               ),
               const SizedBox(height: 12),
               Obx(
-                () => ConnectionOverviewCard(
-                  title: 'Host connection',
-                  state: controller.connectionStatus.value.label,
-                  icon: controller.isConnected
-                      ? Icons.check_circle_outline
-                      : Icons.wifi_tethering_rounded,
-                  busy: controller.isConnecting,
-                  message: switch (controller.connectionStatus.value) {
-                    ConnectionStatus.connected =>
-                      'Receiver connection established. You can send a test message or start system audio.',
-                    ConnectionStatus.connecting =>
-                      'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
-                    ConnectionStatus.error =>
-                      'Connection failed. Check the Receiver IP, port, and pairing code, then try again.',
-                    _ =>
-                      'Enter the Receiver IP, port, and required pairing code to begin.',
-                  },
-                ),
+                    () =>
+                    ConnectionOverviewCard(
+                      title: 'Host connection',
+                      state: controller.connectionStatus.value.label,
+                      icon: controller.isConnected
+                          ? Icons.check_circle_outline
+                          : Icons.wifi_tethering_rounded,
+                      busy: controller.isConnecting,
+                      message: switch (controller.connectionStatus.value) {
+                        ConnectionStatus.connected =>
+                        'Receiver connection established. You can send a test message or start system audio.',
+                        ConnectionStatus.connecting =>
+                        'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
+                        ConnectionStatus.error =>
+                        'Connection failed. Check the Receiver IP, port, and pairing code, then try again.',
+                        _ =>
+                        'Enter the Receiver IP, port, and required pairing code to begin.',
+                      },
+                    ),
               ),
               const SizedBox(height: 20),
               Row(
@@ -77,7 +85,11 @@ class HostView extends GetView<HostController> {
                 children: [
                   Text(
                     'Connection setup',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    style: Theme
+                        .of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -104,19 +116,25 @@ class HostView extends GetView<HostController> {
               const SizedBox(height: 8),
               _ManualSetupSection(controller: controller),
               const SizedBox(height: 12),
+              _PairedDevicesSection(controller: controller),
+              const SizedBox(height: 12),
+              _SavedGroupsSection(controller: controller),
+              const SizedBox(height: 12),
               Obx(
-                () => Column(
-                  children: controller.configuredReceiverIps
-                      .where(
-                        (a) => controller.receiverPairingControllers
-                            .containsKey(a),
+                    () =>
+                    Column(
+                      children: controller.configuredReceiverIps
+                          .where(
+                            (a) =>
+                            controller.receiverPairingControllers
+                                .containsKey(a),
                       )
-                      .map(
-                        (address) {
+                          .map(
+                            (address) {
                           final deviceName =
-                              controller.discoveredDeviceNames[address];
+                          controller.discoveredDeviceNames[address];
                           final latencyMs =
-                              controller.discoveredDeviceLatencyMs[address];
+                          controller.discoveredDeviceLatencyMs[address];
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: _ReceiverTargetCard(
@@ -124,7 +142,7 @@ class HostView extends GetView<HostController> {
                               deviceName: deviceName,
                               latencyMs: latencyMs,
                               pairingController:
-                                  controller.receiverPairingControllers[address]!,
+                              controller.receiverPairingControllers[address]!,
                               onRemove: () =>
                                   controller.removeReceiverIp(address),
                               session: controller.receiverSessionFor(address),
@@ -136,183 +154,219 @@ class HostView extends GetView<HostController> {
                           );
                         },
                       )
-                      .toList(),
-                ),
+                          .toList(),
+                    ),
               ),
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Obx(
-                  () => TextButton.icon(
-                    onPressed: controller.toggleDiscoveryPolling,
-                    icon: controller.isDiscoveringReceivers.value
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            controller.isDiscoveryPolling.value
-                                ? Icons.stop_circle_outlined
-                                : Icons.wifi_find_rounded,
-                          ),
-                    label: Text(
-                      controller.isDiscoveringReceivers.value
-                          ? 'Searching…'
-                          : controller.isDiscoveryPolling.value
-                          ? 'Stop search'
-                          : 'Search',
-                    ),
-                  ),
+                      () =>
+                      TextButton.icon(
+                        onPressed: controller.toggleDiscoveryPolling,
+                        icon: controller.isDiscoveringReceivers.value
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                            : Icon(
+                          controller.isDiscoveryPolling.value
+                              ? Icons.stop_circle_outlined
+                              : Icons.wifi_find_rounded,
+                        ),
+                        label: Text(
+                          controller.isDiscoveringReceivers.value
+                              ? 'Searching…'
+                              : controller.isDiscoveryPolling.value
+                              ? 'Stop search'
+                              : 'Search',
+                        ),
+                      ),
                 ),
               ),
               Obx(
-                () => Text(
-                  controller.discoveryStatus.value,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                    () =>
+                    Text(
+                      controller.discoveryStatus.value,
+                      style: Theme
+                          .of(context)
+                          .textTheme
+                          .bodySmall,
+                    ),
               ),
               const SizedBox(height: 28),
               Text(
                 'System audio',
-                style: Theme.of(
+                style: Theme
+                    .of(
                   context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                )
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
               Obx(
-                () => DropdownButtonFormField<AudioCodecPreference>(
-                  initialValue: controller.codecPreference.value,
-                  onChanged: controller.isRestartingAudioSettings
-                      ? null
-                      : (value) {
-                          if (value != null) controller.selectCodec(value);
-                        },
-                  decoration: const InputDecoration(labelText: 'Audio codec'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: AudioCodecPreference.auto,
-                      child: Text('Auto'),
+                    () =>
+                    DropdownButtonFormField<AudioCodecPreference>(
+                      initialValue: controller.codecPreference.value,
+                      onChanged: controller.isRestartingAudioSettings
+                          ? null
+                          : (value) {
+                        if (value != null) controller.selectCodec(value);
+                      },
+                      decoration: const InputDecoration(
+                          labelText: 'Audio codec'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: AudioCodecPreference.auto,
+                          child: Text('Auto'),
+                        ),
+                        DropdownMenuItem(
+                          value: AudioCodecPreference.pcm,
+                          child: Text('PCM'),
+                        ),
+                        DropdownMenuItem(
+                          value: AudioCodecPreference.opus,
+                          child: Text('Opus'),
+                        ),
+                      ],
                     ),
-                    DropdownMenuItem(
-                      value: AudioCodecPreference.pcm,
-                      child: Text('PCM'),
-                    ),
-                    DropdownMenuItem(
-                      value: AudioCodecPreference.opus,
-                      child: Text('Opus'),
-                    ),
-                  ],
-                ),
               ),
               const SizedBox(height: 8),
               Obx(
-                () => DropdownButtonFormField<LatencyMode>(
-                  initialValue: controller.latencyMode.value,
-                  onChanged: controller.isRestartingAudioSettings
-                      ? null
-                      : (value) {
-                          if (value != null) controller.configureLatency(value);
-                        },
-                  decoration: const InputDecoration(labelText: 'Latency mode'),
-                  items: LatencyMode.values
-                      .map(
-                        (mode) => DropdownMenuItem(
-                          value: mode,
-                          child: Text(mode.label),
-                        ),
+                    () =>
+                    DropdownButtonFormField<LatencyMode>(
+                      initialValue: controller.latencyMode.value,
+                      onChanged: controller.isRestartingAudioSettings
+                          ? null
+                          : (value) {
+                        if (value != null) controller.configureLatency(value);
+                      },
+                      decoration: const InputDecoration(
+                          labelText: 'Latency mode'),
+                      items: LatencyMode.values
+                          .map(
+                            (mode) =>
+                            DropdownMenuItem(
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
                       )
-                      .toList(),
-                ),
+                          .toList(),
+                    ),
               ),
               Text(
                 'Changing these settings briefly restarts audio on all Receivers.',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme
+                    .of(context)
+                    .textTheme
+                    .bodySmall,
               ),
               const SizedBox(height: 8),
               Text(
                 'Capture supported app playback through Android MediaProjection and send it over UDP.',
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme
+                    .of(context)
+                    .textTheme
+                    .bodyMedium,
               ),
               const SizedBox(height: 8),
               Text(
                 'Zero latency is not physically possible. Lower latency may increase dropouts on unstable networks.',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme
+                    .of(context)
+                    .textTheme
+                    .bodySmall,
               ),
               const SizedBox(height: 12),
               Obx(
-                () => _AudioStreamStatusCard(
-                  status: controller.audioStatus.value,
-                  receiverCount: controller.receiverCount.value,
-                ),
+                    () =>
+                    _AudioStreamStatusCard(
+                      status: controller.audioStatus.value,
+                      receiverCount: controller.receiverCount.value,
+                    ),
               ),
               const SizedBox(height: 12),
               Obx(
-                () => Column(
-                  children: controller.displayReceiverSessions
-                      .map(
-                        (session) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _ReceiverSessionCard(
-                            session: session,
-                            volume: controller.volumeForReceiver(
-                              session.ipAddress,
+                    () =>
+                    Column(
+                      children: controller.displayReceiverSessions
+                          .map(
+                            (session) =>
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _ReceiverSessionCard(
+                                session: session,
+                                volume: controller.volumeForReceiver(
+                                  session.ipAddress,
+                                ),
+                                muted: controller.isMuted(session.ipAddress),
+                                onVolumeChanged: (v) =>
+                                    controller
+                                        .setReceiverVolume(
+                                        session.ipAddress, v),
+                                onMuteToggle: () =>
+                                    controller.toggleMute(session.ipAddress),
+                                onAdjust: (delta) =>
+                                    controller
+                                        .adjustReceiverCalibration(
+                                        session, delta),
+                              ),
                             ),
-                            muted: controller.isMuted(session.ipAddress),
-                            onVolumeChanged: (v) => controller
-                                .setReceiverVolume(session.ipAddress, v),
-                            onMuteToggle: () =>
-                                controller.toggleMute(session.ipAddress),
-                            onAdjust: (delta) => controller
-                                .adjustReceiverCalibration(session, delta),
-                          ),
-                        ),
                       )
-                      .toList(),
-                ),
+                          .toList(),
+                    ),
               ),
               const SizedBox(height: 12),
               Obx(
-                () => AppPrimaryButton(
-                  label: 'Start System Audio',
-                  icon: Icons.graphic_eq_rounded,
-                  onPressed:
+                    () =>
+                    AppPrimaryButton(
+                      label: 'Start System Audio',
+                      icon: Icons.graphic_eq_rounded,
+                      onPressed:
                       !controller.isConnected ||
                           controller.isStartingSystemAudio ||
                           controller.audioStatus.value ==
                               AudioStreamStatus.streaming
-                      ? null
-                      : controller.startSystemAudioStream,
-                ),
+                          ? null
+                          : controller.startSystemAudioStream,
+                    ),
               ),
               const SizedBox(height: 12),
               Obx(
-                () => AppPrimaryButton(
-                  label: 'Stop System Audio',
-                  icon: Icons.stop_circle_outlined,
-                  onPressed:
+                    () =>
+                    AppPrimaryButton(
+                      label: 'Stop System Audio',
+                      icon: Icons.stop_circle_outlined,
+                      onPressed:
                       controller.audioStatus.value ==
                           AudioStreamStatus.streaming
-                      ? controller.stopSystemAudioStream
-                      : null,
-                ),
+                          ? controller.stopSystemAudioStream
+                          : null,
+                    ),
               ),
               const SizedBox(height: 8),
               Obx(
-                () => Text(
-                  controller.isConnected
-                      ? controller.audioStatus.value ==
-                                AudioStreamStatus.streaming
-                            ? 'System audio is being sent to the connected Receivers.'
-                            : 'Connect a Receiver, then start system audio when you are ready.'
-                      : 'Connect a Receiver before starting system audio.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                    () =>
+                    Text(
+                      controller.isConnected
+                          ? controller.audioStatus.value ==
+                          AudioStreamStatus.streaming
+                          ? 'System audio is being sent to the connected Receivers.'
+                          : 'Connect a Receiver, then start system audio when you are ready.'
+                          : 'Connect a Receiver before starting system audio.',
+                      style: Theme
+                          .of(context)
+                          .textTheme
+                          .bodySmall,
+                    ),
               ),
               const SizedBox(height: 12),
               const _InfoMessage(
                 text:
-                    'Supported system audio is captured on Android and sent to each receiver with timestamped packets and clock-offset compensation.',
+                'Supported system audio is captured on Android and sent to each receiver with timestamped packets and clock-offset compensation.',
               ),
             ],
           ),
@@ -354,6 +408,7 @@ class _HostDiscoveryLifecycleState extends State<_HostDiscoveryLifecycle> {
 
 class _ManualSetupSection extends StatefulWidget {
   const _ManualSetupSection({required this.controller});
+
   final HostController controller;
 
   @override
@@ -375,14 +430,17 @@ class _ManualSetupSectionState extends State<_ManualSetupSection> {
           ),
           label: Text(_expanded ? 'Hide manual setup' : 'Add manually'),
           style: TextButton.styleFrom(
-            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            foregroundColor: Theme
+                .of(context)
+                .colorScheme
+                .onSurfaceVariant,
           ),
         ),
         AnimatedCrossFade(
           firstChild: const SizedBox(width: double.infinity),
           secondChild: _ManualEntryForm(controller: widget.controller),
           crossFadeState:
-              _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),
         ),
       ],
@@ -392,6 +450,7 @@ class _ManualSetupSectionState extends State<_ManualSetupSection> {
 
 class _ManualEntryForm extends StatelessWidget {
   const _ManualEntryForm({required this.controller});
+
   final HostController controller;
 
   @override
@@ -402,7 +461,10 @@ class _ManualEntryForm extends StatelessWidget {
         children: [
           Text(
             'Enter the IP address and pairing code shown on the Receiver screen.',
-            style: Theme.of(context).textTheme.bodyMedium,
+            style: Theme
+                .of(context)
+                .textTheme
+                .bodyMedium,
           ),
           const SizedBox(height: 12),
           TextField(
@@ -429,7 +491,7 @@ class _ManualEntryForm extends StatelessWidget {
               hintText: '12345678',
               counterText: '',
               helperText:
-                  'This code will be assigned to the next Receiver you add.',
+              'This code will be assigned to the next Receiver you add.',
             ),
           ),
           const SizedBox(height: 12),
@@ -468,11 +530,15 @@ class _ReceiverTargetCard extends StatelessWidget {
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
 
-  String get _displayName => (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
+  String get _displayName =>
+      (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
 
   Widget _signalIndicator(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isConnected = session?.controlStatus == ControlConnectionStatus.connected;
+    final scheme = Theme
+        .of(context)
+        .colorScheme;
+    final isConnected = session?.controlStatus ==
+        ControlConnectionStatus.connected;
     if (isConnected) {
       return Icon(Icons.link_rounded, size: 14, color: scheme.primary);
     }
@@ -490,7 +556,9 @@ class _ReceiverTargetCard extends StatelessWidget {
   }
 
   String _signalLabel() {
-    if (session?.controlStatus == ControlConnectionStatus.connected) return 'Connected';
+    if (session?.controlStatus == ControlConnectionStatus.connected) {
+      return 'Connected';
+    }
     if (latencyMs == null) return 'Unknown';
     final ms = latencyMs!;
     if (ms <= 20) return 'Excellent';
@@ -500,7 +568,9 @@ class _ReceiverTargetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final scheme = Theme
+        .of(context)
+        .colorScheme;
     return Card(
       color: scheme.surfaceContainerHighest,
       child: Padding(
@@ -520,7 +590,11 @@ class _ReceiverTargetCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               _displayName,
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              style: Theme
+                                  .of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -529,7 +603,11 @@ class _ReceiverTargetCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             _signalLabel(),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            style: Theme
+                                .of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
                               color: scheme.onSurfaceVariant,
                             ),
                           ),
@@ -539,7 +617,11 @@ class _ReceiverTargetCard extends StatelessWidget {
                       if (deviceName != null && deviceName!.isNotEmpty)
                         Text(
                           address,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme
+                              .of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
@@ -573,13 +655,13 @@ class _ReceiverTargetCard extends StatelessWidget {
                 ),
                 FilledButton.tonalIcon(
                   onPressed:
+                  session?.controlStatus ==
+                      ControlConnectionStatus.connecting ||
                       session?.controlStatus ==
-                              ControlConnectionStatus.connecting ||
-                          session?.controlStatus ==
-                              ControlConnectionStatus.reconnecting
+                          ControlConnectionStatus.reconnecting
                       ? null
                       : session?.controlStatus ==
-                            ControlConnectionStatus.connected
+                      ControlConnectionStatus.connected
                       ? onDisconnect
                       : onConnect,
                   icon: Icon(
@@ -591,9 +673,9 @@ class _ReceiverTargetCard extends StatelessWidget {
                     session?.controlStatus == ControlConnectionStatus.connected
                         ? 'Disconnect'
                         : session?.controlStatus ==
-                                  ControlConnectionStatus.connecting ||
-                              session?.controlStatus ==
-                                  ControlConnectionStatus.reconnecting
+                        ControlConnectionStatus.connecting ||
+                        session?.controlStatus ==
+                            ControlConnectionStatus.reconnecting
                         ? 'Connecting…'
                         : 'Connect',
                   ),
@@ -627,7 +709,10 @@ class _ReceiverSessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: Theme
+          .of(context)
+          .colorScheme
+          .surfaceContainerHighest,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
@@ -646,8 +731,14 @@ class _ReceiverSessionCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Text(
-                    '${session.controlStatus.label} · RTT ${session.roundTripTimeMicros ~/ 1000} ms · offset ${session.clockOffsetMicros ~/ 1000} ms · drift ${session.clockDriftPpm} ppm',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    '${session.controlStatus.label} · RTT ${session
+                        .roundTripTimeMicros ~/ 1000} ms · offset ${session
+                        .clockOffsetMicros ~/ 1000} ms · drift ${session
+                        .clockDriftPpm} ppm',
+                    style: Theme
+                        .of(context)
+                        .textTheme
+                        .bodySmall,
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -673,7 +764,10 @@ class _ReceiverSessionCard extends StatelessWidget {
                       ),
                       Text(
                         '${(muted ? 0 : volume * 100).round()}%',
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme
+                            .of(context)
+                            .textTheme
+                            .bodySmall,
                       ),
                     ],
                   ),
@@ -722,7 +816,9 @@ class _AudioStreamStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final scheme = Theme
+        .of(context)
+        .colorScheme;
     final isStreaming = status == AudioStreamStatus.streaming;
     final color = isStreaming ? Colors.green.shade600 : scheme.secondary;
 
@@ -744,7 +840,8 @@ class _AudioStreamStatusCard extends StatelessWidget {
               foregroundColor: color,
               radius: 24,
               child: Icon(
-                isStreaming ? Icons.graphic_eq_rounded : Icons.music_note_outlined,
+                isStreaming ? Icons.graphic_eq_rounded : Icons
+                    .music_note_outlined,
                 size: 24,
               ),
             ),
@@ -757,15 +854,23 @@ class _AudioStreamStatusCard extends StatelessWidget {
                     children: [
                       Text(
                         'Audio streaming',
-                        style: Theme.of(context).textTheme.labelLarge,
+                        style: Theme
+                            .of(context)
+                            .textTheme
+                            .labelLarge,
                       ),
                       const Spacer(),
                       if (isStreaming) ...[
-                        Icon(Icons.fiber_manual_record, size: 8, color: Colors.red.shade400),
+                        Icon(Icons.fiber_manual_record, size: 8,
+                            color: Colors.red.shade400),
                         const SizedBox(width: 4),
                         Text(
                           'LIVE',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          style: Theme
+                              .of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
                             color: Colors.red.shade400,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.5,
@@ -777,7 +882,11 @@ class _AudioStreamStatusCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     status.label,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    style: Theme
+                        .of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
                       color: color,
                       fontWeight: FontWeight.bold,
                     ),
@@ -785,9 +894,13 @@ class _AudioStreamStatusCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     isStreaming
-                        ? 'Sending audio to $receiverCount receiver${receiverCount == 1 ? '' : 's'}.'
+                        ? 'Sending audio to $receiverCount receiver${receiverCount ==
+                        1 ? '' : 's'}.'
                         : 'Audio is not streaming. Start system audio when ready.',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: Theme
+                        .of(context)
+                        .textTheme
+                        .bodyMedium,
                   ),
                 ],
               ),
@@ -799,14 +912,225 @@ class _AudioStreamStatusCard extends StatelessWidget {
   }
 }
 
+class _PairedDevicesSection extends StatelessWidget {
+  const _PairedDevicesSection({required this.controller});
+  final HostController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () {
+        final devices = controller.pairedDevices;
+        if (devices.isEmpty) return const SizedBox.shrink();
+
+        return Card(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.history_rounded,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Recently connected',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: devices.map((device) {
+                    final alreadyAdded =
+                        controller.configuredReceiverIps.contains(
+                          device.ipAddress,
+                        );
+                    return ChoiceChip(
+                      label: Text(
+                        alreadyAdded
+                            ? '${device.name} (added)'
+                            : device.name,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      selected: alreadyAdded,
+                      avatar: const Icon(Icons.devices_rounded, size: 16),
+                      onSelected: alreadyAdded
+                          ? null
+                          : (_) {
+                              controller.receiverIpInputController.text =
+                                  device.ipAddress;
+                              controller.addReceiverIp();
+                            },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SavedGroupsSection extends StatelessWidget {
+  const _SavedGroupsSection({required this.controller});
+
+  final HostController controller;
+
+  Future<void> _saveGroup(BuildContext context) async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) =>
+          AlertDialog(
+            title: const Text('Save current receivers'),
+            content: TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Group name',
+                hintText: 'Living Room',
+              ),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(ctx).pop(nameController.text.trim()),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+    );
+    if (name != null && name.isNotEmpty) {
+      await controller.saveCurrentAsGroup(name);
+    }
+    nameController.dispose();
+  }
+
+  Future<void> _confirmDelete(BuildContext context, DeviceGroup group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) =>
+          AlertDialog(
+            title: const Text('Delete group'),
+            content: Text('Delete "${group.name}"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Theme
+                    .of(context)
+                    .colorScheme
+                    .error),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+    if (confirmed == true) {
+      await controller.deleteGroup(group.name);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+          () {
+        final groups = controller.savedGroups;
+        if (groups.isEmpty) return const SizedBox.shrink();
+
+        return Card(
+          color: Theme
+              .of(context)
+              .colorScheme
+              .surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.bookmark_rounded,
+                      size: 18,
+                      color: Theme
+                          .of(context)
+                          .colorScheme
+                          .primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Saved groups',
+                      style: Theme
+                          .of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Save current'),
+                      onPressed: () => _saveGroup(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: groups.map((group) {
+                    return InputChip(
+                      label: Text(group.name),
+                      labelStyle: const TextStyle(fontSize: 13),
+                      avatar: const Icon(Icons.speaker_group_rounded, size: 16),
+                      onPressed: () => controller.applyGroup(group),
+                      onDeleted: () => _confirmDelete(context, group),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _InfoMessage extends StatelessWidget {
   const _InfoMessage({required this.text});
+
   final String text;
+
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Text(text, textAlign: TextAlign.center),
-    ),
-  );
+  Widget build(BuildContext context) =>
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Text(text, textAlign: TextAlign.center),
+        ),
+      );
 }

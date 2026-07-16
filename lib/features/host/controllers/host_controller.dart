@@ -256,6 +256,8 @@ class HostController extends GetxController {
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().start();
     }
+    unawaited(loadSavedGroups());
+    unawaited(loadPairedDevices());
   }
 
   void startDiscoveryPolling() {
@@ -369,6 +371,9 @@ class HostController extends GetxController {
         ),
       ],
     );
+    final deviceName = discoveredDeviceNames[address] ?? address;
+    unawaited(_pairedStore.savePair(ip: address, port: port, name: deviceName));
+    unawaited(loadPairedDevices());
   }
 
   Future<void> disconnectReceiver(String address) async {
