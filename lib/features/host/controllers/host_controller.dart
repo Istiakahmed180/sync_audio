@@ -98,11 +98,11 @@ class HostController extends GetxController {
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _suppressNextDisconnectedNotification = false;
   bool _startingSystemAudio = false;
-  bool _restartingAudioSettings = false;
+  final _restartingAudioSettings = false.obs;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
   bool get isStartingSystemAudio => _startingSystemAudio;
-  bool get isRestartingAudioSettings => _restartingAudioSettings;
+  bool get isRestartingAudioSettings => _restartingAudioSettings.value;
 
   bool get isConnecting =>
       connectionStatus.value == ConnectionStatus.connecting;
@@ -555,23 +555,23 @@ class HostController extends GetxController {
   }
 
   Future<void> selectCodec(AudioCodecPreference preference) async {
-    if (_restartingAudioSettings) return;
+    if (_restartingAudioSettings.value) return;
     final wasStreaming = _audioService?.isStreaming ?? false;
-    _restartingAudioSettings = wasStreaming;
+    _restartingAudioSettings.value = wasStreaming;
     try {
       if (wasStreaming) await stopSystemAudioStream();
       codecPreference.value = preference;
       await _audioService?.selectCodec(preference);
       if (wasStreaming) await startSystemAudioStream();
     } finally {
-      _restartingAudioSettings = false;
+      _restartingAudioSettings.value = false;
     }
   }
 
   Future<void> configureLatency(LatencyMode mode) async {
-    if (_restartingAudioSettings) return;
+    if (_restartingAudioSettings.value) return;
     final wasStreaming = _audioService?.isStreaming ?? false;
-    _restartingAudioSettings = wasStreaming;
+    _restartingAudioSettings.value = wasStreaming;
     try {
       if (wasStreaming) await stopSystemAudioStream();
       latencyMode.value = mode;
@@ -583,7 +583,7 @@ class HostController extends GetxController {
       );
       if (wasStreaming) await startSystemAudioStream();
     } finally {
-      _restartingAudioSettings = false;
+      _restartingAudioSettings.value = false;
     }
   }
 
