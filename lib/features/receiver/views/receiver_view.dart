@@ -69,6 +69,14 @@ class ReceiverView extends GetView<ReceiverController> {
               ),
             ),
             const SizedBox(height: 20),
+            Obx(
+              () => controller.audioStatus.value ==
+                      AudioStreamStatus.receiving
+                  ? _AudioReceivingCard(
+                      audioStatus: controller.audioStatus.value,
+                    )
+                  : const SizedBox.shrink(),
+            ),
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -300,6 +308,81 @@ class _CopyableRow extends StatelessWidget {
               : null,
         ),
       ],
+    );
+  }
+}
+
+class _AudioReceivingCard extends StatelessWidget {
+  const _AudioReceivingCard({required this.audioStatus});
+
+  final AudioStreamStatus audioStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final isReceiving = audioStatus == AudioStreamStatus.receiving;
+    final color = Colors.green.shade600;
+
+    return Card(
+      color: color.withValues(alpha: .10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: color.withValues(alpha: .30), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              backgroundColor: color.withValues(alpha: .18),
+              foregroundColor: color,
+              radius: 24,
+              child: const Icon(Icons.graphic_eq_rounded, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Audio receiving',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const Spacer(),
+                      if (isReceiving) ...[
+                        Icon(Icons.fiber_manual_record, size: 8, color: Colors.red.shade400),
+                        const SizedBox(width: 4),
+                        Text(
+                          'LIVE',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Colors.red.shade400,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    audioStatus.label,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Audio is playing in sync from the Host.',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

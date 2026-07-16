@@ -241,19 +241,9 @@ class HostView extends GetView<HostController> {
               ),
               const SizedBox(height: 12),
               Obx(
-                () => Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Audio status'),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${controller.receiverCount.value} receivers'),
-                        const SizedBox(width: 10),
-                        StatusBadge(label: controller.audioStatus.value.label),
-                      ],
-                    ),
-                  ],
+                () => _AudioStreamStatusCard(
+                  status: controller.audioStatus.value,
+                  receiverCount: controller.receiverCount.value,
                 ),
               ),
               const SizedBox(height: 12),
@@ -713,6 +703,94 @@ class _ReceiverSessionCard extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioStreamStatusCard extends StatelessWidget {
+  const _AudioStreamStatusCard({
+    required this.status,
+    required this.receiverCount,
+  });
+
+  final AudioStreamStatus status;
+  final int receiverCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isStreaming = status == AudioStreamStatus.streaming;
+    final color = isStreaming ? Colors.green.shade600 : scheme.secondary;
+
+    return Card(
+      color: color.withValues(alpha: isStreaming ? .10 : .08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: isStreaming
+            ? BorderSide(color: color.withValues(alpha: .30), width: 1)
+            : BorderSide.none,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              backgroundColor: color.withValues(alpha: .18),
+              foregroundColor: color,
+              radius: 24,
+              child: Icon(
+                isStreaming ? Icons.graphic_eq_rounded : Icons.music_note_outlined,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Audio streaming',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const Spacer(),
+                      if (isStreaming) ...[
+                        Icon(Icons.fiber_manual_record, size: 8, color: Colors.red.shade400),
+                        const SizedBox(width: 4),
+                        Text(
+                          'LIVE',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Colors.red.shade400,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    status.label,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isStreaming
+                        ? 'Sending audio to $receiverCount receiver${receiverCount == 1 ? '' : 's'}.'
+                        : 'Audio is not streaming. Start system audio when ready.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
