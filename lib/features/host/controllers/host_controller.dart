@@ -100,6 +100,7 @@ class HostController extends GetxController {
   bool _startingSystemAudio = false;
   bool _autoStreamInProgress = false;
   final _streamingReceiverAddresses = <String>{};
+  final _readyReceiverStreamAddresses = <String>{};
   final _restartingAudioSettings = false.obs;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
@@ -509,6 +510,9 @@ class HostController extends GetxController {
     _streamingReceiverAddresses
       ..clear()
       ..addAll(addresses);
+    _readyReceiverStreamAddresses
+      ..clear()
+      ..addAll(addresses);
     await audioService.selectCodec(codecPreference.value);
     final pairingText = _pairingInputFor(addresses);
     await audioService.configureLatency(
@@ -536,6 +540,7 @@ class HostController extends GetxController {
       ]);
       receiverCount.value = 0;
       _streamingReceiverAddresses.clear();
+      _readyReceiverStreamAddresses.clear();
       return;
     }
     // MediaProjection permission is requested inside startStreaming. Notify
@@ -615,6 +620,7 @@ class HostController extends GetxController {
     await _audioService?.stopStreaming();
     receiverCount.value = 0;
     _streamingReceiverAddresses.clear();
+    _readyReceiverStreamAddresses.clear();
     receiverSessions.clear();
     await AppNotificationService.show(
       title: 'System audio stopped',
@@ -926,6 +932,8 @@ class HostController extends GetxController {
     if (session.id == session.ipAddress &&
         session.controlStatus == ControlConnectionStatus.connected) {
       unawaited(_autoStartForConnectedReceivers());
+    } else if (session.id == session.ipAddress) {
+      _readyReceiverStreamAddresses.remove(session.ipAddress);
     }
   }
 
@@ -944,10 +952,13 @@ class HostController extends GetxController {
       final additions = addresses
           .where((address) => !_streamingReceiverAddresses.contains(address))
           .toList(growable: false);
-      if (additions.isEmpty) return;
+      final reconnects = addresses
+          .where((address) => !_readyReceiverStreamAddresses.contains(address))
+          .toList(growable: false);
+      if (additions.isEmpty && reconnects.isEmpty) return;
       _autoStreamInProgress = true;
       try {
-        await _addReceiversToActiveStream(additions);
+        await _addReceiversToActiveStream(additions, reconnects: reconnects);
       } finally {
         _autoStreamInProgress = false;
       }
@@ -972,13 +983,18 @@ class HostController extends GetxController {
     }
   }
 
-  Future<void> _addReceiversToActiveStream(List<String> addresses) async {
+  Future<void> _addReceiversToActiveStream(
+    List<String> additions, {
+    required List<String> reconnects,
+  }) async {
     final audioService = _audioService;
     if (audioService == null || !audioService.isStreaming) return;
     final port = int.tryParse(audioPortController.text.trim());
     if (port == null || port < 1 || port > 65535) return;
 
-    await audioService.addReceivers(ipAddresses: addresses, port: port);
+    await audioService.addReceivers(ipAddresses: additions, port: port);
+    final addresses = {...additions, ...reconnects}.toList(growable: false);
+    if (addresses.isEmpty) return;
     final commandArguments = <String>[
       _streamSessionId,
       '0',
@@ -996,6 +1012,7 @@ class HostController extends GetxController {
       commandArguments,
     );
     _streamingReceiverAddresses.addAll(addresses);
+    _readyReceiverStreamAddresses.addAll(addresses);
     receiverCount.value = _streamingReceiverAddresses.length;
   }
 
