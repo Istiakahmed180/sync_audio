@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Scan Receiver QR codes to connect audio devices.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sync Audio discovers and connects to devices on your local network.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -19,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>sync_audio</string>
+	<string>SyncAudio</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -30,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan Receiver QR codes to connect audio devices.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sync Audio discovers and connects to devices on your local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sync Audio uses the microphone to capture audio for streaming to connected devices.</string>
 	<key>UIApplicationSceneManifest</key>
