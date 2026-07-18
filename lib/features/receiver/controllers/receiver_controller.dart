@@ -249,6 +249,7 @@ class ReceiverController extends GetxController {
         deviceId: address ?? 'receiver',
         deviceName: deviceName.value,
         controlPort: defaultPort,
+        pairingCode: _pairingTokenValue ?? '',
       );
     }
     if (_audioService != null && !_audioService.isReceiving) {

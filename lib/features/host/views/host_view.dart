@@ -57,9 +57,9 @@ class HostView extends GetView<HostController> {
               const SizedBox(height: 20),
               Text(
                 'Connect a receiver',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Row(
@@ -81,47 +81,45 @@ class HostView extends GetView<HostController> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: _ManualSetupSection(controller: controller),
-                  ),
+                  Expanded(child: _ManualSetupSection(controller: controller)),
                 ],
               ),
               const SizedBox(height: 12),
 
-              Obx(
-                () {
-                  final addresses = controller.configuredReceiverIps
-                      .where(
-                        (a) => controller.receiverPairingControllers
-                            .containsKey(a),
-                      )
-                      .toList();
-                  if (addresses.isEmpty) {
-                    return const _EmptyReceiverState();
-                  }
-                  return Column(
-                    children: addresses.map((address) {
-                      final deviceName =
-                          controller.discoveredDeviceNames[address];
-                      final latencyMs =
-                          controller.discoveredDeviceLatencyMs[address];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _ReceiverTargetCard(
-                          address: address,
-                          deviceName: deviceName,
-                          latencyMs: latencyMs,
-                          onRemove: () => controller.removeReceiverIp(address),
-                          session: controller.receiverSessionFor(address),
-                          onConnect: () => controller.connectReceiver(address),
-                          onDisconnect: () =>
-                              controller.disconnectReceiver(address),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
+              Obx(() {
+                final addresses = controller.configuredReceiverIps
+                    .where(
+                      (a) =>
+                          controller.receiverPairingControllers.containsKey(a),
+                    )
+                    .toList();
+                if (addresses.isEmpty) {
+                  return const _EmptyReceiverState();
+                }
+                return Column(
+                  children: addresses.map((address) {
+                    final session = controller.receiverSessionFor(address);
+                    final deviceName =
+                        session?.deviceName ??
+                        controller.discoveredDeviceNames[address];
+                    final latencyMs =
+                        controller.discoveredDeviceLatencyMs[address];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _ReceiverTargetCard(
+                        address: address,
+                        deviceName: deviceName,
+                        latencyMs: latencyMs,
+                        onRemove: () => controller.removeReceiverIp(address),
+                        session: session,
+                        onConnect: () => controller.connectReceiver(address),
+                        onDisconnect: () =>
+                            controller.disconnectReceiver(address),
+                      ),
+                    );
+                  }).toList(),
+                );
+              }),
               const SizedBox(height: 4),
               Align(
                 alignment: Alignment.centerLeft,
@@ -150,7 +148,8 @@ class HostView extends GetView<HostController> {
                 ),
               ),
               Obx(
-                () => controller.isDiscoveryPolling.value ||
+                () =>
+                    controller.isDiscoveryPolling.value ||
                         controller.isDiscoveringReceivers.value
                     ? Text(
                         controller.discoveryStatus.value,
@@ -297,7 +296,8 @@ class HostView extends GetView<HostController> {
               ),
               const SizedBox(height: 12),
               const _InfoMessage(
-                text: 'System audio is captured via Android MediaProjection with timestamped packets and clock-offset compensation.',
+                text:
+                    'System audio is captured via Android MediaProjection with timestamped packets and clock-offset compensation.',
               ),
             ],
           ),
@@ -420,7 +420,6 @@ class _ManualEntryForm extends StatelessWidget {
                   'This code will be assigned to the next Receiver you add.',
             ),
           ),
-
         ],
       ),
     );

@@ -14,6 +14,7 @@ abstract class DeviceDiscoveryService {
     required String deviceId,
     required String deviceName,
     required int controlPort,
+    required String pairingCode,
   });
 
   Future<void> stopResponder();
@@ -48,9 +49,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       Datagram? datagram;
       while ((datagram = socket.receive()) != null) {
         final fields = utf8.decode(datagram!.data).trim().split('|');
-        if (fields.length != 6 ||
+        if ((fields.length != 6 && fields.length != 7) ||
             fields.first != _response ||
-            fields[5] != nonce) {
+            fields.last != nonce) {
           continue;
         }
         final port = int.tryParse(fields[4]);
@@ -63,6 +64,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
           name: fields[2],
           ipAddress: address,
           port: port,
+          pairingCode: fields.length == 7 ? fields[5] : null,
         );
       }
     });
@@ -119,6 +121,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     required String deviceId,
     required String deviceName,
     required int controlPort,
+    required String pairingCode,
   }) async {
     await stopResponder();
     final socket = await RawDatagramSocket.bind(
@@ -146,6 +149,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
           _deviceName,
           _responderAddress ?? datagram.address.address,
           '$_controlPort',
+          pairingCode,
           request[1],
         ].join('|');
         socket.send(utf8.encode(response), datagram.address, datagram.port);
@@ -174,6 +178,7 @@ class PlaceholderDeviceDiscoveryService implements DeviceDiscoveryService {
     required String deviceId,
     required String deviceName,
     required int controlPort,
+    required String pairingCode,
   }) async {}
 
   @override

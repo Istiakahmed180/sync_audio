@@ -690,6 +690,21 @@ class HostController extends GetxController {
     receiverIpInputController.clear();
     pairingTokenController.clear();
     errorMessage.value = null;
+    unawaited(_resolveReceiverName(address));
+  }
+
+  Future<void> _resolveReceiverName(String address) async {
+    try {
+      final devices = await _discoveryService.discover();
+      for (final device in devices) {
+        if (device.ipAddress == address && device.name.trim().isNotEmpty) {
+          discoveredDeviceNames[address] = device.name.trim();
+          return;
+        }
+      }
+    } catch (_) {
+      // Manual setup still works when UDP discovery is unavailable.
+    }
   }
 
   void removeReceiverIp(String address) {
@@ -702,13 +717,16 @@ class HostController extends GetxController {
   /// Applies the Receiver QR payload: IP address:port:pairing code.
   bool addReceiverFromQrData(String rawData) {
     final parts = rawData.trim().split(':');
-    if (parts.length != 3) {
+    if (parts.length < 3 || parts.length > 4) {
       _showError('Invalid Receiver QR code.');
       return false;
     }
     final address = parts[0].trim();
     final port = int.tryParse(parts[1].trim());
     final pairingCode = parts[2].trim();
+    final deviceName = parts.length == 4
+        ? Uri.decodeComponent(parts[3].trim())
+        : '';
     final parsedIp = InternetAddress.tryParse(address);
     if (parsedIp == null || parsedIp.type != InternetAddressType.IPv4) {
       _showError('QR code contains an invalid Receiver IP address.');
@@ -732,6 +750,12 @@ class HostController extends GetxController {
     }
     receiverPairingControllers[address] ??= TextEditingController();
     receiverPairingControllers[address]!.text = pairingCode;
+    if (deviceName.isNotEmpty) {
+      discoveredDeviceNames[address] = deviceName;
+    } else {
+      // Keep older QR codes (without a name field) working as well.
+      unawaited(_resolveReceiverName(address));
+    }
     errorMessage.value = null;
     return true;
   }
@@ -759,6 +783,10 @@ class HostController extends GetxController {
           configuredReceiverIps.add(device.ipAddress);
           receiverPairingControllers[device.ipAddress] =
               TextEditingController();
+        }
+        final pairingCode = device.pairingCode;
+        if (pairingCode != null && RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
+          receiverPairingControllers[device.ipAddress]?.text = pairingCode;
         }
       }
       discoveryStatus.value = devices.isEmpty
@@ -871,6 +899,10 @@ class HostController extends GetxController {
   }
 
   void _updateSession(ReceiverSession session) {
+    final name = session.deviceName?.trim();
+    if (name != null && name.isNotEmpty) {
+      discoveredDeviceNames[session.ipAddress] = name;
+    }
     final index = receiverSessions.indexWhere((item) => item.id == session.id);
     if (index == -1) {
       receiverSessions.add(session);

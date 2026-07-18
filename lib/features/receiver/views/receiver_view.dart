@@ -125,7 +125,8 @@ class _ConnectionInfoCard extends StatelessWidget {
   final String ipAddress;
   final String pairingCode;
 
-  String get _connectionInfo => '$ipAddress:5050:$pairingCode';
+  String get _connectionInfo =>
+      '$ipAddress:5050:$pairingCode:${Uri.encodeComponent(deviceName)}';
 
   @override
   Widget build(BuildContext context) {
