@@ -98,6 +98,8 @@ class HostController extends GetxController {
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _suppressNextDisconnectedNotification = false;
   bool _startingSystemAudio = false;
+  bool _autoStreamInProgress = false;
+  final _streamingReceiverAddresses = <String>{};
   final _restartingAudioSettings = false.obs;
 
   bool get isConnected => connectionStatus.value == ConnectionStatus.connected;
@@ -504,6 +506,9 @@ class HostController extends GetxController {
       return _showError('Enter an audio port between 1 and 65535.');
     }
     receiverCount.value = addresses.length;
+    _streamingReceiverAddresses
+      ..clear()
+      ..addAll(addresses);
     await audioService.selectCodec(codecPreference.value);
     final pairingText = _pairingInputFor(addresses);
     await audioService.configureLatency(
@@ -530,6 +535,7 @@ class HostController extends GetxController {
         _streamSessionId,
       ]);
       receiverCount.value = 0;
+      _streamingReceiverAddresses.clear();
       return;
     }
     // MediaProjection permission is requested inside startStreaming. Notify
@@ -608,6 +614,7 @@ class HostController extends GetxController {
     }
     await _audioService?.stopStreaming();
     receiverCount.value = 0;
+    _streamingReceiverAddresses.clear();
     receiverSessions.clear();
     await AppNotificationService.show(
       title: 'System audio stopped',
@@ -916,6 +923,80 @@ class HostController extends GetxController {
       );
       receiverSessions.refresh();
     }
+    if (session.id == session.ipAddress &&
+        session.controlStatus == ControlConnectionStatus.connected) {
+      unawaited(_autoStartForConnectedReceivers());
+    }
+  }
+
+  Future<void> _autoStartForConnectedReceivers() async {
+    if (_autoStreamInProgress) return;
+    final audioService = _audioService;
+    if (audioService == null) return;
+    final addresses = _receiverAddresses();
+    if (addresses.isEmpty) return;
+
+    if (audioService.isStreaming) {
+      final known = audioService.receiverSessions
+          .map((session) => session.ipAddress)
+          .toSet();
+      _streamingReceiverAddresses.addAll(known);
+      final additions = addresses
+          .where((address) => !_streamingReceiverAddresses.contains(address))
+          .toList(growable: false);
+      if (additions.isEmpty) return;
+      _autoStreamInProgress = true;
+      try {
+        await _addReceiversToActiveStream(additions);
+      } finally {
+        _autoStreamInProgress = false;
+      }
+      return;
+    }
+
+    final allConnected = addresses.every(
+      (address) => receiverSessions.any(
+        (session) =>
+            session.id == address &&
+            session.controlStatus == ControlConnectionStatus.connected,
+      ),
+    );
+    if (!allConnected) return;
+
+    _autoStreamInProgress = true;
+    try {
+      await startSystemAudioStream();
+    } finally {
+      _autoStreamInProgress = false;
+      unawaited(_autoStartForConnectedReceivers());
+    }
+  }
+
+  Future<void> _addReceiversToActiveStream(List<String> addresses) async {
+    final audioService = _audioService;
+    if (audioService == null || !audioService.isStreaming) return;
+    final port = int.tryParse(audioPortController.text.trim());
+    if (port == null || port < 1 || port > 65535) return;
+
+    await audioService.addReceivers(ipAddresses: addresses, port: port);
+    final commandArguments = <String>[
+      _streamSessionId,
+      '0',
+      audioService.activeCodecType.name,
+      latencyMode.value.name,
+    ];
+    await _sendControlCommand(
+      addresses,
+      ControlCommandType.streamPrepare,
+      commandArguments,
+    );
+    await _sendControlCommand(
+      addresses,
+      ControlCommandType.streamStart,
+      commandArguments,
+    );
+    _streamingReceiverAddresses.addAll(addresses);
+    receiverCount.value = _streamingReceiverAddresses.length;
   }
 
   void _showError(String message) => errorMessage.value = message;

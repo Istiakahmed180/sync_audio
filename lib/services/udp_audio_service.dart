@@ -53,6 +53,11 @@ abstract class AudioStreamService {
     required int port,
   });
 
+  Future<void> addReceivers({
+    required List<String> ipAddresses,
+    required int port,
+  });
+
   Future<void> stopStreaming();
 
   Future<void> startReceiver({required int port});
@@ -362,6 +367,34 @@ class UdpAudioService implements AudioStreamService {
       _emitError('Could not start audio sharing. Please try again.');
       _setStatus(AudioStreamStatus.error);
     }
+  }
+
+  @override
+  Future<void> addReceivers({
+    required List<String> ipAddresses,
+    required int port,
+  }) async {
+    if (!_streaming || ipAddresses.isEmpty) return;
+    final existing = _destinations.map((address) => address.address).toSet();
+    final additions = ipAddresses
+        .where((address) => !existing.contains(address))
+        .map(InternetAddress.new)
+        .toList(growable: false);
+    if (additions.isEmpty) return;
+
+    _destinations = [..._destinations, ...additions];
+    for (final address in additions) {
+      final id = _sessionId(address.address, port);
+      _updateSession(
+        ReceiverSession(
+          id: id,
+          ipAddress: address.address,
+          port: port,
+          status: ReceiverSessionStatus.synchronizing,
+        ),
+      );
+    }
+    _synchronizeReceivers();
   }
 
   void _synchronizeReceivers() {
