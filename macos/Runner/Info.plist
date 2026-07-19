@@ -26,6 +26,8 @@
 	<string>Sync Audio discovers and connects to devices on your local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sync Audio uses the microphone to capture audio for streaming to connected devices.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Sync Audio captures system audio to synchronize playback across connected devices.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>

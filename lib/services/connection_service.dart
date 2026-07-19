@@ -499,7 +499,7 @@ class TcpConnectionService implements ConnectionService {
       case ControlCommandType.error:
         if (command.arguments.firstOrNull == 'PAIRING_REQUIRED') {
           _emitError(
-            'Wrong pairing code. Check the code on the Receiver and try again.',
+            'Pairing rejected. Wrong pairing code; check the code on the Receiver and try again.',
           );
           await disconnectFrom(sourceId);
         }

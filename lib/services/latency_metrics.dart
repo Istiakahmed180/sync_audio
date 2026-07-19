@@ -23,19 +23,19 @@ class LatencyModeConfig {
 
   static LatencyModeConfig forMode(LatencyMode mode) => switch (mode) {
     LatencyMode.ultraLow => const LatencyModeConfig(
-      minimumMicros: 50000,
-      normalMicros: 60000,
-      maximumMicros: 160000,
+      minimumMicros: 15000,
+      normalMicros: 30000,
+      maximumMicros: 90000,
     ),
     LatencyMode.balanced => const LatencyModeConfig(
-      minimumMicros: 80000,
-      normalMicros: 120000,
-      maximumMicros: 300000,
+      minimumMicros: 50000,
+      normalMicros: 80000,
+      maximumMicros: 220000,
     ),
     LatencyMode.stable => const LatencyModeConfig(
-      minimumMicros: 160000,
-      normalMicros: 220000,
-      maximumMicros: 500000,
+      minimumMicros: 120000,
+      normalMicros: 180000,
+      maximumMicros: 400000,
     ),
   };
 }

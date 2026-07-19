@@ -6,6 +6,10 @@ test result. The UI's latency modes target different buffering trade-offs;
 they do not guarantee a particular latency on every Android device.
 All devices must be on the same Wi-Fi network, with client isolation disabled.
 
+For macOS 13 or newer, allow Sync Audio in System Settings → Privacy & Security
+→ Screen & System Audio Recording on first start. macOS uses ScreenCaptureKit
+for system audio; older macOS versions use the microphone fallback.
+
 1. Build and install the debug APK on every device:
 
    ```sh

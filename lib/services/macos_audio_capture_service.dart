@@ -9,10 +9,15 @@ class MacosAudioCaptureService implements AudioCaptureService {
   @override
   Stream<Uint8List> get pcmChunks =>
       _streamChannel.receiveBroadcastStream().map((chunk) {
-        try {
-          return Uint8List.fromList(
-            List<int>.from(chunk as List<dynamic>),
+        if (chunk is Uint8List) return chunk;
+        if (chunk is ByteData) {
+          return chunk.buffer.asUint8List(
+            chunk.offsetInBytes,
+            chunk.lengthInBytes,
           );
+        }
+        try {
+          return Uint8List.fromList(List<int>.from(chunk as List<dynamic>));
         } catch (_) {
           return Uint8List(0);
         }

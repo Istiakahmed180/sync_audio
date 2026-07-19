@@ -1,8 +1,8 @@
 # Sync Audio
 
-Turn multiple devices into a synchronized speaker system. Stream audio from one
-Android device and play it in sync across your other devices over a local Wi‑Fi
-network.
+Turn multiple devices into a synchronized speaker system. Stream audio from an
+Android device or a macOS computer and play it in sync across your other devices
+over a local Wi‑Fi network.
 
 ---
 
@@ -10,8 +10,8 @@ network.
 
 Sync Audio uses a **Host‑and‑Receiver** model over your local network.
 
-- **Host** (Android only) — captures system audio from any app and sends it to
-  all connected Receivers as timestamped packets.
+- **Host** (Android or macOS) — captures system audio and sends it to all
+  connected Receivers as timestamped packets.
 - **Receiver** (any platform) — receives the Host's audio and plays it through
   its built-in speaker in sync with other Receivers.
 
@@ -31,6 +31,127 @@ One Host can stream to one or many Receivers simultaneously.
    Receiver's card.
 7. Once connected, press **Start System Audio** on the Host.
 8. Audio starts playing on all Receivers in sync.
+
+## macOS Host setup with BlackHole 2ch
+
+BlackHole is the recommended macOS capture route for Sync Audio. It creates a
+virtual audio device so browser audio can be captured without depending on the
+Mac speaker volume or mute state. The project prefers a device whose name
+contains `BlackHole` when it is installed.
+
+### A. Install BlackHole 2ch
+
+Using Homebrew:
+
+```bash
+brew install --cask blackhole-2ch
+```
+
+If Homebrew is not installed, download the signed installer from the
+[BlackHole project](https://github.com/ExistentialAudio/BlackHole) and install
+the 2-channel version. Restart audio applications after installation.
+
+### B. Confirm the device
+
+1. Open **System Settings → Sound**.
+2. Select **Input**.
+3. Confirm that **BlackHole 2ch** appears.
+4. Select **BlackHole 2ch** and play a browser video.
+5. Confirm that the **Input level** meters move.
+
+If the meters do not move, the browser is not routed to BlackHole yet.
+
+### C. Create a Multi-Output Device
+
+Use this when you want to hear the audio locally on the Mac while also sending
+it to Sync Audio:
+
+1. Open **Applications → Utilities → Audio MIDI Setup**.
+2. Click the `+` button at the bottom-left.
+3. Choose **Create Multi-Output Device**.
+4. Enable **Mac mini Speakers** (or the desired speakers).
+5. Enable **BlackHole 2ch**.
+6. Keep the built-in speakers as the primary/clock device when macOS offers
+   that option.
+7. In **System Settings → Sound → Output**, select this Multi-Output Device.
+
+The audio route should then be:
+
+```text
+Browser / YouTube
+        ↓
+Multi-Output Device
+   ↙             ↘
+Mac speakers   BlackHole 2ch
+                    ↓
+             Sync Audio capture
+                    ↓
+              Wi‑Fi Receivers
+```
+
+### D. Grant macOS permissions
+
+Open **System Settings → Privacy & Security** and allow Sync Audio in:
+
+- **Screen & System Audio Recording** — required for the macOS fallback
+  capture path.
+- **Microphone** — required when the audio input engine is used.
+- **Local Network**, if macOS shows a request for it.
+
+Quit and relaunch Sync Audio after changing permissions.
+
+### E. Start a macOS Host stream
+
+1. Run the macOS app:
+
+   ```bash
+   flutter run -d macos
+   ```
+
+2. Open **Host Device** on the Mac.
+3. Open **Receiver Device** on every Android/device Receiver and start its
+   Receiver server.
+4. Add each Receiver by scanning its QR code or entering its IP address and
+   pairing code.
+5. Confirm every Receiver shows **Connected**.
+6. Select **Ultra Low** latency for a stable 5 GHz network.
+7. Play a YouTube/browser video on the Mac and start system-audio streaming.
+
+### F. Receiver and Wi‑Fi checklist
+
+- Put the Mac and every Receiver on the same dedicated 5 GHz Wi‑Fi network.
+- Disable VPN and router client/AP isolation.
+- Avoid large downloads or video uploads on the same network.
+- Keep the Receiver devices close to the access point during testing.
+- Use each Receiver's calibration controls for residual speaker latency.
+- If audio stutters, switch from **Ultra Low** to **Balanced**.
+
+### G. Troubleshooting
+
+**Connected, but no audio**
+
+- Check that **BlackHole 2ch** input meters are moving.
+- Confirm the Multi-Output Device includes both the Mac speakers and BlackHole.
+- Restart the browser and Sync Audio after changing the output device.
+- Confirm the Receiver is still showing **Start Receiver** as active.
+
+**`Message too long` in the Mac terminal**
+
+- Update to the latest project code and rebuild. macOS capture buffers are split
+  into MTU-safe PCM packets by the app.
+
+**High latency**
+
+- Check Android Wi‑Fi link speed; 1–2 Mbps is too low for stable synchronized
+  playback.
+- Use 5 GHz, select Ultra Low, and keep the devices near the router.
+- Calibrate each Receiver after the network is stable.
+
+**No BlackHole input level**
+
+- Select the Multi-Output Device as macOS Output.
+- Verify that BlackHole 2ch is enabled inside that Multi-Output Device.
+- Reopen Sound settings and restart the browser.
 
 ### Manual pairing (no camera)
 
@@ -82,6 +203,10 @@ capture.
 
 - `NSMicrophoneUsageDescription` — used for audio capture
 - `NSCameraUsageDescription` — QR code scanning (iOS)
+- macOS 13+ — Screen & System Audio Recording permission for the fallback
+  system-audio capture path
+- macOS — BlackHole 2ch is recommended for deterministic browser/system-audio
+  capture
 
 ---
 
@@ -111,9 +236,11 @@ flutter build apk --release   # Android release
 
 ## Known limitations
 
-- **Host must be Android.** Other platforms cannot capture system audio from
-  other apps.
-- **No sample‑rate resampling.** All devices must accept 44.1 kHz mono PCM.
+- **macOS capture requires routing.** For the most reliable browser capture,
+  route audio through BlackHole 2ch, preferably with a Multi-Output Device.
+- **No universal sample-rate guarantee.** The recommended route is 48 kHz mono
+  PCM; hardware or virtual devices with other formats may need OS-level format
+  configuration.
 - **No NSD/mDNS discovery.** UDP broadcast discovery only — all devices must be
   on the same subnet.
 - **Single shared pairing token for encryption.** Per‑device tokens only work

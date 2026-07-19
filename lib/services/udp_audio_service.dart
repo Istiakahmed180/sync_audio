@@ -498,26 +498,42 @@ class UdpAudioService implements AudioStreamService {
 
   void _sendPcmPacket(Uint8List pcm) {
     _metrics.captureStarted();
-    if (encoder.codecType == AudioCodecType.opus) {
-      final combined = Uint8List(_pendingEncoderPcm.length + pcm.length)
-        ..setRange(0, _pendingEncoderPcm.length, _pendingEncoderPcm)
-        ..setRange(
-          _pendingEncoderPcm.length,
-          _pendingEncoderPcm.length + pcm.length,
-          pcm,
-        );
-      final frameBytes = encoder.config.frameBytes;
-      var offset = 0;
-      while (combined.length - offset >= frameBytes) {
-        _enqueuePcmFrame(
-          Uint8List.fromList(combined.sublist(offset, offset + frameBytes)),
-        );
-        offset += frameBytes;
+    if (encoder.codecType == AudioCodecType.pcm16) {
+      // Preserve normal capture buffers, but split unusually large macOS
+      // buffers before they reach the UDP socket. 2048 bytes plus the packet
+      // header remains within the supported datagram size on the target LAN.
+      const maxPcmPayload = 2048;
+      if (pcm.length <= maxPcmPayload) {
+        _enqueuePcmFrame(pcm);
+        return;
       }
-      _pendingEncoderPcm = Uint8List.fromList(combined.sublist(offset));
+      final frameBytes = encoder.config.frameBytes;
+      for (var offset = 0; offset < pcm.length; offset += frameBytes) {
+        final end = (offset + frameBytes).clamp(0, pcm.length);
+        _enqueuePcmFrame(Uint8List.fromList(pcm.sublist(offset, end)));
+      }
       return;
     }
-    _enqueuePcmFrame(pcm);
+    // Keep every UDP datagram at one negotiated audio frame. This is
+    // important on macOS where BlackHole may deliver a larger audio buffer;
+    // a 3840-byte PCM payload exceeds the usual Wi-Fi MTU and causes
+    // EMSGSIZE/"Message too long" from RawDatagramSocket.
+    final combined = Uint8List(_pendingEncoderPcm.length + pcm.length)
+      ..setRange(0, _pendingEncoderPcm.length, _pendingEncoderPcm)
+      ..setRange(
+        _pendingEncoderPcm.length,
+        _pendingEncoderPcm.length + pcm.length,
+        pcm,
+      );
+    final frameBytes = encoder.config.frameBytes;
+    var offset = 0;
+    while (combined.length - offset >= frameBytes) {
+      _enqueuePcmFrame(
+        Uint8List.fromList(combined.sublist(offset, offset + frameBytes)),
+      );
+      offset += frameBytes;
+    }
+    _pendingEncoderPcm = Uint8List.fromList(combined.sublist(offset));
   }
 
   void _enqueuePcmFrame(Uint8List pcm) {
@@ -695,7 +711,7 @@ class UdpAudioService implements AudioStreamService {
         ..reset()
         ..start();
       _playbackTimer = Timer.periodic(
-        const Duration(milliseconds: 15),
+        const Duration(milliseconds: 5),
         (_) => _drainPlaybackBuffer(),
       );
       _setStatus(AudioStreamStatus.receiving);
