@@ -6,10 +6,14 @@
 #include <flutter/standard_method_codec.h>
 #include <Windows.h>
 #include <mmsystem.h>
+#include <audioclient.h>
+#include <mmdeviceapi.h>
+#include <ksmedia.h>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include <string>
 #include <vector>
 
 #pragma comment(lib, "winmm.lib")
@@ -26,22 +30,23 @@ class AudioPlugin {
   void StartCapture(const flutter::MethodCall<>& call,
                     std::unique_ptr<flutter::MethodResult<>> result);
   void StopCapture(std::unique_ptr<flutter::MethodResult<>> result);
+  bool StartWasapiLoopback(std::string* error);
+  void CaptureLoop();
+  void ReleaseWasapiLoopback();
   void InitializePlayback(std::unique_ptr<flutter::MethodResult<>> result);
   void WritePcm(const flutter::MethodCall<>& call,
                 std::unique_ptr<flutter::MethodResult<>> result);
   void StopPlayback(std::unique_ptr<flutter::MethodResult<>> result);
 
-  static void CALLBACK WaveInProc(HWAVEIN hwi, UINT msg,
-                                  DWORD_PTR instance, DWORD_PTR param1,
-                                  DWORD_PTR param2);
-
   // Capture
-  HWAVEIN wave_in_ = nullptr;
-  std::vector<WAVEHDR> wave_headers_;
+  IMMDevice* capture_device_ = nullptr;
+  IAudioClient* capture_client_ = nullptr;
+  IAudioCaptureClient* capture_reader_ = nullptr;
+  WAVEFORMATEX* capture_format_ = nullptr;
+  HANDLE capture_event_ = nullptr;
+  std::thread capture_thread_;
   std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> capture_sink_;
   std::atomic<bool> capturing_{false};
-  static constexpr int kBufferCount = 4;
-  static constexpr int kBufferSize = 3840;
 
   // Playback
   HWAVEOUT wave_out_ = nullptr;

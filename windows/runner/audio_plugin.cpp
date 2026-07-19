@@ -1,5 +1,7 @@
 #include "audio_plugin.h"
 #include <flutter/event_stream_handler_functions.h>
+#include <algorithm>
+#include <cstdint>
 
 AudioPlugin::AudioPlugin(flutter::BinaryMessenger* messenger) {
   SetupCaptureChannel(messenger);
@@ -11,7 +13,7 @@ AudioPlugin::~AudioPlugin() {
   if (playing_) StopPlayback(nullptr);
 }
 
-// ---- Capture ----
+// ---- Capture (WASAPI system-output loopback) ----
 
 void AudioPlugin::SetupCaptureChannel(flutter::BinaryMessenger* messenger) {
   auto control_channel = std::make_unique<flutter::MethodChannel<>>(
@@ -58,36 +60,11 @@ void AudioPlugin::StartCapture(const flutter::MethodCall<>& call,
     result->Error("ALREADY_STARTED", "Capture already running");
     return;
   }
-
-  WAVEFORMATEX format = {};
-  format.wFormatTag = WAVE_FORMAT_PCM;
-  format.nChannels = 1;
-  format.nSamplesPerSec = 48000;
-  format.wBitsPerSample = 16;
-  format.nBlockAlign = format.nChannels * format.wBitsPerSample / 8;
-  format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
-  format.cbSize = 0;
-
-  MMRESULT res = waveInOpen(&wave_in_, WAVE_MAPPER, &format,
-                            reinterpret_cast<DWORD_PTR>(WaveInProc),
-                            reinterpret_cast<DWORD_PTR>(this),
-                            CALLBACK_FUNCTION);
-  if (res != MMSYSERR_NOERROR) {
-    result->Error("CAPTURE_OPEN", "Failed to open audio input");
+  std::string error;
+  if (!StartWasapiLoopback(&error)) {
+    result->Error("CAPTURE_OPEN", error.empty() ? "Failed to open system audio" : error);
     return;
   }
-
-  wave_headers_.resize(kBufferCount);
-  for (int i = 0; i < kBufferCount; i++) {
-    wave_headers_[i].lpData = new char[kBufferSize];
-    wave_headers_[i].dwBufferLength = kBufferSize;
-    wave_headers_[i].dwFlags = 0;
-    waveInPrepareHeader(wave_in_, &wave_headers_[i], sizeof(WAVEHDR));
-    waveInAddBuffer(wave_in_, &wave_headers_[i], sizeof(WAVEHDR));
-  }
-
-  waveInStart(wave_in_);
-  capturing_ = true;
   result->Success();
 }
 
@@ -98,34 +75,135 @@ void AudioPlugin::StopCapture(
     return;
   }
   capturing_ = false;
-  waveInStop(wave_in_);
-  waveInReset(wave_in_);
-  for (auto& hdr : wave_headers_) {
-    waveInUnprepareHeader(wave_in_, &hdr, sizeof(WAVEHDR));
-    delete[] hdr.lpData;
-  }
-  wave_headers_.clear();
-  waveInClose(wave_in_);
-  wave_in_ = nullptr;
+  if (capture_event_) SetEvent(capture_event_);
+  if (capture_thread_.joinable()) capture_thread_.join();
+  ReleaseWasapiLoopback();
   if (result) result->Success();
 }
 
-void CALLBACK AudioPlugin::WaveInProc(HWAVEIN hwi, UINT msg,
-                                       DWORD_PTR instance, DWORD_PTR,
-                                       DWORD_PTR) {
-  auto* self = reinterpret_cast<AudioPlugin*>(instance);
-  if (msg == WIM_DATA) {
-    WAVEHDR* hdr = reinterpret_cast<WAVEHDR*>(instance);
-    if (self->capturing_ && self->capture_sink_ && hdr->dwBytesRecorded > 0) {
-      std::vector<uint8_t> buf(hdr->dwBytesRecorded);
-      memcpy(buf.data(), hdr->lpData, hdr->dwBytesRecorded);
-      flutter::EncodableValue value(buf);
-      self->capture_sink_->Success(value);
-    }
-    if (self->capturing_ && self->wave_in_) {
-      waveInAddBuffer(self->wave_in_, hdr, sizeof(WAVEHDR));
+bool AudioPlugin::StartWasapiLoopback(std::string* error) {
+  IMMDeviceEnumerator* enumerator = nullptr;
+  HRESULT hr = CoCreateInstance(
+      __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+      __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
+  if (FAILED(hr)) {
+    if (error) *error = "Could not access the Windows audio device list";
+    return false;
+  }
+
+  hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &capture_device_);
+  enumerator->Release();
+  if (FAILED(hr)) {
+    if (error) *error = "No default Windows playback device is available";
+    return false;
+  }
+
+  hr = capture_device_->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
+                                 nullptr, reinterpret_cast<void**>(&capture_client_));
+  if (FAILED(hr)) {
+    if (error) *error = "Could not activate the Windows audio client";
+    ReleaseWasapiLoopback();
+    return false;
+  }
+
+  hr = capture_client_->GetMixFormat(&capture_format_);
+  if (FAILED(hr)) {
+    if (error) *error = "Could not read the Windows audio format";
+    ReleaseWasapiLoopback();
+    return false;
+  }
+
+  constexpr REFERENCE_TIME kBufferDuration = 20 * 10'000;
+  hr = capture_client_->Initialize(
+      AUDCLNT_SHAREMODE_SHARED,
+      AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+      kBufferDuration, 0, capture_format_, nullptr);
+  if (FAILED(hr)) {
+    if (error) *error = "Could not initialize Windows system-audio loopback";
+    ReleaseWasapiLoopback();
+    return false;
+  }
+
+  hr = capture_client_->GetService(__uuidof(IAudioCaptureClient),
+                                   reinterpret_cast<void**>(&capture_reader_));
+  if (FAILED(hr)) {
+    if (error) *error = "Could not access the Windows audio capture buffer";
+    ReleaseWasapiLoopback();
+    return false;
+  }
+
+  capture_event_ = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+  if (!capture_event_ || FAILED(capture_client_->SetEventHandle(capture_event_))) {
+    if (error) *error = "Could not create the Windows audio capture event";
+    ReleaseWasapiLoopback();
+    return false;
+  }
+
+  capturing_ = true;
+  hr = capture_client_->Start();
+  if (FAILED(hr)) {
+    capturing_ = false;
+    if (error) *error = "Could not start Windows system-audio loopback";
+    ReleaseWasapiLoopback();
+    return false;
+  }
+  capture_thread_ = std::thread(&AudioPlugin::CaptureLoop, this);
+  return true;
+}
+
+void AudioPlugin::CaptureLoop() {
+  while (capturing_) {
+    if (WaitForSingleObject(capture_event_, 100) != WAIT_OBJECT_0) continue;
+    UINT32 packet_frames = 0;
+    while (capturing_ && capture_reader_ &&
+           SUCCEEDED(capture_reader_->GetNextPacketSize(&packet_frames)) &&
+           packet_frames > 0) {
+      BYTE* data = nullptr;
+      UINT32 frames = 0;
+      DWORD flags = 0;
+      if (FAILED(capture_reader_->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) break;
+
+      const int channels = std::max<int>(capture_format_->nChannels, 1);
+      const int bytes_per_sample = std::max<int>(capture_format_->wBitsPerSample / 8, 2);
+      bool is_float = capture_format_->wFormatTag == WAVE_FORMAT_IEEE_FLOAT;
+      if (capture_format_->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+        const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(capture_format_);
+        is_float = IsEqualGUID(extensible->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+      }
+      std::vector<uint8_t> pcm(static_cast<size_t>(frames) * 2, 0);
+      if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data) {
+        for (UINT32 frame = 0; frame < frames; ++frame) {
+          double mixed = 0.0;
+          for (int channel = 0; channel < channels; ++channel) {
+            const size_t offset = (static_cast<size_t>(frame) * channels + channel) * bytes_per_sample;
+            if (is_float) {
+              mixed += static_cast<double>(*reinterpret_cast<float*>(data + offset));
+            } else {
+              mixed += static_cast<double>(*reinterpret_cast<int16_t*>(data + offset)) / 32768.0;
+            }
+          }
+          const double normalized = std::max(-1.0, std::min(1.0, mixed / channels));
+          const int16_t sample = static_cast<int16_t>(normalized * 32767.0);
+          pcm[frame * 2] = static_cast<uint8_t>(sample & 0xff);
+          pcm[frame * 2 + 1] = static_cast<uint8_t>((sample >> 8) & 0xff);
+        }
+      }
+      if (capture_sink_ && !pcm.empty()) capture_sink_->Success(flutter::EncodableValue(pcm));
+      capture_reader_->ReleaseBuffer(frames);
     }
   }
+}
+
+void AudioPlugin::ReleaseWasapiLoopback() {
+  if (capture_client_) capture_client_->Stop();
+  if (capture_event_) {
+    CloseHandle(capture_event_);
+    capture_event_ = nullptr;
+  }
+  if (capture_reader_) { capture_reader_->Release(); capture_reader_ = nullptr; }
+  if (capture_client_) { capture_client_->Release(); capture_client_ = nullptr; }
+  if (capture_device_) { capture_device_->Release(); capture_device_ = nullptr; }
+  if (capture_format_) { CoTaskMemFree(capture_format_); capture_format_ = nullptr; }
 }
 
 // ---- Playback ----

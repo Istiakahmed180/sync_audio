@@ -1,7 +1,7 @@
 # Sync Audio
 
 Turn multiple devices into a synchronized speaker system. Stream audio from an
-Android device or a macOS computer and play it in sync across your other devices
+Android device, macOS computer, or Windows computer and play it in sync across your other devices
 over a local Wi‑Fi network.
 
 ---
@@ -10,19 +10,23 @@ over a local Wi‑Fi network.
 
 Sync Audio uses a **Host‑and‑Receiver** model over your local network.
 
-- **Host** (Android or macOS) — captures system audio and sends it to all
+- **Host** (Android, macOS, or Windows) — captures system audio and sends it to all
   connected Receivers as timestamped packets.
 - **Receiver** (any platform) — receives the Host's audio and plays it through
   its built-in speaker in sync with other Receivers.
 
 One Host can stream to one or many Receivers simultaneously.
 
+On Windows, the Host uses native WASAPI loopback to capture the default
+speaker output, so browser and system audio work without a virtual driver.
+
 ---
 
 ## Quick start
 
 1. Connect all devices to the **same Wi‑Fi network**.
-2. On your Android phone, open the app and select **Host Device**.
+2. On the Android phone, Mac, or Windows computer that will provide the audio,
+   open the app and select **Host Device**.
 3. On every other device, open the app and select **Receiver Device**.
 4. The Receiver shows a **pairing code** and a **QR code**.
 5. On the Host, tap **Scan QR Code** and point the camera at the Receiver's
@@ -199,6 +203,21 @@ The first time you press **Start System Audio**, Android shows a system dialog
 asking for screen recording consent. You must accept this to enable audio
 capture.
 
+### Windows Host
+
+Windows uses the default playback device as the capture source through WASAPI
+loopback. No BlackHole or other virtual audio driver is required.
+
+1. Set the Windows default output to the speakers/headphones to capture.
+2. For predictable results, set that device to **48,000 Hz** in Windows Sound
+   settings.
+3. Allow Sync Audio through Windows Defender Firewall for **Private networks**
+   if Windows asks. All devices must be on the same Wi‑Fi/LAN.
+4. Start the Receiver, pair it from the Windows Host, press **Start System
+   Audio**, and then play a browser video.
+
+Windows does not need microphone permission for this system-audio path.
+
 ### iOS / macOS
 
 - `NSMicrophoneUsageDescription` — used for audio capture
@@ -230,7 +249,12 @@ flutter analyze
 flutter test
 flutter build apk --debug    # Android debug
 flutter build apk --release   # Android release
+flutter build windows --release  # Windows (run on a Windows machine)
 ```
+
+The Windows release output is under `build/windows/x64/runner/Release/`.
+Distribute the complete folder, not only the `.exe`, because Flutter runtime
+files and DLLs are required.
 
 ---
 
@@ -238,6 +262,8 @@ flutter build apk --release   # Android release
 
 - **macOS capture requires routing.** For the most reliable browser capture,
   route audio through BlackHole 2ch, preferably with a Multi-Output Device.
+- **Windows capture uses the default output.** Changing the default Windows
+  speaker while streaming may require restarting the Host stream.
 - **No universal sample-rate guarantee.** The recommended route is 48 kHz mono
   PCM; hardware or virtual devices with other formats may need OS-level format
   configuration.
