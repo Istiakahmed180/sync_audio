@@ -26,6 +26,27 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_macos_podfile_setup
 
+# opus_codec_macos 3.0.5 ships a flat vendored framework that fails strict
+# Release code signing on current Xcode. The Dart layer already falls back to
+# PCM when the optional Opus runtime is unavailable, so do not embed that
+# optional binary in the macOS app. Android and other platform Opus builds are
+# unaffected.
+pre_install do |_installer|
+  opus_podspec = File.expand_path(
+    File.join('Flutter', 'ephemeral', '.symlinks', 'plugins',
+              'opus_codec_macos', 'macos', 'opus_codec_macos.podspec'),
+    File.dirname(__FILE__),
+  )
+  if File.file?(opus_podspec)
+    contents = File.read(opus_podspec)
+    contents = contents.sub(
+      /^\s*s\.vendored_frameworks\s*=.*\n/,
+      "  # Disabled for macOS app signing; PCM fallback remains available.\n",
+    )
+    File.write(opus_podspec, contents)
+  end
+end
+
 target 'Runner' do
   use_frameworks!
 
@@ -52,6 +73,13 @@ post_install do |installer|
     ]
     phase.shell_script = <<~'SH'
       opus_framework="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/opus.framework"
+      # The optional macOS Opus asset is not needed for the PCM transport and
+      # is not a valid release-signed framework on current Xcode. Omit it from
+      # Release bundles; OpusRuntime falls back to PCM automatically.
+      if [ "$CONFIGURATION" = "Release" ]; then
+        rm -rf "$opus_framework"
+        exit 0
+      fi
       if [ -d "$opus_framework" ] && [ -f "$opus_framework/Info.plist" ] && [ ! -f "$opus_framework/Versions/Current/Resources/Info.plist" ]; then
         mkdir -p "$opus_framework/Versions/A/Resources"
         mv "$opus_framework/Info.plist" "$opus_framework/Versions/A/Resources/Info.plist"
@@ -63,6 +91,10 @@ post_install do |installer|
         done
         ln -s A "$opus_framework/Versions/Current"
         ln -s "Versions/Current/Resources/Info.plist" "$opus_framework/Info.plist"
+      fi
+      if [ -d "$opus_framework" ] && command -v codesign >/dev/null 2>&1; then
+        opus_identity="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
+        codesign --force --sign "$opus_identity" --timestamp=none "$opus_framework"
       fi
     SH
     runner_project.save

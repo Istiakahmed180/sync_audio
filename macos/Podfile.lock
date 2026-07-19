@@ -39,10 +39,10 @@ SPEC CHECKSUMS:
   cryptography_flutter: be2b3e0e31603521b6a1c2bea232a88a2488a91c
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   mobile_scanner: 9157936403f5a0644ca3779a38ff8404c5434a93
-  opus_codec_macos: de7826d5947340105a948def829c04225d993cbf
+  opus_codec_macos: b6a7749e5624ecf819044efe088f2124bcbc4ef8
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
 
-PODFILE CHECKSUM: 7c987d476c8f69d0648c5fa6719b53f72f55d359
+PODFILE CHECKSUM: 6412034f67fa2c6af77f957446595353ee90622f
 
 COCOAPODS: 1.16.2
