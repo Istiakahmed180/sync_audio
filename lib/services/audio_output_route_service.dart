@@ -37,12 +37,21 @@ class AudioOutputRouteService {
 
   Future<List<AudioOutputDevice>> listOutputs() async {
     final value = await _channel.invokeMethod<List<Object?>>('listOutputs');
-    return (value ?? const <Object?>[])
-        .whereType<Map>()
-        .map((raw) {
-          return AudioOutputDevice.fromMap(Map<Object?, Object?>.from(raw));
-        })
-        .toList(growable: false);
+    final outputs = (value ?? const <Object?>[]).whereType<Map>().map((raw) {
+      return AudioOutputDevice.fromMap(Map<Object?, Object?>.from(raw));
+    });
+    final unique = <String, AudioOutputDevice>{};
+    for (final output in outputs) {
+      // Android exposes separate audio profiles and macOS can expose
+      // duplicate stream endpoints with the same display name. They are one
+      // user-facing output, so keep one row per name/type pair.
+      final key = '${output.kind}:${output.name.trim().toLowerCase()}';
+      final previous = unique[key];
+      if (previous == null || (!previous.isSelected && output.isSelected)) {
+        unique[key] = output;
+      }
+    }
+    return unique.values.toList(growable: false);
   }
 
   Future<void> selectOutput(String id) async {
