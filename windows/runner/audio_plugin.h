@@ -50,6 +50,7 @@ class AudioPlugin {
 
   // Playback
   HWAVEOUT wave_out_ = nullptr;
+  UINT playback_device_id_ = WAVE_MAPPER;
   std::atomic<bool> playing_{false};
   std::mutex playback_mutex_;
 };

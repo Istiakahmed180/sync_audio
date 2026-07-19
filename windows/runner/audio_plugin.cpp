@@ -2,6 +2,41 @@
 #include <flutter/event_stream_handler_functions.h>
 #include <algorithm>
 #include <cstdint>
+#include <cwctype>
+#include <shellapi.h>
+
+static flutter::EncodableList ListWaveOutDevices(UINT selected_device) {
+  flutter::EncodableList devices;
+  const UINT count = waveOutGetNumDevs();
+  for (UINT index = 0; index < count; ++index) {
+    WAVEOUTCAPSW caps = {};
+    if (waveOutGetDevCapsW(index, &caps, sizeof(caps)) != MMSYSERR_NOERROR) {
+      continue;
+    }
+    const std::wstring name(caps.szPname);
+    const auto lower = [&name]() {
+      std::wstring value = name;
+      std::transform(value.begin(), value.end(), value.begin(), towlower);
+      return value;
+    }();
+    const bool bluetooth = lower.find(L"bluetooth") != std::wstring::npos ||
+        lower.find(L"bt ") != std::wstring::npos ||
+        lower.find(L"headphone") != std::wstring::npos;
+    flutter::EncodableMap device;
+    device[flutter::EncodableValue("id")] =
+        flutter::EncodableValue("waveout:" + std::to_string(index));
+    device[flutter::EncodableValue("name")] =
+        flutter::EncodableValue(std::string(name.begin(), name.end()));
+    device[flutter::EncodableValue("kind")] =
+        flutter::EncodableValue(bluetooth ? "bluetooth" : "system");
+    device[flutter::EncodableValue("isBluetooth")] =
+        flutter::EncodableValue(bluetooth);
+    device[flutter::EncodableValue("isSelected")] =
+        flutter::EncodableValue(selected_device == index);
+    devices.push_back(flutter::EncodableValue(device));
+  }
+  return devices;
+}
 
 AudioPlugin::AudioPlugin(flutter::BinaryMessenger* messenger) {
   SetupCaptureChannel(messenger);
@@ -223,6 +258,29 @@ void AudioPlugin::SetupPlaybackChannel(flutter::BinaryMessenger* messenger) {
           WritePcm(call, std::move(result));
         } else if (method == "stop") {
           StopPlayback(std::move(result));
+        } else if (method == "listOutputs") {
+          result->Success(ListWaveOutDevices(playback_device_id_));
+        } else if (method == "selectOutput") {
+          const auto* id = std::get_if<std::string>(call.arguments());
+          if (!id || id->rfind("waveout:", 0) != 0 || playing_) {
+            result->Error("OUTPUT_SELECT_FAILED", "Stop playback before selecting a Windows output");
+          } else {
+            try {
+              playback_device_id_ = static_cast<UINT>(std::stoul(id->substr(8)));
+              result->Success();
+            } catch (...) {
+              result->Error("INVALID_OUTPUT", "Audio output ID is invalid");
+            }
+          }
+        } else if (method == "openOutputSettings") {
+          const auto opened = reinterpret_cast<intptr_t>(ShellExecuteW(
+              nullptr, L"open", L"ms-settings:sound", nullptr, nullptr,
+              SW_SHOWNORMAL));
+          if (opened <= 32) {
+            result->Error("SETTINGS_OPEN_FAILED", "Could not open Windows Sound settings");
+          } else {
+            result->Success();
+          }
         } else {
           result->NotImplemented();
         }
@@ -245,7 +303,7 @@ void AudioPlugin::InitializePlayback(
   format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
   format.cbSize = 0;
 
-  MMRESULT res = waveOutOpen(&wave_out_, WAVE_MAPPER, &format, 0, 0,
+  MMRESULT res = waveOutOpen(&wave_out_, playback_device_id_, &format, 0, 0,
                              CALLBACK_NULL);
   if (res != MMSYSERR_NOERROR) {
     result->Error("PLAYBACK_OPEN", "Failed to open audio output");

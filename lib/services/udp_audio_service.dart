@@ -99,7 +99,7 @@ class UdpAudioService implements AudioStreamService {
     AudioEncoder? encoder,
     AudioDecoder? decoder,
     this.jitterBuffer = const Duration(milliseconds: 120),
-    this.syncInterval = const Duration(seconds: 2),
+    this.syncInterval = const Duration(seconds: 1),
   }) : encoder = encoder ?? Pcm16AudioEncoder(),
        decoder = decoder ?? Pcm16AudioDecoder();
 
@@ -122,8 +122,13 @@ class UdpAudioService implements AudioStreamService {
   StreamSubscription<RawSocketEvent>? _udpSubscription;
   StreamSubscription<Uint8List>? _captureSubscription;
   Timer? _playbackTimer;
+  Timer? _receiverWatchdogTimer;
   Timer? _clockSyncTimer;
   Future<void> _playbackQueue = Future<void>.value();
+  int _playbackQueueDepth = 0;
+  int _receiverGeneration = 0;
+  int _lastAudioPacketMicros = 0;
+  bool _receiverSilenceNotified = false;
   Future<void> _encodeQueue = Future<void>.value();
   int _encodeQueueDepth = 0;
   static const _maxEncodeQueueDepth = 8;
@@ -133,6 +138,9 @@ class UdpAudioService implements AudioStreamService {
   bool _receiving = false;
   List<InternetAddress> _destinations = const [];
   final Map<String, ReceiverSession> _sessions = <String, ReceiverSession>{};
+  // The lowest observed RTT is the least affected by Wi-Fi queueing. Keep it
+  // per receiver so clock-offset samples use the cleanest network path.
+  final Map<String, int> _bestRoundTripMicros = <String, int>{};
   final Map<int, _ClockRequest> _clockRequests = <int, _ClockRequest>{};
   int _destinationPort = 0;
   int _packetSequence = 0;
@@ -300,6 +308,7 @@ class UdpAudioService implements AudioStreamService {
       _destinationPort = port;
       _packetSequence = 0;
       _clockSequence = 0;
+      _bestRoundTripMicros.clear();
       _droppedPackets = 0;
       _totalBytesSent = 0;
       _pendingEncoderPcm = Uint8List(0);
@@ -452,9 +461,22 @@ class UdpAudioService implements AudioStreamService {
           ((packet.timestampMicros - request.sentAtMicros) +
               (packet.timestampMicros - receivedAt)) ~/
           2;
+      final bestRoundTrip = _bestRoundTripMicros[request.sessionId];
+      final isNewBest = bestRoundTrip == null || roundTripTime < bestRoundTrip;
+      if (isNewBest) {
+        _bestRoundTripMicros[request.sessionId] = roundTripTime;
+      }
+      final comparisonRoundTrip = bestRoundTrip ?? roundTripTime;
+      // Prefer a new minimum-RTT sample. Heavily queued samples are still
+      // useful, but only with a small weight so they do not move every
+      // receiver's playback clock audibly on a busy Wi-Fi network.
       final alpha = session.lastSyncMicros == null
           ? 1.0
-          : (roundTripTime <= session.roundTripTimeMicros ? 0.35 : 0.15);
+          : isNewBest
+          ? 0.65
+          : roundTripTime <= comparisonRoundTrip + 2000
+          ? 0.25
+          : 0.06;
       final filteredOffset =
           session.clockOffsetMicros +
           ((sampleOffset - session.clockOffsetMicros) * alpha).round();
@@ -610,6 +632,7 @@ class UdpAudioService implements AudioStreamService {
     _clockSyncTimer?.cancel();
     _clockSyncTimer = null;
     _clockRequests.clear();
+    _bestRoundTripMicros.clear();
     _pendingEncoderPcm = Uint8List(0);
     await decoder.reset();
     _streamClock?.stop();
@@ -702,6 +725,8 @@ class UdpAudioService implements AudioStreamService {
       _socket?.close();
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
       _receiving = true;
+      _playbackQueue = Future<void>.value();
+      _playbackQueueDepth = 0;
       _clockSynchronized = false;
       _hostToLocalOffsetMicros = 0;
       _driftCorrectionPpm = 0;
@@ -713,6 +738,10 @@ class UdpAudioService implements AudioStreamService {
       _playbackTimer = Timer.periodic(
         const Duration(milliseconds: 5),
         (_) => _drainPlaybackBuffer(),
+      );
+      _receiverWatchdogTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _checkReceiverHealth(),
       );
       _setStatus(AudioStreamStatus.receiving);
       _udpSubscription = _socket!.listen(_handleReceiverSocketEvent);
@@ -789,6 +818,8 @@ class UdpAudioService implements AudioStreamService {
       case AudioPacketType.pcmAudio:
         if (packet.codecType != decoder.codecType) return;
         final now = _receiverClock.elapsedMicroseconds;
+        _lastAudioPacketMicros = now;
+        _receiverSilenceNotified = false;
         final correction = _driftCorrectionEnabled
             ? (((now - _lastDriftUpdateMicros) * _driftCorrectionPpm) ~/
                       1000000)
@@ -854,17 +885,48 @@ class UdpAudioService implements AudioStreamService {
       timestampMicros: packet.timestampMicros,
       waitingMicros: now - packet.arrivalMicros,
     );
+    // Never allow a slow native audio device to create an unbounded Future
+    // chain. Once this queue is full, dropping one old frame is preferable to
+    // adding hundreds of milliseconds of latency.
+    if (_playbackQueueDepth >= 3) {
+      _droppedPackets++;
+      _metrics.packetOverrun();
+      return;
+    }
+    final generation = _receiverGeneration;
+    _playbackQueueDepth++;
     _playbackQueue = _playbackQueue
         .then((_) async {
+          if (!_receiving || generation != _receiverGeneration) return;
           final decodeClock = Stopwatch()..start();
           final pcm = await decoder.decode(packet.payload);
           _metrics.decoded(decodeClock.elapsed);
-          await playbackService.writePcm(_applyPlaybackVolume(pcm));
+          if (_receiving && generation == _receiverGeneration) {
+            await playbackService.writePcm(_applyPlaybackVolume(pcm));
+          }
         })
         .catchError((_) {
           _emitError('Audio playback failed on the receiver.');
           _setStatus(AudioStreamStatus.error);
+        })
+        .whenComplete(() {
+          if (generation == _receiverGeneration && _playbackQueueDepth > 0) {
+            _playbackQueueDepth--;
+          }
         });
+  }
+
+  void _checkReceiverHealth() {
+    if (!_receiving || _lastAudioPacketMicros == 0) return;
+    final silenceMicros =
+        _receiverClock.elapsedMicroseconds - _lastAudioPacketMicros;
+    if (silenceMicros >= const Duration(seconds: 5).inMicroseconds &&
+        !_receiverSilenceNotified) {
+      _receiverSilenceNotified = true;
+      _emitError(
+        'No audio packets received for 5 seconds. Check the Host and Wi-Fi connection.',
+      );
+    }
   }
 
   Uint8List _applyPlaybackVolume(Uint8List pcm) {
@@ -883,8 +945,13 @@ class UdpAudioService implements AudioStreamService {
   @override
   Future<void> stopReceiver() async {
     _receiving = false;
+    _receiverGeneration++;
     _playbackTimer?.cancel();
     _playbackTimer = null;
+    _receiverWatchdogTimer?.cancel();
+    _receiverWatchdogTimer = null;
+    _lastAudioPacketMicros = 0;
+    _receiverSilenceNotified = false;
     _jitter.reset();
     _clockSynchronized = false;
     _receiverClock.stop();

@@ -74,6 +74,74 @@ class ReceiverView extends GetView<ReceiverController> {
             ),
             const SizedBox(height: 12),
             Obx(
+              () => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.bluetooth_audio),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Audio output',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Refresh outputs',
+                            onPressed: controller.refreshAudioOutputs,
+                            icon: const Icon(Icons.refresh),
+                          ),
+                          IconButton(
+                            tooltip: 'Open sound settings',
+                            onPressed: controller.openAudioOutputSettings,
+                            icon: const Icon(Icons.settings_outlined),
+                          ),
+                        ],
+                      ),
+                      const Text(
+                        'Select a paired Bluetooth speaker or headphone for this Receiver.',
+                      ),
+                      if (controller.isLoadingAudioOutputs.value)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: LinearProgressIndicator(),
+                        )
+                      else if (controller.audioOutputs.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 10),
+                          child: Text(
+                            'No output list available. Pair Bluetooth in system settings, then refresh.',
+                          ),
+                        )
+                      else
+                        ...controller.audioOutputs.map(
+                          (output) => ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              output.isBluetooth
+                                  ? Icons.bluetooth
+                                  : Icons.speaker,
+                            ),
+                            title: Text(output.name),
+                            subtitle: Text(output.kind),
+                            trailing: output.isSelected
+                                ? const Icon(Icons.check_circle)
+                                : null,
+                            onTap: () => controller.selectAudioOutput(output),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
               () => AppPrimaryButton(
                 label:
                     controller.connectionStatus.value ==

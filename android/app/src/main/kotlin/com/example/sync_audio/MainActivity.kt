@@ -7,8 +7,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.projection.MediaProjectionManager
 import android.media.projection.MediaProjectionConfig
@@ -35,9 +38,11 @@ class MainActivity : FlutterActivity() {
     private val calibrationChannelName = "sync_audio/calibration"
     private val pairingChannelName = "sync_audio/pairing"
     private val nativeAudioChannelName = "sync_audio/native_audio"
+    private val audioOutputChannelName = "sync_audio/audio_output"
     private val projectionRequestCode = 7002
     private val microphonePermissionRequestCode = 7003
     private val notificationPermissionRequestCode = 7004
+    private val bluetoothPermissionRequestCode = 7005
     private val notificationChannelId = "sync_audio_status"
     private val audioExecutor = Executors.newSingleThreadExecutor()
     private val audioLock = Any()
@@ -48,9 +53,43 @@ class MainActivity : FlutterActivity() {
     private var nativeSender: NativeUdpAudioSender? = null
     private var nativeReceiver: NativeUdpAudioReceiver? = null
     private var pendingNotification: Triple<Int, String, String>? = null
+    private var preferredOutputDeviceId: Int? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, audioOutputChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openOutputSettings" -> {
+                        startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
+                        result.success(null)
+                    }
+                    "listOutputs" -> result.success(listAudioOutputs())
+                    "selectOutput" -> {
+                        val id = (call.arguments as? String)?.toIntOrNull()
+                        if (id == null) {
+                            result.error("INVALID_OUTPUT", "Audio output ID is invalid", null)
+                        } else {
+                            preferredOutputDeviceId = id
+                            val selected = synchronized(audioLock) {
+                                audioTrack?.setPreferredDevice(
+                                    audioTrack?.let { _ ->
+                                        getSystemService(AudioManager::class.java)
+                                            .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                                            .firstOrNull { it.id == id }
+                                    },
+                                ) ?: true
+                            }
+                            if (selected == false) {
+                                result.error("OUTPUT_SELECT_FAILED", "Could not select audio output", null)
+                            } else {
+                                result.success(null)
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/notifications")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -588,7 +627,47 @@ class MainActivity : FlutterActivity() {
             check(audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
                 "AudioTrack failed to initialize"
             }
+            preferredOutputDeviceId?.let { id ->
+                getSystemService(AudioManager::class.java)
+                    .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .firstOrNull { it.id == id }
+                    ?.let { audioTrack?.setPreferredDevice(it) }
+            }
             audioTrack?.play()
+        }
+    }
+
+    private fun listAudioOutputs(): List<Map<String, Any>> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) !=
+                PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN,
+                ),
+                bluetoothPermissionRequestCode,
+            )
+            return emptyList()
+        }
+        val manager = getSystemService(AudioManager::class.java)
+        return manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { device ->
+            val bluetooth = when (device.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_BLE_HEADSET,
+                AudioDeviceInfo.TYPE_BLE_SPEAKER -> true
+                else -> false
+            }
+            mapOf(
+                "id" to device.id.toString(),
+                "name" to (device.productName?.toString()?.ifBlank { "Audio output" }
+                    ?: "Audio output"),
+                "kind" to if (bluetooth) "bluetooth" else "system",
+                "isBluetooth" to bluetooth,
+                "isSelected" to (preferredOutputDeviceId == device.id),
+            )
         }
     }
 

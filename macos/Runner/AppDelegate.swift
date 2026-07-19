@@ -31,6 +31,126 @@ class AppDelegate: FlutterAppDelegate {
     }
     setupCaptureChannel(messenger: controller.engine.binaryMessenger)
     setupPlaybackChannel(messenger: controller.engine.binaryMessenger)
+    setupAudioOutputChannel(messenger: controller.engine.binaryMessenger)
+  }
+
+  private func setupAudioOutputChannel(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "sync_audio/audio_output",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      if call.method == "listOutputs" {
+        result(listAudioOutputs())
+        return
+      }
+      if call.method == "selectOutput",
+         let id = call.arguments as? String,
+         let deviceId = AudioDeviceID(id) {
+        result(selectAudioOutput(deviceId) ? nil : FlutterError(
+          code: "OUTPUT_SELECT_FAILED",
+          message: "Could not select the audio output",
+          details: nil
+        ))
+        return
+      }
+      guard call.method == "openOutputSettings" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let url = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!
+      NSWorkspace.shared.open(url)
+      result(nil)
+    }
+  }
+
+  private func listAudioOutputs() -> [[String: Any]] {
+    let address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDevices,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(
+      AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size
+    ) == noErr else { return [] }
+    let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+    var devices = [AudioDeviceID](repeating: 0, count: count)
+    var dataSize = size
+    guard AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
+      &dataSize, &devices
+    ) == noErr else { return [] }
+
+    let selected = defaultOutputDevice()
+    return devices.map { device in
+      let name = audioDeviceName(device)
+      let transport = audioDeviceTransport(device)
+      let bluetooth = transport == kAudioDeviceTransportTypeBluetooth ||
+        transport == kAudioDeviceTransportTypeBluetoothLE ||
+        name.localizedCaseInsensitiveContains("bluetooth")
+      return [
+        "id": String(device),
+        "name": name,
+        "kind": bluetooth ? "bluetooth" : "system",
+        "isBluetooth": bluetooth,
+        "isSelected": device == selected,
+      ]
+    }
+  }
+
+  private func audioDeviceName(_ device: AudioDeviceID) -> String {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioObjectPropertyName,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var name: Unmanaged<CFString>?
+    var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &name) == noErr,
+          let name else { return "Audio output" }
+    return name.takeUnretainedValue() as String
+  }
+
+  private func audioDeviceTransport(_ device: AudioDeviceID) -> UInt32 {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyTransportType,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var transport: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    _ = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
+    return transport
+  }
+
+  private func defaultOutputDevice() -> AudioDeviceID {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var device = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    _ = AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
+      &size, &device
+    )
+    return device
+  }
+
+  private func selectAudioOutput(_ device: AudioDeviceID) -> Bool {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var selected = device
+    let size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    return AudioObjectSetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
+      size, &selected
+    ) == noErr
   }
 
   // MARK: - Audio Capture (Microphone / System Input)

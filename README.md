@@ -20,6 +20,12 @@ One Host can stream to one or many Receivers simultaneously.
 On Windows, the Host uses native WASAPI loopback to capture the default
 speaker output, so browser and system audio work without a virtual driver.
 
+Receivers follow the operating system's selected audio output. The Receiver
+screen now shows an Audio output picker where supported platforms can list and
+select available outputs. Pair a Bluetooth speaker or headphone first; if the
+platform does not allow programmatic selection, the same card opens the system
+Sound settings as a fallback.
+
 ---
 
 ## Quick start
@@ -217,6 +223,21 @@ loopback. No BlackHole or other virtual audio driver is required.
    Audio**, and then play a browser video.
 
 Windows does not need microphone permission for this system-audio path.
+
+### Bluetooth Receiver output
+
+- **Android:** pair the Bluetooth speaker/headphone in Android Bluetooth
+  settings and select it as the media output. Then start Sync Audio Receiver.
+- **macOS:** pair the device and select it under **System Settings → Sound →
+  Output** before starting the Receiver.
+- **Windows:** pair the device and select it under **Settings → System → Sound
+  → Output** before starting the Receiver.
+
+Bluetooth devices usually add 80–250 ms of output delay. The app's network
+clock synchronization and minimum-RTT calibration align Receivers on the LAN,
+while the per-Receiver calibration control can compensate for remaining
+speaker or Bluetooth hardware delay. Measuring that physical delay fully
+automatically would require a microphone or an audio loopback signal.
 
 ### iOS / macOS
 

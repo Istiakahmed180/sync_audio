@@ -18,6 +18,7 @@ import '../../../services/pairing_store.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/latency_metrics.dart';
+import '../../../services/audio_output_route_service.dart';
 import '../../../shared/widgets/app_error_notifier.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 
@@ -57,6 +58,10 @@ class ReceiverController extends GetxController {
   final DeviceDiscoveryService _discoveryService;
   final PairingStore _pairingStore;
   final NativeAudioRuntime _nativeAudioRuntime;
+  final AudioOutputRouteService _audioOutputRouteService =
+      AudioOutputRouteService();
+  final audioOutputs = <AudioOutputDevice>[].obs;
+  final isLoadingAudioOutputs = false.obs;
   final pairingToken = 'Loading…'.obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
@@ -96,6 +101,7 @@ class ReceiverController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().start();
@@ -174,6 +180,26 @@ class ReceiverController extends GetxController {
       _audioErrorSubscription = audioService.errors.listen(
         (message) => errorMessage.value = message,
       );
+    }
+  }
+
+  Future<void> refreshAudioOutputs() async {
+    isLoadingAudioOutputs.value = true;
+    try {
+      audioOutputs.value = await _audioOutputRouteService.listOutputs();
+    } catch (_) {
+      audioOutputs.clear();
+    } finally {
+      isLoadingAudioOutputs.value = false;
+    }
+  }
+
+  Future<void> selectAudioOutput(AudioOutputDevice output) async {
+    try {
+      await _audioOutputRouteService.selectOutput(output.id);
+      await refreshAudioOutputs();
+    } catch (_) {
+      await openAudioOutputSettings();
     }
   }
 
@@ -262,6 +288,15 @@ class ReceiverController extends GetxController {
         message: 'Share this device IP and pairing code with the Host.',
         id: 1003,
       );
+    }
+  }
+
+  Future<void> openAudioOutputSettings() async {
+    try {
+      await _audioOutputRouteService.openSystemOutputSettings();
+    } catch (_) {
+      errorMessage.value =
+          'Open the device Sound settings and select the Bluetooth output.';
     }
   }
 
