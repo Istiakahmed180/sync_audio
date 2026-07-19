@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/receiver_session.dart';
-import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
@@ -24,14 +23,6 @@ class HostView extends GetView<HostController> {
             padding: const EdgeInsets.all(20),
             children: [
               Obx(
-                () => controller.errorMessage.value == null
-                    ? const SizedBox.shrink()
-                    : AppErrorBanner(
-                        message: controller.errorMessage.value!,
-                        onDismiss: () => controller.errorMessage.value = null,
-                      ),
-              ),
-              Obx(
                 () => ConnectionOverviewCard(
                   title: 'Host connection',
                   state: controller.connectionStatus.value.label,
@@ -44,8 +35,6 @@ class HostView extends GetView<HostController> {
                       'Receiver connection established. You can start system audio.',
                     ConnectionStatus.connecting =>
                       'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
-                    ConnectionStatus.error =>
-                      'Connection failed. Check the Receiver IP and pairing code, then try again.',
                     _ =>
                       'Enter the Receiver IP and required pairing code to begin.',
                   },
@@ -131,13 +120,13 @@ class HostView extends GetView<HostController> {
                             const SizedBox(width: 10),
                             Text(
                               'System audio',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
+                              style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                             const Spacer(),
-                            StatusBadge(label: controller.audioStatus.value.label),
+                            StatusBadge(
+                              label: controller.audioStatus.value.label,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -150,12 +139,13 @@ class HostView extends GetView<HostController> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: controller.isConnected &&
+                            onPressed:
+                                controller.isConnected &&
                                     controller.audioStatus.value !=
                                         AudioStreamStatus.starting
                                 ? () => controller.isAudioStreaming
-                                    ? controller.stopSystemAudioStream()
-                                    : controller.startSystemAudioStream()
+                                      ? controller.stopSystemAudioStream()
+                                      : controller.startSystemAudioStream()
                                 : null,
                             icon: Icon(
                               controller.isAudioStreaming

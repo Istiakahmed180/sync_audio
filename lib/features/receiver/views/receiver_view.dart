@@ -7,7 +7,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
-import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../controllers/receiver_controller.dart';
 
@@ -19,163 +18,160 @@ class ReceiverView extends GetView<ReceiverController> {
     return Scaffold(
       appBar: AppBar(title: const Text('Receiver Device')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Obx(
-              () => controller.errorMessage.value == null
-                  ? const SizedBox.shrink()
-                  : AppErrorBanner(
-                      message: controller.errorMessage.value!,
-                      onDismiss: () => controller.errorMessage.value = null,
-                    ),
-            ),
-            Obx(
-              () => ConnectionOverviewCard(
-                title: 'Receiver connection',
-                state: controller.connectionStatus.value.label,
-                icon: controller.isConnectedToHost.value
-                    ? Icons.check_circle_outline
-                    : Icons.speaker_group_rounded,
-                busy:
-                    controller.connectionStatus.value ==
-                    ConnectionStatus.startingServer,
-                message: !controller.isServerRunning.value
-                    ? 'Start this Receiver first. The Host cannot connect while the server is stopped.'
-                    : controller.isConnectedToHost.value
-                    ? controller.audioStatus.value ==
-                              AudioStreamStatus.receiving
-                          ? 'Host connected and audio is being received.'
-                          : 'Host connected. Audio will start when the Host starts streaming.'
-                    : 'Waiting for a Host. Share the IP address and pairing code below.',
-              ),
-            ),
-            const SizedBox(height: 20),
-            Obx(
-              () => controller.audioStatus.value == AudioStreamStatus.receiving
-                  ? _AudioReceivingCard(
-                      audioStatus: controller.audioStatus.value,
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: TextFormField(
-                controller: controller.deviceNameController,
-                onChanged: controller.setDeviceName,
-                decoration: const InputDecoration(
-                  labelText: 'Your device name',
-                  hintText: 'Living Room Speaker',
-                  helperText: 'This identifies your device to the Host.',
-                  prefixIcon: Icon(Icons.speaker_rounded),
+        child: RefreshIndicator(
+          onRefresh: controller.refreshAudioOutputs,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [
+              Obx(
+                () => ConnectionOverviewCard(
+                  title: 'Receiver connection',
+                  state: controller.connectionStatus.value.label,
+                  icon: controller.isConnectedToHost.value
+                      ? Icons.check_circle_outline
+                      : Icons.speaker_group_rounded,
+                  busy:
+                      controller.connectionStatus.value ==
+                      ConnectionStatus.startingServer,
+                  message: !controller.isServerRunning.value
+                      ? 'Start this Receiver first. The Host cannot connect while the server is stopped.'
+                      : controller.isConnectedToHost.value
+                      ? controller.audioStatus.value ==
+                                AudioStreamStatus.receiving
+                            ? 'Host connected and audio is being received.'
+                            : 'Host connected. Audio will start when the Host starts streaming.'
+                      : 'Waiting for a Host. Share the IP address and pairing code below.',
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.bluetooth_audio),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'Audio output',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Refresh outputs',
-                            onPressed: controller.refreshAudioOutputs,
-                            icon: const Icon(Icons.refresh),
-                          ),
-                          IconButton(
-                            tooltip: 'Open sound settings',
-                            onPressed: controller.openAudioOutputSettings,
-                            icon: const Icon(Icons.settings_outlined),
-                          ),
-                        ],
-                      ),
-                      const Text(
-                        'Select a paired Bluetooth speaker or headphone for this Receiver.',
-                      ),
-                      if (controller.isLoadingAudioOutputs.value)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 12),
-                          child: LinearProgressIndicator(),
-                        )
-                      else if (controller.audioOutputs.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 10),
-                          child: Text(
-                            'No output list available. Pair Bluetooth in system settings, then refresh.',
-                          ),
-                        )
-                      else
-                        ...controller.audioOutputs.map(
-                          (output) => ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(
-                              output.isBluetooth
-                                  ? Icons.bluetooth
-                                  : Icons.speaker,
-                            ),
-                            title: Text(output.name),
-                            subtitle: Text(output.kind),
-                            trailing: output.isSelected
-                                ? const Icon(Icons.check_circle)
-                                : null,
-                            onTap: () => controller.selectAudioOutput(output),
-                          ),
-                        ),
-                    ],
+              const SizedBox(height: 20),
+              Obx(
+                () =>
+                    controller.audioStatus.value == AudioStreamStatus.receiving
+                    ? _AudioReceivingCard(
+                        audioStatus: controller.audioStatus.value,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: TextFormField(
+                  controller: controller.deviceNameController,
+                  onChanged: controller.setDeviceName,
+                  decoration: const InputDecoration(
+                    labelText: 'Your device name',
+                    hintText: 'Living Room Speaker',
+                    helperText: 'This identifies your device to the Host.',
+                    prefixIcon: Icon(Icons.speaker_rounded),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => AppPrimaryButton(
-                label:
-                    controller.connectionStatus.value ==
-                        ConnectionStatus.startingServer
-                    ? 'Starting…'
-                    : 'Start Receiver',
-                icon: Icons.play_arrow_rounded,
-                isLoading:
-                    controller.connectionStatus.value ==
-                    ConnectionStatus.startingServer,
-                onPressed: controller.isServerRunning.value
-                    ? null
-                    : controller.startServer,
+              const SizedBox(height: 12),
+              Obx(
+                () => Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.bluetooth_audio),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Audio output',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Refresh outputs',
+                              onPressed: controller.refreshAudioOutputs,
+                              icon: const Icon(Icons.refresh),
+                            ),
+                            IconButton(
+                              tooltip: 'Open sound settings',
+                              onPressed: controller.openAudioOutputSettings,
+                              icon: const Icon(Icons.settings_outlined),
+                            ),
+                          ],
+                        ),
+                        const Text(
+                          'Select a paired Bluetooth speaker or headphone for this Receiver.',
+                        ),
+                        if (controller.isLoadingAudioOutputs.value)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 12),
+                            child: LinearProgressIndicator(),
+                          )
+                        else if (controller.audioOutputs.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 10),
+                            child: Text(
+                              'No output list available. Pair Bluetooth in system settings, then refresh.',
+                            ),
+                          )
+                        else
+                          ...controller.audioOutputs.map(
+                            (output) => ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                output.isBluetooth
+                                    ? Icons.bluetooth
+                                    : Icons.speaker,
+                              ),
+                              title: Text(output.name),
+                              subtitle: Text(output.kind),
+                              trailing: output.isSelected
+                                  ? const Icon(Icons.check_circle)
+                                  : null,
+                              onTap: () => controller.selectAudioOutput(output),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => AppPrimaryButton(
-                label: 'Stop Receiver',
-                icon: Icons.stop_rounded,
-                onPressed: controller.isServerRunning.value
-                    ? controller.stopServer
-                    : null,
+              const SizedBox(height: 12),
+              Obx(
+                () => AppPrimaryButton(
+                  label:
+                      controller.connectionStatus.value ==
+                          ConnectionStatus.startingServer
+                      ? 'Starting…'
+                      : 'Start Receiver',
+                  icon: Icons.play_arrow_rounded,
+                  isLoading:
+                      controller.connectionStatus.value ==
+                      ConnectionStatus.startingServer,
+                  onPressed: controller.isServerRunning.value
+                      ? null
+                      : controller.startServer,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Obx(
-              () => _ConnectionInfoCard(
-                deviceName: controller.deviceName.value,
-                ipAddress: controller.localIpAddress.value,
-                pairingCode: controller.pairingToken.value,
+              const SizedBox(height: 12),
+              Obx(
+                () => AppPrimaryButton(
+                  label: 'Stop Receiver',
+                  icon: Icons.stop_rounded,
+                  onPressed: controller.isServerRunning.value
+                      ? controller.stopServer
+                      : null,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Obx(
+                () => _ConnectionInfoCard(
+                  deviceName: controller.deviceName.value,
+                  ipAddress: controller.localIpAddress.value,
+                  pairingCode: controller.pairingToken.value,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -339,13 +335,6 @@ class _CopyableRow extends StatelessWidget {
           onPressed: _isValid
               ? () {
                   Clipboard.setData(ClipboardData(text: value));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$label copied'),
-                      duration: const Duration(seconds: 1),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
                 }
               : null,
         ),

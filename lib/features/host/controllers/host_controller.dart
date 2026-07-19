@@ -17,8 +17,6 @@ import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
-import '../../../shared/widgets/app_error_notifier.dart';
-import '../../../shared/widgets/app_notification_service.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
 
@@ -88,17 +86,14 @@ class HostController extends GetxController {
   final diagnostics = <String, Object>{}.obs;
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
-  late final StreamSubscription<String> _errorSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
   StreamSubscription<String>? _audioErrorSubscription;
   StreamSubscription<ReceiverSession>? _sessionSubscription;
   Timer? _diagnosticTimer;
   Timer? _discoveryTimer;
   bool _discoveryInProgress = false;
-  Worker? _errorSnackbarWorker;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   ConnectionStatus? _lastNotifiedConnectionStatus;
-  bool _suppressNextDisconnectedNotification = false;
   bool _startingSystemAudio = false;
   bool _autoStreamInProgress = false;
   final _streamingReceiverAddresses = <String>{};
@@ -261,20 +256,6 @@ class HostController extends GetxController {
       audioStatus.value = _audioService.status;
     }
     _statusSubscription = _service.statusChanges.listen(_handleStatus);
-    _errorSubscription = _service.errors.listen((message) {
-      errorMessage.value = message;
-      _suppressNextDisconnectedNotification = true;
-      unawaited(
-        AppNotificationService.show(
-          title: 'Connection error',
-          message: message,
-          id: 1001,
-        ),
-      );
-    });
-    _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
-      if (message != null) showAppErrorSnackbar(message);
-    });
     _controlSessionSubscription = _service.controlSessionChanges.listen(
       _updateSession,
     );
@@ -426,42 +407,6 @@ class HostController extends GetxController {
     }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
-    if (status == ConnectionStatus.connecting) {
-      _suppressNextDisconnectedNotification = false;
-    }
-    if (status == ConnectionStatus.disconnected &&
-        _suppressNextDisconnectedNotification) {
-      _suppressNextDisconnectedNotification = false;
-      return;
-    }
-    final notification = switch (status) {
-      ConnectionStatus.connecting => (
-        'Connecting',
-        'Connecting to the Receiver…',
-      ),
-      ConnectionStatus.connected => (
-        'Connected',
-        'The Host is ready to send audio.',
-      ),
-      ConnectionStatus.error => (
-        'Connection error',
-        'The Receiver connection failed.',
-      ),
-      ConnectionStatus.disconnected when previous != null => (
-        'Disconnected',
-        'The Host is no longer connected to Receivers.',
-      ),
-      _ => null,
-    };
-    if (notification != null) {
-      unawaited(
-        AppNotificationService.show(
-          title: notification.$1,
-          message: notification.$2,
-          id: 1001,
-        ),
-      );
-    }
   }
 
   Future<void> sendTestMessage() async {
@@ -560,11 +505,6 @@ class HostController extends GetxController {
       commandArguments,
     );
     _ensureDiagnosticTimer();
-    await AppNotificationService.show(
-      title: 'System audio streaming',
-      message: 'Audio is being sent to the connected Receivers.',
-      id: 1002,
-    );
   }
 
   Future<void> selectCodec(AudioCodecPreference preference) async {
@@ -624,11 +564,6 @@ class HostController extends GetxController {
     _streamingReceiverAddresses.clear();
     _readyReceiverStreamAddresses.clear();
     receiverSessions.clear();
-    await AppNotificationService.show(
-      title: 'System audio stopped',
-      message: 'Audio streaming has been stopped.',
-      id: 1002,
-    );
   }
 
   Future<void> _sendControlCommand(
@@ -1023,7 +958,6 @@ class HostController extends GetxController {
   @override
   void onClose() {
     _statusSubscription.cancel();
-    _errorSubscription.cancel();
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();
     _sessionSubscription?.cancel();
@@ -1032,7 +966,6 @@ class HostController extends GetxController {
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().stop();
     }
-    _errorSnackbarWorker?.dispose();
     _controlSessionSubscription.cancel();
     receiverIpController.dispose();
     receiverIpInputController.dispose();

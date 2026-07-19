@@ -19,8 +19,6 @@ import '../../../services/native_audio_runtime.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/audio_output_route_service.dart';
-import '../../../shared/widgets/app_error_notifier.dart';
-import '../../../shared/widgets/app_notification_service.dart';
 
 class ReceiverController extends GetxController {
   static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
@@ -78,20 +76,16 @@ class ReceiverController extends GetxController {
   final isAudioReceiverRunning = false.obs;
   late final StreamSubscription<String> _messageSubscription;
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
-  late final StreamSubscription<String> _errorSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
   StreamSubscription<String>? _audioErrorSubscription;
   late final StreamSubscription<ControlEvent> _controlEventSubscription;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
   bool _nativeReceiverActive = false;
-  Worker? _errorSnackbarWorker;
   String? _hostSessionId;
   String? _pairingTokenValue;
   late Future<void> _pairingReady;
   ConnectionStatus? _lastNotifiedConnectionStatus;
-  bool _suppressNextDisconnectedNotification = false;
-  bool _hostWasConnected = false;
   Future<void>? _audioReceiverStartInFlight;
   // Control events arrive from a line-ordered socket, but Stream listeners
   // do not await an async callback. Serialize them so STREAM_START cannot
@@ -114,29 +108,8 @@ class ReceiverController extends GetxController {
     _pairingReady = _loadPairingToken();
     _messageSubscription = _service.receivedMessages.listen((message) {
       lastReceivedMessage.value = message;
-      unawaited(
-        AppNotificationService.show(
-          title: 'New message from Host',
-          message: message,
-          id: 1004,
-        ),
-      );
     });
     _statusSubscription = _service.statusChanges.listen(_handleStatus);
-    _errorSubscription = _service.errors.listen((message) {
-      errorMessage.value = message;
-      _suppressNextDisconnectedNotification = true;
-      unawaited(
-        AppNotificationService.show(
-          title: 'Receiver error',
-          message: message,
-          id: 1001,
-        ),
-      );
-    });
-    _errorSnackbarWorker = ever<String?>(errorMessage, (message) {
-      if (message != null) showAppErrorSnackbar(message);
-    });
     _controlEventSubscription = _service.controlEvents.listen((event) {
       _controlEventQueue = _controlEventQueue
           .then((_) => _handleControlEvent(event))
@@ -149,21 +122,10 @@ class ReceiverController extends GetxController {
       session,
     ) {
       if (session.controlStatus == ControlConnectionStatus.disconnected) {
-        final wasConnected = _hostWasConnected;
-        _hostWasConnected = false;
         isConnectedToHost.value = false;
         _hostSessionId = null;
         _bufferStatusTimer?.cancel();
         _bufferStatusTimer = null;
-        if (wasConnected) {
-          unawaited(
-            AppNotificationService.show(
-              title: 'Host disconnected',
-              message: 'The Host connection has ended.',
-              id: 1001,
-            ),
-          );
-        }
       }
       if (session.controlStatus == ControlConnectionStatus.disconnected &&
           isServerRunning.value &&
@@ -283,11 +245,6 @@ class ReceiverController extends GetxController {
     }
     if (isServerRunning.value) {
       await BackgroundConnectionService.start();
-      await AppNotificationService.show(
-        title: 'Receiver ready',
-        message: 'Share this device IP and pairing code with the Host.',
-        id: 1003,
-      );
     }
   }
 
@@ -311,11 +268,6 @@ class ReceiverController extends GetxController {
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;
     await BackgroundConnectionService.stop();
-    await AppNotificationService.show(
-      title: 'Receiver stopped',
-      message: 'The control and audio listeners are closed.',
-      id: 1003,
-    );
   }
 
   Future<void> startAudioReceiver() => _ensureAudioReceiverStarted();
@@ -504,46 +456,8 @@ class ReceiverController extends GetxController {
     connectionStatus.value = status;
     isServerRunning.value = _service.isServerRunning;
     isConnectedToHost.value = status == ConnectionStatus.connected;
-    if (status == ConnectionStatus.disconnected) {
-      _hostWasConnected = false;
-    }
-    if (status == ConnectionStatus.connected) {
-      _hostWasConnected = true;
-    }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
-    if (status == ConnectionStatus.connecting) {
-      _suppressNextDisconnectedNotification = false;
-    }
-    if (status == ConnectionStatus.disconnected &&
-        _suppressNextDisconnectedNotification) {
-      _suppressNextDisconnectedNotification = false;
-      return;
-    }
-    final notification = switch (status) {
-      ConnectionStatus.connected => (
-        'Host connected',
-        'A Host is connected to this Receiver.',
-      ),
-      ConnectionStatus.disconnected when previous != null => (
-        'Host disconnected',
-        'The Host connection has ended.',
-      ),
-      ConnectionStatus.error => (
-        'Receiver error',
-        'The Host connection failed.',
-      ),
-      _ => null,
-    };
-    if (notification != null) {
-      unawaited(
-        AppNotificationService.show(
-          title: notification.$1,
-          message: notification.$2,
-          id: 1001,
-        ),
-      );
-    }
   }
 
   @override
@@ -554,13 +468,11 @@ class ReceiverController extends GetxController {
     deviceNameController.dispose();
     _messageSubscription.cancel();
     _statusSubscription.cancel();
-    _errorSubscription.cancel();
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();
     _controlEventSubscription.cancel();
     _controlSessionSubscription.cancel();
     _bufferStatusTimer?.cancel();
-    _errorSnackbarWorker?.dispose();
     messageController.dispose();
     super.onClose();
   }
