@@ -58,6 +58,8 @@ abstract class AudioStreamService {
     required int port,
   });
 
+  Future<void> removeReceiver({required String ipAddress});
+
   Future<void> stopStreaming();
 
   Future<void> startReceiver({required int port});
@@ -127,6 +129,7 @@ class UdpAudioService implements AudioStreamService {
   Future<void> _playbackQueue = Future<void>.value();
   int _playbackQueueDepth = 0;
   int _receiverGeneration = 0;
+  int _streamGeneration = 0;
   int _lastAudioPacketMicros = 0;
   bool _receiverSilenceNotified = false;
   Future<void> _encodeQueue = Future<void>.value();
@@ -338,13 +341,14 @@ class UdpAudioService implements AudioStreamService {
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       _udpSubscription = _socket!.listen(_handleHostSocketEvent);
       _streaming = true;
+      final streamGeneration = ++_streamGeneration;
       _clockSyncTimer = Timer.periodic(
         syncInterval,
         (_) => _synchronizeReceivers(),
       );
       _synchronizeReceivers();
       _captureSubscription = captureService.pcmChunks.listen(
-        _sendPcmPacket,
+        (pcm) => _sendPcmPacket(pcm, streamGeneration),
         onError: (Object error) => unawaited(_handleCaptureError(error)),
       );
       await captureService.start();
@@ -404,6 +408,24 @@ class UdpAudioService implements AudioStreamService {
       );
     }
     _synchronizeReceivers();
+  }
+
+  @override
+  Future<void> removeReceiver({required String ipAddress}) async {
+    if (!_streaming) return;
+    _destinations = _destinations
+        .where((address) => address.address != ipAddress)
+        .toList(growable: false);
+    final sessionIds = _sessions.keys
+        .where((id) => id.startsWith('$ipAddress:'))
+        .toList(growable: false);
+    for (final id in sessionIds) {
+      _sessions.remove(id);
+    }
+    if (_destinations.isEmpty) {
+      await stopStreaming();
+      return;
+    }
   }
 
   void _synchronizeReceivers() {
@@ -518,7 +540,8 @@ class UdpAudioService implements AudioStreamService {
     _setStatus(AudioStreamStatus.error);
   }
 
-  void _sendPcmPacket(Uint8List pcm) {
+  void _sendPcmPacket(Uint8List pcm, int generation) {
+    if (!_streaming || generation != _streamGeneration) return;
     _metrics.captureStarted();
     if (encoder.codecType == AudioCodecType.pcm16) {
       // Preserve normal capture buffers, but split unusually large macOS
@@ -526,13 +549,16 @@ class UdpAudioService implements AudioStreamService {
       // header remains within the supported datagram size on the target LAN.
       const maxPcmPayload = 2048;
       if (pcm.length <= maxPcmPayload) {
-        _enqueuePcmFrame(pcm);
+        _enqueuePcmFrame(pcm, generation);
         return;
       }
       final frameBytes = encoder.config.frameBytes;
       for (var offset = 0; offset < pcm.length; offset += frameBytes) {
         final end = (offset + frameBytes).clamp(0, pcm.length);
-        _enqueuePcmFrame(Uint8List.fromList(pcm.sublist(offset, end)));
+        _enqueuePcmFrame(
+          Uint8List.fromList(pcm.sublist(offset, end)),
+          generation,
+        );
       }
       return;
     }
@@ -552,13 +578,15 @@ class UdpAudioService implements AudioStreamService {
     while (combined.length - offset >= frameBytes) {
       _enqueuePcmFrame(
         Uint8List.fromList(combined.sublist(offset, offset + frameBytes)),
+        generation,
       );
       offset += frameBytes;
     }
     _pendingEncoderPcm = Uint8List.fromList(combined.sublist(offset));
   }
 
-  void _enqueuePcmFrame(Uint8List pcm) {
+  void _enqueuePcmFrame(Uint8List pcm, int generation) {
+    if (!_streaming || generation != _streamGeneration) return;
     if (_encodeQueueDepth >= _maxEncodeQueueDepth) {
       _emitError('Audio encoder is behind; dropping a capture frame.');
       return;
@@ -567,7 +595,7 @@ class UdpAudioService implements AudioStreamService {
     _encodeQueue = _encodeQueue
         .then((_) async {
           try {
-            await _encodeAndSendPcm(pcm);
+            await _encodeAndSendPcm(pcm, generation);
           } catch (_) {
             await _handleEncodingError();
           }
@@ -587,14 +615,22 @@ class UdpAudioService implements AudioStreamService {
     _setStatus(AudioStreamStatus.error);
   }
 
-  Future<void> _encodeAndSendPcm(Uint8List pcm) async {
+  Future<void> _encodeAndSendPcm(Uint8List pcm, int generation) async {
     final socket = _socket;
     final clock = _streamClock;
-    if (!_streaming || socket == null || clock == null || pcm.isEmpty) return;
+    if (!_streaming ||
+        generation != _streamGeneration ||
+        socket == null ||
+        clock == null ||
+        pcm.isEmpty) {
+      return;
+    }
     final encodeClock = Stopwatch()..start();
     final encoded = await encoder.encode(pcm);
     _metrics.encoded(encodeClock.elapsed);
-    if (!_streaming || encoded.isEmpty) return;
+    if (!_streaming || generation != _streamGeneration || encoded.isEmpty) {
+      return;
+    }
     final packet = AudioPacketCodec.encode(
       type: AudioPacketType.pcmAudio,
       sequence: _packetSequence++,
@@ -625,6 +661,7 @@ class UdpAudioService implements AudioStreamService {
 
   @override
   Future<void> stopStreaming() async {
+    _streamGeneration++;
     await _captureSubscription?.cancel();
     _captureSubscription = null;
     await captureService.stop();

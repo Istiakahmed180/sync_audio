@@ -357,6 +357,9 @@ class HostController extends GetxController {
   Future<void> disconnect() async {
     errorMessage.value = null;
     _nativeHostActive = false;
+    if (_audioService?.isStreaming ?? false) {
+      await stopSystemAudioStream();
+    }
     await _service.disconnect();
     await BackgroundConnectionService.stop();
   }
@@ -395,6 +398,19 @@ class HostController extends GetxController {
 
   Future<void> disconnectReceiver(String address) async {
     errorMessage.value = null;
+    final audioService = _audioService;
+    if (audioService?.isStreaming ?? false) {
+      // Stop this Receiver before closing its control socket so it cannot
+      // keep draining stale PCM when it reconnects.
+      await _sendControlCommand(
+        [address],
+        ControlCommandType.streamStop,
+        [_streamSessionId],
+      );
+      await audioService?.removeReceiver(ipAddress: address);
+      _streamingReceiverAddresses.remove(address);
+      _readyReceiverStreamAddresses.remove(address);
+    }
     await _service.disconnectFrom(address);
   }
 

@@ -414,7 +414,10 @@ class ReceiverController extends GetxController {
         }
       case ControlCommandType.streamStop:
         if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {
-          unawaited(stopAudioReceiver());
+          // Complete the teardown before accepting a new STREAM_PREPARE.
+          // Otherwise the old playback queue/audio track can overlap the
+          // newly connected stream and drain stale audio at the wrong speed.
+          await stopAudioReceiver();
         }
       case ControlCommandType.setPlaybackOffset:
         final offset = int.tryParse(event.command.arguments.first);
