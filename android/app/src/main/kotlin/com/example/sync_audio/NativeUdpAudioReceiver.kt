@@ -1,7 +1,10 @@
 package com.example.sync_audio
 
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
+import android.util.Log
 import android.media.AudioTrack
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -13,6 +16,7 @@ internal class NativeUdpAudioReceiver(
     private val latencyMode: String,
     private val sessionId: String?,
     private val pairingToken: String?,
+    private val audioManager: AudioManager,
 ) {
     private val running = AtomicBoolean(false)
     private val jitter = NativeJitterBuffer()
@@ -20,6 +24,7 @@ internal class NativeUdpAudioReceiver(
     private var receiveThread: Thread? = null
     private var playbackThread: Thread? = null
     private var audioTrack: AudioTrack? = null
+    @Volatile private var preferredOutputDeviceId: Int? = null
     private var receiverStartNanos = 0L
     @Volatile private var hostToLocalOffsetMicros = 0L
     @Volatile private var clockOffsetInitialized = false
@@ -35,8 +40,23 @@ internal class NativeUdpAudioReceiver(
         audioTrack = createAudioTrack()
         socket = DatagramSocket(port)
         audioTrack?.play()
+        audioTrack?.let { track ->
+            preferredOutputDeviceId?.let { id ->
+                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .firstOrNull { it.id == id }
+                    ?.let { device ->
+                        val applied = track.setPreferredDevice(device)
+                        Log.i(TAG, "Preferred audio output ${device.productName} (${device.id}) applied=$applied")
+                    }
+            }
+        }
         receiveThread = Thread({ receiveLoop() }, "sync-native-udp-receiver").also { it.start() }
         playbackThread = Thread({ playbackLoop() }, "sync-native-audiotrack").also { it.start() }
+    }
+
+    fun setPreferredOutputDevice(device: AudioDeviceInfo): Boolean {
+        preferredOutputDeviceId = device.id
+        return audioTrack?.setPreferredDevice(device) ?: true
     }
 
     private fun receiveLoop() {
@@ -120,7 +140,7 @@ internal class NativeUdpAudioReceiver(
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
         )
-        return AudioTrack.Builder()
+        val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -140,6 +160,12 @@ internal class NativeUdpAudioReceiver(
             .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
             .build()
             .also { check(it.state == AudioTrack.STATE_INITIALIZED) { "Native AudioTrack initialization failed" } }
+        preferredOutputDeviceId?.let { id ->
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .firstOrNull { it.id == id }
+                ?.let { track.setPreferredDevice(it) }
+        }
+        return track
     }
 
     private fun nowMicros(): Long = (System.nanoTime() - receiverStartNanos) / 1_000
@@ -148,6 +174,10 @@ internal class NativeUdpAudioReceiver(
         lastError = message
         SystemAudioPcmBus.emitError("NATIVE_UDP_RECEIVE_FAILED", message)
         stop()
+    }
+
+    companion object {
+        private const val TAG = "SyncAudioReceiver"
     }
 
     fun diagnostics(): Map<String, Any> = mapOf(

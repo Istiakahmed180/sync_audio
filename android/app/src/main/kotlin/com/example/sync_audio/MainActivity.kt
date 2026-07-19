@@ -64,21 +64,31 @@ class MainActivity : FlutterActivity() {
                         startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
                         result.success(null)
                     }
-                    "listOutputs" -> result.success(listAudioOutputs())
+                    "listOutputs" -> try {
+                        val outputs = listAudioOutputs()
+                        Log.i("SyncAudioOutput", "Found ${outputs.size} audio outputs")
+                        result.success(outputs)
+                    } catch (error: Exception) {
+                        Log.e("SyncAudioOutput", "Could not list audio outputs", error)
+                        result.error("OUTPUT_LIST_FAILED", error.message, null)
+                    }
                     "selectOutput" -> {
                         val id = (call.arguments as? String)?.toIntOrNull()
                         if (id == null) {
                             result.error("INVALID_OUTPUT", "Audio output ID is invalid", null)
                         } else {
                             preferredOutputDeviceId = id
+                            val device = getSystemService(AudioManager::class.java)
+                                .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                                .firstOrNull { it.id == id }
                             val selected = synchronized(audioLock) {
-                                audioTrack?.setPreferredDevice(
-                                    audioTrack?.let { _ ->
-                                        getSystemService(AudioManager::class.java)
-                                            .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                                            .firstOrNull { it.id == id }
-                                    },
-                                ) ?: true
+                                val flutterSelected = audioTrack?.let {
+                                    device != null && it.setPreferredDevice(device)
+                                } ?: true
+                                val nativeSelected = nativeReceiver?.let {
+                                    device != null && it.setPreferredOutputDevice(device)
+                                } ?: true
+                                flutterSelected && nativeSelected
                             }
                             if (selected == false) {
                                 result.error("OUTPUT_SELECT_FAILED", "Could not select audio output", null)
@@ -210,6 +220,7 @@ class MainActivity : FlutterActivity() {
                                 latencyMode = mode,
                                 sessionId = sessionId,
                                 pairingToken = pairingToken,
+                                audioManager = getSystemService(AudioManager::class.java),
                             ).also { it.start() }
                             result.success(null)
                         } catch (error: Exception) {
@@ -634,6 +645,15 @@ class MainActivity : FlutterActivity() {
                     ?.let { audioTrack?.setPreferredDevice(it) }
             }
             audioTrack?.play()
+            preferredOutputDeviceId?.let { id ->
+                getSystemService(AudioManager::class.java)
+                    .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .firstOrNull { it.id == id }
+                    ?.let { device ->
+                        val applied = audioTrack?.setPreferredDevice(device)
+                        Log.i("SyncAudioOutput", "Preferred output ${device.productName} (${device.id}) applied=$applied")
+                    }
+            }
         }
     }
 
@@ -652,7 +672,36 @@ class MainActivity : FlutterActivity() {
             return emptyList()
         }
         val manager = getSystemService(AudioManager::class.java)
-        return manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { device ->
+        Log.i("SyncAudioOutput", "AudioManager output devices=${manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).size}")
+        val mediaDevices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            // AudioManager also exposes communication routes (Bluetooth SCO
+            // and BLE headset) for the same paired headset. They are not
+            // media playback routes and can produce a duplicate row that
+            // cannot play AudioTrack music. Keep only media-capable outputs.
+            .filter { device ->
+                device.type !in setOf(
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                )
+            }
+        // Keep one physical route per display name. If Android reports both
+        // BLE and A2DP for the same headset, A2DP is preferred because the
+        // receiver uses AudioTrack/USAGE_MEDIA.
+        val devices = mediaDevices
+            .groupBy { it.productName?.toString()?.trim()?.lowercase() ?: "audio output" }
+            .values
+            .mapNotNull { group ->
+                group.maxWithOrNull(
+                    compareBy<AudioDeviceInfo> {
+                        when (it.type) {
+                            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> 3
+                            AudioDeviceInfo.TYPE_BLE_SPEAKER -> 2
+                            else -> 1
+                        }
+                    }.thenBy { it.id },
+                )
+            }
+        return devices.map { device ->
             val bluetooth = when (device.type) {
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
@@ -668,7 +717,7 @@ class MainActivity : FlutterActivity() {
                 "isBluetooth" to bluetooth,
                 "isSelected" to (preferredOutputDeviceId == device.id),
             )
-        }
+            }
     }
 
     private fun stopAudioTrack() {

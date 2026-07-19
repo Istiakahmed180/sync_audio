@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../models/connection_status.dart';
+import '../../../models/audio_stream_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../shared/widgets/app_error_banner.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
@@ -116,6 +117,63 @@ class HostView extends GetView<HostController> {
                   }).toList(),
                 );
               }),
+              const SizedBox(height: 12),
+              Obx(
+                () => Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.graphic_eq),
+                            const SizedBox(width: 10),
+                            Text(
+                              'System audio',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const Spacer(),
+                            StatusBadge(label: controller.audioStatus.value.label),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          controller.isAudioStreaming
+                              ? 'Audio is being sent to the connected Receiver(s).'
+                              : 'Play YouTube, then start system audio to send it to the Receiver.',
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: controller.isConnected &&
+                                    controller.audioStatus.value !=
+                                        AudioStreamStatus.starting
+                                ? () => controller.isAudioStreaming
+                                    ? controller.stopSystemAudioStream()
+                                    : controller.startSystemAudioStream()
+                                : null,
+                            icon: Icon(
+                              controller.isAudioStreaming
+                                  ? Icons.stop
+                                  : Icons.play_arrow,
+                            ),
+                            label: Text(
+                              controller.isAudioStreaming
+                                  ? 'Stop system audio'
+                                  : 'Start system audio',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: 4),
               Align(
                 alignment: Alignment.centerLeft,

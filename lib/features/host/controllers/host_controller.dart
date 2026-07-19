@@ -83,6 +83,8 @@ class HostController extends GetxController {
   final adaptiveJitter = true.obs;
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
+
+  bool get isAudioStreaming => _audioService?.isStreaming ?? false;
   final diagnostics = <String, Object>{}.obs;
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
