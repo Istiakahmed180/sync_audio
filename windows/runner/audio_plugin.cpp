@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cwctype>
 #include <shellapi.h>
+#include "utils.h"
 
 static flutter::EncodableList ListWaveOutDevices(UINT selected_device) {
   flutter::EncodableList devices;
@@ -26,7 +27,7 @@ static flutter::EncodableList ListWaveOutDevices(UINT selected_device) {
     device[flutter::EncodableValue("id")] =
         flutter::EncodableValue("waveout:" + std::to_string(index));
     device[flutter::EncodableValue("name")] =
-        flutter::EncodableValue(std::string(name.begin(), name.end()));
+        flutter::EncodableValue(Utf8FromUtf16(caps.szPname));
     device[flutter::EncodableValue("kind")] =
         flutter::EncodableValue(bluetooth ? "bluetooth" : "system");
     device[flutter::EncodableValue("isBluetooth")] =
