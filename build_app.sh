@@ -5,6 +5,8 @@ set -e
 APP_NAME="Sync Audio"
 PACKAGE_NAME="com.tdevs.skilltrack"
 BUILD_TYPE="apk"   # apk | appbundle
+BUILD_TARGET="${1:-android}" # android | macos
+CREATE_MACOS_DMG=true
 
 # ===== Feature Toggles =====
 CHANGE_PACKAGE=false
@@ -72,7 +74,35 @@ if [ "$BUILD_APP" = true ]; then
   flutter clean
   flutter pub get
 
-  if [ "$BUILD_TYPE" = "appbundle" ]; then
+  if [ "$BUILD_TARGET" = "macos" ]; then
+    if [ "$(uname -s)" != "Darwin" ]; then
+      echo "❌ macOS builds must run on macOS."
+      exit 1
+    fi
+
+    flutter build macos --release
+
+    MACOS_APP_PATH="build/macos/Build/Products/Release/sync_audio.app"
+    MACOS_DMG_PATH="$PWD/${APP_NAME}.dmg"
+    if [ ! -d "$MACOS_APP_PATH" ]; then
+      echo "❌ macOS app not found: $MACOS_APP_PATH"
+      exit 1
+    fi
+
+    if [ "$CREATE_MACOS_DMG" = true ]; then
+      DMG_STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sync-audio-dmg.XXXXXX")
+      trap 'rm -rf "$DMG_STAGING_DIR"' EXIT
+      cp -R "$MACOS_APP_PATH" "$DMG_STAGING_DIR/"
+      ln -s /Applications "$DMG_STAGING_DIR/Applications"
+      hdiutil create \
+        -volname "$APP_NAME" \
+        -srcfolder "$DMG_STAGING_DIR" \
+        -ov \
+        -format UDZO \
+        "$MACOS_DMG_PATH"
+      echo "📦 macOS DMG created: $MACOS_DMG_PATH"
+    fi
+  elif [ "$BUILD_TYPE" = "appbundle" ]; then
     flutter build appbundle --release
   else
     flutter build apk --release --split-per-abi
