@@ -39,15 +39,19 @@ class AppDelegate: FlutterAppDelegate {
       name: "sync_audio/audio_output",
       binaryMessenger: messenger
     )
-    channel.setMethodCallHandler { call, result in
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(FlutterError(code: "APP_UNAVAILABLE", message: "Audio output service is unavailable", details: nil))
+        return
+      }
       if call.method == "listOutputs" {
-        result(listAudioOutputs())
+        result(self.listAudioOutputs())
         return
       }
       if call.method == "selectOutput",
          let id = call.arguments as? String,
          let deviceId = AudioDeviceID(id) {
-        result(selectAudioOutput(deviceId) ? nil : FlutterError(
+        result(self.selectAudioOutput(deviceId) ? nil : FlutterError(
           code: "OUTPUT_SELECT_FAILED",
           message: "Could not select the audio output",
           details: nil
@@ -65,7 +69,7 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   private func listAudioOutputs() -> [[String: Any]] {
-    let address = AudioObjectPropertyAddress(
+    var address = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDevices,
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain

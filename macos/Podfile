@@ -74,28 +74,10 @@ post_install do |installer|
     phase.shell_script = <<~'SH'
       opus_framework="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/opus.framework"
       # The optional macOS Opus asset is not needed for the PCM transport and
-      # is not a valid release-signed framework on current Xcode. Omit it from
-      # Release bundles; OpusRuntime falls back to PCM automatically.
-      if [ "$CONFIGURATION" = "Release" ]; then
-        rm -rf "$opus_framework"
-        exit 0
-      fi
-      if [ -d "$opus_framework" ] && [ -f "$opus_framework/Info.plist" ] && [ ! -f "$opus_framework/Versions/Current/Resources/Info.plist" ]; then
-        mkdir -p "$opus_framework/Versions/A/Resources"
-        mv "$opus_framework/Info.plist" "$opus_framework/Versions/A/Resources/Info.plist"
-        for item in opus Headers Modules; do
-          if [ -e "$opus_framework/$item" ]; then
-            mv "$opus_framework/$item" "$opus_framework/Versions/A/$item"
-          fi
-          ln -s "Versions/Current/$item" "$opus_framework/$item"
-        done
-        ln -s A "$opus_framework/Versions/Current"
-        ln -s "Versions/Current/Resources/Info.plist" "$opus_framework/Info.plist"
-      fi
-      if [ -d "$opus_framework" ] && command -v codesign >/dev/null 2>&1; then
-        opus_identity="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
-        codesign --force --sign "$opus_identity" --timestamp=none "$opus_framework"
-      fi
+      # is not a valid framework on current Xcode. Omit it from every build;
+      # OpusRuntime falls back to PCM automatically.
+      rm -rf "$opus_framework"
+      exit 0
     SH
     runner_project.save
   end
