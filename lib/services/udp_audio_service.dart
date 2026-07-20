@@ -111,12 +111,12 @@ class UdpAudioService implements AudioStreamService {
   AudioDecoder decoder;
   final Duration jitterBuffer;
   final Duration syncInterval;
-  LatencyMode _latencyMode = LatencyMode.ultraLow;
+  LatencyMode _latencyMode = LatencyMode.stable;
   bool _adaptiveJitterEnabled = true;
   bool _driftCorrectionEnabled = true;
   int _maximumDriftCorrectionPpm = 200;
   final _metrics = LatencyMetricsTracker();
-  final _jitter = AdaptiveJitterBuffer(mode: LatencyMode.ultraLow);
+  final _jitter = AdaptiveJitterBuffer(mode: LatencyMode.stable);
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();

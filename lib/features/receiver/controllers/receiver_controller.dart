@@ -380,7 +380,7 @@ class ReceiverController extends GetxController {
             final requestedMode = event.command.arguments[3].toLowerCase();
             final mode = LatencyMode.values.firstWhere(
               (candidate) => candidate.name.toLowerCase() == requestedMode,
-              orElse: () => LatencyMode.ultraLow,
+              orElse: () => LatencyMode.stable,
             );
             await _audioService?.configureLatency(
               mode: mode,
@@ -397,7 +397,7 @@ class ReceiverController extends GetxController {
           try {
             await _nativeAudioRuntime.startNativeReceiver(
               port: AppConstants.audioPort,
-              latencyMode: LatencyMode.ultraLow,
+              latencyMode: LatencyMode.stable,
               sessionId: sessionId,
               pairingToken: _pairingTokenValue,
             );

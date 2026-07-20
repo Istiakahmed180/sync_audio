@@ -77,7 +77,8 @@ class HostController extends GetxController {
   final discoveredDeviceLatencyMs = <String, int>{}.obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
-  final latencyMode = LatencyMode.ultraLow.obs;
+  // Stable is the safer default for Wi-Fi + Bluetooth receiver setups.
+  final latencyMode = LatencyMode.stable.obs;
   final adaptiveJitter = true.obs;
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
