@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sync_audio/features/host/controllers/host_controller.dart';
 import 'package:sync_audio/features/receiver/controllers/receiver_controller.dart';
 import 'package:sync_audio/models/connection_status.dart';
@@ -138,7 +139,10 @@ class FakeConnectionService implements ConnectionService {
 void main() {
   late FakeConnectionService service;
 
-  setUp(() => service = FakeConnectionService());
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    service = FakeConnectionService();
+  });
   tearDown(() => service.dispose());
 
   test('host validates empty IP, invalid IP, and invalid port', () async {
@@ -153,7 +157,7 @@ void main() {
     controller.receiverIpController.text = '192.168.1.20';
     controller.portController.text = '70000';
     await controller.connect();
-    expect(controller.errorMessage.value, 'Enter a port between 1 and 65535.');
+    expect(controller.errorMessage.value, 'Invalid port configured.');
     controller.onClose();
   });
 
