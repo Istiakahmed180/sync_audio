@@ -185,28 +185,27 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   private func startCapture(streamHandler: MacosAudioStreamHandler, result: @escaping FlutterResult) {
-    if let blackHole = MacosBlackHoleCapture() {
-      blackHoleCapture = blackHole
-      blackHole.start { [weak streamHandler] data in
-        streamHandler?.send(data)
-      } completion: { [weak self] error in
-        if let error {
-          self?.blackHoleCapture = nil
-          result(FlutterError(code: "CAPTURE_ERROR", message: error.localizedDescription, details: nil))
-        } else {
-          result(nil)
-        }
-      }
-      return
-    }
-
     if #available(macOS 13.0, *) {
       let capture = MacosSystemAudioCapture()
       systemAudioCapture = capture
       capture.start { [weak self, weak streamHandler] error in
         if let error {
           self?.systemAudioCapture = nil
-          result(FlutterError(code: "CAPTURE_ERROR", message: error.localizedDescription, details: nil))
+          // ScreenCaptureKit is the preferred path. BlackHole remains a
+          // compatibility fallback for permission/configuration failures.
+          if let self, let blackHole = MacosBlackHoleCapture() {
+            self.startBlackHoleCapture(
+              blackHole,
+              streamHandler: streamHandler,
+              result: result
+            )
+          } else {
+            result(FlutterError(
+              code: "CAPTURE_ERROR",
+              message: error.localizedDescription,
+              details: nil
+            ))
+          }
         } else {
           streamHandler?.setActive(true)
           result(nil)
@@ -214,6 +213,11 @@ class AppDelegate: FlutterAppDelegate {
       } onAudio: { [weak streamHandler] data in
         streamHandler?.send(data)
       }
+      return
+    }
+
+    if let blackHole = MacosBlackHoleCapture() {
+      startBlackHoleCapture(blackHole, streamHandler: streamHandler, result: result)
       return
     }
 
@@ -247,6 +251,28 @@ class AppDelegate: FlutterAppDelegate {
     } catch {
       result(FlutterError(code: "CAPTURE_ERROR",
                           message: error.localizedDescription, details: nil))
+    }
+  }
+
+  private func startBlackHoleCapture(
+    _ blackHole: MacosBlackHoleCapture,
+    streamHandler: MacosAudioStreamHandler?,
+    result: @escaping FlutterResult
+  ) {
+    blackHoleCapture = blackHole
+    blackHole.start { [weak streamHandler] data in
+      streamHandler?.send(data)
+    } completion: { [weak self] error in
+      if let error {
+        self?.blackHoleCapture = nil
+        result(FlutterError(
+          code: "CAPTURE_ERROR",
+          message: error.localizedDescription,
+          details: nil
+        ))
+      } else {
+        result(nil)
+      }
     }
   }
 
