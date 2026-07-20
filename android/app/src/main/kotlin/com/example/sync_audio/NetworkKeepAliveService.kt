@@ -77,6 +77,12 @@ class NetworkKeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
         @Suppress("DEPRECATION")
         wifiLock?.let { if (it.isHeld) it.release() }
         wakeLock?.let { if (it.isHeld) it.release() }
