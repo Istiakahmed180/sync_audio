@@ -133,31 +133,7 @@ class HostView extends GetView<HostController> {
                         Text(
                           controller.isAudioStreaming
                               ? 'Audio is being sent to the connected Receiver(s).'
-                              : 'Play YouTube, then start system audio to send it to the Receiver.',
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed:
-                                controller.isConnected &&
-                                    controller.audioStatus.value !=
-                                        AudioStreamStatus.starting
-                                ? () => controller.isAudioStreaming
-                                      ? controller.stopSystemAudioStream()
-                                      : controller.startSystemAudioStream()
-                                : null,
-                            icon: Icon(
-                              controller.isAudioStreaming
-                                  ? Icons.stop
-                                  : Icons.play_arrow,
-                            ),
-                            label: Text(
-                              controller.isAudioStreaming
-                                  ? 'Stop system audio'
-                                  : 'Start system audio',
-                            ),
-                          ),
+                              : 'System audio will start automatically when the Receiver is connected.',
                         ),
                       ],
                     ),

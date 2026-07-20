@@ -31,9 +31,7 @@ class SyncAudioApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             home: Scaffold(
-              body: Center(
-                child: CircularProgressIndicator.adaptive(),
-              ),
+              body: Center(child: CircularProgressIndicator.adaptive()),
             ),
           );
         }

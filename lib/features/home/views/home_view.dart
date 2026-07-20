@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -34,7 +36,9 @@ class HomeView extends GetView<HomeController> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Use one Android device as the Host and one or more devices as Receivers on the same Wi‑Fi network.',
+              Platform.isAndroid
+                  ? 'Use this Android device as the Host or Receiver on the same Wi‑Fi network.'
+                  : 'Use this computer as the Host and connect one or more Android Receivers on the same Wi‑Fi network.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 32),
@@ -47,17 +51,22 @@ class HomeView extends GetView<HomeController> {
             const SizedBox(height: 12),
             ModeSelectionCard(
               title: 'Host Device',
-              description: 'Android only. Capture and send audio to all Receivers.',
+              description: Platform.isAndroid
+                  ? 'Capture and send audio to all Receivers.'
+                  : 'Capture computer audio and send it to Android Receivers.',
               icon: Icons.wifi_tethering_rounded,
               onTap: () => Get.toNamed(AppRoutes.host),
             ),
-            const SizedBox(height: 12),
-            ModeSelectionCard(
-              title: 'Receiver Device',
-              description: 'Join as a speaker — play the Host\'s audio in sync.',
-              icon: Icons.speaker_group_rounded,
-              onTap: () => Get.toNamed(AppRoutes.receiver),
-            ),
+            if (Platform.isAndroid) ...[
+              const SizedBox(height: 12),
+              ModeSelectionCard(
+                title: 'Receiver Device',
+                description:
+                    'Join as a speaker — play the Host\'s audio in sync.',
+                icon: Icons.speaker_group_rounded,
+                onTap: () => Get.toNamed(AppRoutes.receiver),
+              ),
+            ],
           ],
         ),
       ),

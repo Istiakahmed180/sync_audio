@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -24,7 +26,7 @@ class OnboardingView extends GetView<OnboardingController> {
                 children: [
                   _WelcomePage(scheme: scheme),
                   _HostPage(scheme: scheme),
-                  _ReceiverPage(scheme: scheme),
+                  if (Platform.isAndroid) _ReceiverPage(scheme: scheme),
                   _ReadyPage(scheme: scheme),
                 ],
               ),
@@ -69,7 +71,8 @@ class OnboardingView extends GetView<OnboardingController> {
           }),
           const Spacer(),
           Obx(() {
-            final isLast = controller.currentPage.value == controller.totalPages - 1;
+            final isLast =
+                controller.currentPage.value == controller.totalPages - 1;
             if (isLast) {
               return AppPrimaryButton(
                 label: 'Get Started',
@@ -143,9 +146,9 @@ class _WelcomePage extends StatelessWidget {
           Text(
             'Welcome to\nSync Audio',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Text(
@@ -153,9 +156,9 @@ class _WelcomePage extends StatelessWidget {
             'Play music on one Android phone and hear it from every '
             'other device at the same time.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -192,9 +195,9 @@ class _HostPage extends StatelessWidget {
           Text(
             'Host — send audio',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Container(
@@ -263,9 +266,9 @@ class _ReceiverPage extends StatelessWidget {
           Text(
             'Receiver — play audio',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Container(
@@ -334,9 +337,9 @@ class _ReadyPage extends StatelessWidget {
           Text(
             'You\'re all set!',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Container(
@@ -355,15 +358,20 @@ class _ReadyPage extends StatelessWidget {
                 const SizedBox(height: 12),
                 _ReadyTip(
                   icon: Icons.wifi_tethering_rounded,
-                  text: 'On your Android phone, tap "Host Device" to start sharing audio',
+                  text: Platform.isAndroid
+                      ? 'Tap "Host Device" to start sharing audio'
+                      : 'This computer runs as the Host and sends audio to Android Receivers',
                   scheme: scheme,
                 ),
-                const SizedBox(height: 12),
-                _ReadyTip(
-                  icon: Icons.speaker_group_rounded,
-                  text: 'On every other device, tap "Receiver Device" to join',
-                  scheme: scheme,
-                ),
+                if (Platform.isAndroid) ...[
+                  const SizedBox(height: 12),
+                  _ReadyTip(
+                    icon: Icons.speaker_group_rounded,
+                    text:
+                        'On another Android device, tap "Receiver Device" to join',
+                    scheme: scheme,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _ReadyTip(
                   icon: Icons.qr_code_rounded,
@@ -380,7 +388,11 @@ class _ReadyPage extends StatelessWidget {
 }
 
 class _FeatureItem extends StatelessWidget {
-  const _FeatureItem({required this.icon, required this.text, required this.scheme});
+  const _FeatureItem({
+    required this.icon,
+    required this.text,
+    required this.scheme,
+  });
 
   final IconData icon;
   final String text;
@@ -401,7 +413,11 @@ class _FeatureItem extends StatelessWidget {
 }
 
 class _ReadyTip extends StatelessWidget {
-  const _ReadyTip({required this.icon, required this.text, required this.scheme});
+  const _ReadyTip({
+    required this.icon,
+    required this.text,
+    required this.scheme,
+  });
 
   final IconData icon;
   final String text;
