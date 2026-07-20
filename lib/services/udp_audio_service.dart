@@ -165,7 +165,6 @@ class UdpAudioService implements AudioStreamService {
   double _playbackVolume = 1.0;
   final bool _autoLatencyEnabled = true;
   int _consecutiveUnderruns = 0;
-  int _consecutiveGoodFrames = 0;
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
@@ -893,14 +892,6 @@ class UdpAudioService implements AudioStreamService {
       _latencyMode = LatencyMode.stable;
       _jitter.configure(mode: LatencyMode.stable, enabled: true);
       _consecutiveUnderruns = 0;
-      _consecutiveGoodFrames = 0;
-    } else if (_consecutiveGoodFrames >= 500 &&
-        _latencyMode != LatencyMode.ultraLow) {
-      _latencyMode = _latencyMode == LatencyMode.stable
-          ? LatencyMode.balanced
-          : LatencyMode.ultraLow;
-      _jitter.configure(mode: _latencyMode, enabled: true);
-      _consecutiveGoodFrames = 0;
     }
   }
 
@@ -910,13 +901,11 @@ class UdpAudioService implements AudioStreamService {
     final packet = _jitter.takeReady(now);
     if (packet == null) {
       _droppedPackets = _jitter.underruns;
-      _consecutiveGoodFrames = 0;
       _consecutiveUnderruns++;
       _autoAdjustLatency();
       return;
     }
     _consecutiveUnderruns = 0;
-    _consecutiveGoodFrames++;
     _autoAdjustLatency();
     _metrics.scheduled(
       timestampMicros: packet.timestampMicros,

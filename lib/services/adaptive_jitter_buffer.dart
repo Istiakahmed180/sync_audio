@@ -103,7 +103,16 @@ class AdaptiveJitterBuffer {
       _missingSinceMicros = _missingSinceMicros == 0
           ? nowMicros
           : _missingSinceMicros;
-      final timeout = enabled ? 30000 : 10000;
+      // Stable mode gives Wi-Fi packets more time to arrive out of order
+      // before advancing past a missing sequence number. This is useful when
+      // the receiver also forwards audio over Bluetooth.
+      final timeout = !enabled
+          ? 10000
+          : switch (mode) {
+              LatencyMode.stable => 80000,
+              LatencyMode.balanced => 50000,
+              LatencyMode.ultraLow => 30000,
+            };
       if (nowMicros - _missingSinceMicros < timeout) return null;
       underruns++;
       nextSequence = _oldestSequence();
