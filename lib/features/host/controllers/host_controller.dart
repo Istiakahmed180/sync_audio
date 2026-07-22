@@ -85,11 +85,14 @@ class HostController extends GetxController {
 
   bool get isAudioStreaming => _audioService?.isStreaming ?? false;
   final diagnostics = <String, Object>{}.obs;
+  Map<String, Object> get diagnosticsData =>
+      Map<String, Object>.from(diagnostics);
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
   StreamSubscription<String>? _audioErrorSubscription;
   StreamSubscription<ReceiverSession>? _sessionSubscription;
+  late final StreamSubscription<ControlEvent> _diagnosticsSubscription;
   Timer? _diagnosticTimer;
   Timer? _discoveryTimer;
   bool _discoveryInProgress = false;
@@ -97,6 +100,8 @@ class HostController extends GetxController {
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _startingSystemAudio = false;
   bool _autoStreamInProgress = false;
+  final _receiverDiagnostics = <String, Map<String, Object>>{};
+  final _receiverDiagnosticsUpdatedAt = <String, DateTime>{};
   final _streamingReceiverAddresses = <String>{};
   final _readyReceiverStreamAddresses = <String>{};
   final _restartingAudioSettings = false.obs;
@@ -257,8 +262,17 @@ class HostController extends GetxController {
       audioStatus.value = _audioService.status;
     }
     _statusSubscription = _service.statusChanges.listen(_handleStatus);
-    _controlSessionSubscription = _service.controlSessionChanges.listen(
-      _updateSession,
+    _controlSessionSubscription = _service.controlSessionChanges.listen((
+      session,
+    ) {
+      if (session.controlStatus == ControlConnectionStatus.disconnected) {
+        _receiverDiagnostics.remove(session.id);
+        _receiverDiagnosticsUpdatedAt.remove(session.id);
+      }
+      _updateSession(session);
+    });
+    _diagnosticsSubscription = _service.controlEvents.listen(
+      _handleControlEvent,
     );
     final audioService = _audioService;
     if (audioService != null) {
@@ -558,15 +572,112 @@ class HostController extends GetxController {
   }
 
   Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
-    diagnostics.value = _nativeHostActive
+    final now = DateTime.now();
+    _receiverDiagnosticsUpdatedAt.removeWhere(
+      (id, updatedAt) => now.difference(updatedAt) > const Duration(seconds: 5),
+    );
+    _receiverDiagnostics.removeWhere(
+      (id, _) => !_receiverDiagnosticsUpdatedAt.containsKey(id),
+    );
+    final local = _nativeHostActive
         ? await _nativeAudioRuntime.diagnostics()
         : audioService.diagnosticsSnapshot;
+    final receiverValues = _receiverDiagnostics.values.toList(growable: false);
+    if (receiverValues.isEmpty) {
+      diagnostics.value = <String, Object>{
+        ...local,
+        'metricsScope': 'host_sender',
+      };
+      return;
+    }
+    diagnostics.value = _aggregateReceiverDiagnostics(receiverValues);
+  }
+
+  void _handleControlEvent(ControlEvent event) {
+    if (event.command.type != ControlCommandType.bufferStatus ||
+        event.command.arguments.length < 7) {
+      return;
+    }
+    final values = event.command.arguments.map(num.tryParse).toList();
+    if (values.any((value) => value == null)) return;
+    final audioSession = _audioService?.receiverSessions
+        .cast<ReceiverSession?>()
+        .firstWhere(
+          (session) =>
+              session?.ipAddress == event.sourceId ||
+              session?.id == event.sourceId,
+          orElse: () => null,
+        );
+    _receiverDiagnostics[event.sourceId] = <String, Object>{
+      'metricsScope': 'receiver',
+      'currentJitterBufferPackets': values[1]!,
+      'packetLossPercent': values[2]!,
+      'packetUnderrunCount': values[3]!,
+      'packetOverrunCount': values[4]!,
+      // RTT is measured by the Host's UDP clock-sync exchange. The Receiver
+      // reports the other counters, but cannot calculate this value locally.
+      'roundTripTimeMicros': audioSession?.roundTripTimeMicros ?? values[5]!,
+      'targetJitterBufferMicros': values[6]!,
+    };
+    _receiverDiagnosticsUpdatedAt[event.sourceId] = DateTime.now();
+    unawaited(
+      _service.sendControlCommand(
+        receiverId: event.sourceId,
+        command: ControlCommand(
+          type: ControlCommandType.bufferStatus,
+          arguments: [
+            '0',
+            '0',
+            '0',
+            '0',
+            '0',
+            '${audioSession?.roundTripTimeMicros ?? values[5]}',
+            '0',
+          ],
+        ),
+      ),
+    );
+    unawaited(_refreshDiagnosticsIfStreaming());
+  }
+
+  Future<void> _refreshDiagnosticsIfStreaming() async {
+    final audioService = _audioService;
+    if (audioService != null && audioService.isStreaming) {
+      await _refreshDiagnostics(audioService);
+    }
+  }
+
+  Map<String, Object> _aggregateReceiverDiagnostics(
+    List<Map<String, Object>> values,
+  ) {
+    num maximum(String key) => values
+        .map((value) => value[key] as num? ?? 0)
+        .fold<num>(0, (max, value) => value > max ? value : max);
+    num average(String key) =>
+        values
+            .map((value) => value[key] as num? ?? 0)
+            .fold<num>(0, (sum, value) => sum + value) /
+        values.length;
+    return <String, Object>{
+      'metricsScope': 'receiver',
+      'receiverCount': values.length,
+      'currentJitterBufferPackets': average(
+        'currentJitterBufferPackets',
+      ).round(),
+      'packetLossPercent': maximum('packetLossPercent'),
+      'packetUnderrunCount': maximum('packetUnderrunCount').round(),
+      'packetOverrunCount': maximum('packetOverrunCount').round(),
+      'roundTripTimeMicros': maximum('roundTripTimeMicros').round(),
+      'targetJitterBufferMicros': maximum('targetJitterBufferMicros').round(),
+    };
   }
 
   Future<void> stopSystemAudioStream() async {
     errorMessage.value = null;
     _stopStats();
     _cleanupDiagnosticTimer();
+    _receiverDiagnostics.clear();
+    _receiverDiagnosticsUpdatedAt.clear();
     await _sendControlCommand(
       _receiverAddresses(),
       ControlCommandType.streamStop,
@@ -978,6 +1089,7 @@ class HostController extends GetxController {
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();
     _sessionSubscription?.cancel();
+    _diagnosticsSubscription.cancel();
     _diagnosticTimer?.cancel();
     stopDiscoveryPolling();
     if (Get.isRegistered<ScheduledStreamingService>()) {

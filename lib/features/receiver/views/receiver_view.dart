@@ -8,6 +8,7 @@ import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
+import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../controllers/receiver_controller.dart';
 
 class ReceiverView extends GetView<ReceiverController> {
@@ -52,6 +53,13 @@ class ReceiverView extends GetView<ReceiverController> {
                         audioStatus: controller.audioStatus.value,
                       )
                     : const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 8),
+              Obx(
+                () => NetworkDiagnosticsCard(
+                  diagnostics: controller.diagnosticsData,
+                  isActive: controller.isAudioReceiverRunning.value,
+                ),
               ),
               const SizedBox(height: 8),
               Padding(

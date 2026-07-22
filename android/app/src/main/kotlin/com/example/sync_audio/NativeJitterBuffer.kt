@@ -29,6 +29,15 @@ internal class NativeJitterBuffer(
         private set
     var reorders = 0L
         private set
+    var receivedPackets = 0L
+        private set
+    var lostPackets = 0L
+        private set
+    private var highestSequence: Long? = null
+
+    val packetLossPercent: Double
+        get() = if (receivedPackets + lostPackets == 0L) 0.0
+        else lostPackets * 100.0 / (receivedPackets + lostPackets)
 
     val size: Int get() = packets.size
     val targetMicros: Long
@@ -57,18 +66,31 @@ internal class NativeJitterBuffer(
 
     @Synchronized
     fun add(packet: NativeJitterPacket): Boolean {
+        receivedPackets++
         lastArrivalMicros?.let { previous ->
             val deviation = abs(packet.arrivalMicros - previous - 20_000)
             jitterMicros = if (jitterMicros == 0L) deviation else (jitterMicros * 7 + deviation) / 8
         }
         lastArrivalMicros = packet.arrivalMicros
+        val highest = highestSequence
+        if (highest == null) {
+            highestSequence = packet.sequence
+        } else {
+            val forward = (packet.sequence - highest) and 0xFFFFFFFFL
+            if (forward > 0 && forward < 0x80000000L) {
+                if (forward > 1) lostPackets += forward - 1
+                highestSequence = packet.sequence
+            }
+        }
         val next = nextSequence
         if (next != null && isBehind(packet.sequence, next)) {
             latePackets++
             return false
         }
         if (packets.containsKey(packet.sequence)) return false
-        if (next != null && packet.sequence != next) reorders++
+        if (next != null && packet.sequence != next) {
+            reorders++
+        }
         packets[packet.sequence] = packet
         while (packets.size > 256) {
             packets.pollFirstEntry()
@@ -109,6 +131,9 @@ internal class NativeJitterBuffer(
         overruns = 0
         latePackets = 0
         reorders = 0
+        receivedPackets = 0
+        lostPackets = 0
+        highestSequence = null
     }
 
     private fun isBehind(sequence: Long, reference: Long): Boolean {

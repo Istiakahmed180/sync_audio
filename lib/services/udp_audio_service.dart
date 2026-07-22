@@ -131,6 +131,7 @@ class UdpAudioService implements AudioStreamService {
   int _receiverGeneration = 0;
   int _streamGeneration = 0;
   int _lastAudioPacketMicros = 0;
+  int? _highestReceivedAudioSequence;
   bool _receiverSilenceNotified = false;
   Future<void> _encodeQueue = Future<void>.value();
   int _encodeQueueDepth = 0;
@@ -316,6 +317,7 @@ class UdpAudioService implements AudioStreamService {
       _totalBytesSent = 0;
       _pendingEncoderPcm = Uint8List(0);
       _nextAudioTimestampMicros = null;
+      _highestReceivedAudioSequence = null;
       _jitter.reset();
       await encoder.reset();
       _streamClock = Stopwatch()..start();
@@ -592,7 +594,8 @@ class UdpAudioService implements AudioStreamService {
         (frameBytes * 1000000) ~/ (encoder.config.sampleRate * 2);
     final minimumTimestamp = now + normalDelay;
     final previous = _nextAudioTimestampMicros;
-    if (previous == null || previous < minimumTimestamp - frameDurationMicros * 2) {
+    if (previous == null ||
+        previous < minimumTimestamp - frameDurationMicros * 2) {
       _nextAudioTimestampMicros = minimumTimestamp;
     }
     final timestamp = _nextAudioTimestampMicros!;
@@ -614,7 +617,7 @@ class UdpAudioService implements AudioStreamService {
     _encodeQueue = _encodeQueue
         .then((_) async {
           try {
-          await _encodeAndSendPcm(pcm, generation, timestampMicros);
+            await _encodeAndSendPcm(pcm, generation, timestampMicros);
           } catch (_) {
             await _handleEncodingError();
           }
@@ -875,6 +878,22 @@ class UdpAudioService implements AudioStreamService {
       case AudioPacketType.pcmAudio:
         if (packet.codecType != decoder.codecType) return;
         final now = _receiverClock.elapsedMicroseconds;
+        final highestSequence = _highestReceivedAudioSequence;
+        if (highestSequence != null) {
+          final gap = (packet.sequence - highestSequence) & 0xFFFFFFFF;
+          if (gap > 1 && gap < 0x80000000) {
+            for (var missing = 1; missing < gap; missing++) {
+              _metrics.packetLost();
+            }
+          }
+          if (gap > 0 && gap < 0x80000000) {
+            _highestReceivedAudioSequence = packet.sequence;
+          } else if (gap != 0) {
+            _metrics.packetReordered();
+          }
+        } else {
+          _highestReceivedAudioSequence = packet.sequence;
+        }
         _lastAudioPacketMicros = now;
         _receiverSilenceNotified = false;
         final correction = _driftCorrectionEnabled
@@ -922,6 +941,7 @@ class UdpAudioService implements AudioStreamService {
     final packet = _jitter.takeReady(now);
     if (packet == null) {
       _droppedPackets = _jitter.underruns;
+      _metrics.packetUnderrun();
       _consecutiveUnderruns++;
       _autoAdjustLatency();
       return;
@@ -931,6 +951,10 @@ class UdpAudioService implements AudioStreamService {
     _metrics.scheduled(
       timestampMicros: packet.timestampMicros,
       waitingMicros: now - packet.arrivalMicros,
+    );
+    _metrics.setBuffer(
+      currentPackets: _jitter.length,
+      targetMicros: _jitter.targetBufferMicros,
     );
     // Never allow a slow native audio device to create an unbounded Future
     // chain. Once this queue is full, dropping one old frame is preferable to
@@ -998,6 +1022,7 @@ class UdpAudioService implements AudioStreamService {
     _receiverWatchdogTimer?.cancel();
     _receiverWatchdogTimer = null;
     _lastAudioPacketMicros = 0;
+    _highestReceivedAudioSequence = null;
     _receiverSilenceNotified = false;
     _jitter.reset();
     _clockSynchronized = false;

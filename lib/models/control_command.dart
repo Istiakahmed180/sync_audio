@@ -66,7 +66,10 @@ class ControlCommand {
         ControlCommandType.setPlaybackOffset => count == 1,
         ControlCommandType.setPlaybackVolume => count == 1,
         ControlCommandType.setDeviceName => count == 1,
-        ControlCommandType.bufferStatus => count == 2,
+        // Versioned receiver diagnostics. The first two fields remain the
+        // legacy buffered duration/packet count so older peers can still
+        // parse and use this command.
+        ControlCommandType.bufferStatus => count >= 2 && count <= 9,
         ControlCommandType.error => count >= 2,
       };
 }

@@ -74,6 +74,10 @@ class ReceiverController extends GetxController {
   final lastSentMessage = ''.obs;
   final audioStatus = AudioStreamStatus.idle.obs;
   final isAudioReceiverRunning = false.obs;
+  final diagnostics = <String, Object>{}.obs;
+  Map<String, Object> get diagnosticsData =>
+      Map<String, Object>.from(diagnostics);
+  Timer? _diagnosticTimer;
   late final StreamSubscription<String> _messageSubscription;
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
@@ -82,6 +86,7 @@ class ReceiverController extends GetxController {
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
   bool _nativeReceiverActive = false;
+  int? _hostRoundTripTimeMicros;
   String? _hostSessionId;
   String? _pairingTokenValue;
   late Future<void> _pairingReady;
@@ -124,6 +129,7 @@ class ReceiverController extends GetxController {
       if (session.controlStatus == ControlConnectionStatus.disconnected) {
         isConnectedToHost.value = false;
         _hostSessionId = null;
+        _hostRoundTripTimeMicros = null;
         _bufferStatusTimer?.cancel();
         _bufferStatusTimer = null;
       }
@@ -135,6 +141,10 @@ class ReceiverController extends GetxController {
     });
     final audioService = _audioService;
     if (audioService != null) {
+      _diagnosticTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => unawaited(_refreshDiagnostics(audioService)),
+      );
       _audioStatusSubscription = audioService.statusChanges.listen((status) {
         audioStatus.value = status;
         isAudioReceiverRunning.value = audioService.isReceiving;
@@ -143,6 +153,18 @@ class ReceiverController extends GetxController {
         (message) => errorMessage.value = message,
       );
     }
+  }
+
+  Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
+    final values = _nativeReceiverActive
+        ? await _nativeAudioRuntime.diagnostics()
+        : audioService.diagnosticsSnapshot;
+    final rtt = _hostRoundTripTimeMicros;
+    diagnostics.value = <String, Object>{
+      ...values,
+      'metricsScope': 'receiver',
+      ...?rtt == null ? null : <String, Object>{'roundTripTimeMicros': rtt},
+    };
   }
 
   Future<void> refreshAudioOutputs() async {
@@ -431,6 +453,17 @@ class ReceiverController extends GetxController {
         if (volume != null && audioService != null) {
           unawaited(audioService.setPlaybackVolume(volume));
         }
+      case ControlCommandType.bufferStatus:
+        if (event.command.arguments.length >= 6) {
+          final rtt = int.tryParse(event.command.arguments[5]);
+          if (rtt != null && rtt > 0) {
+            _hostRoundTripTimeMicros = rtt;
+            final updated = Map<String, Object>.from(diagnostics)
+              ..['metricsScope'] = 'receiver'
+              ..['roundTripTimeMicros'] = rtt;
+            diagnostics.value = updated;
+          }
+        }
       default:
         break;
     }
@@ -438,18 +471,39 @@ class ReceiverController extends GetxController {
 
   void _sendBufferStatus() {
     final hostId = _hostSessionId;
+    if (hostId == null ||
+        (!(_audioService?.isReceiving ?? false) && !_nativeReceiverActive)) {
+      return;
+    }
+    unawaited(_sendDiagnosticsToHost(hostId));
+  }
+
+  Future<void> _sendDiagnosticsToHost(String hostId) async {
     final audioService = _audioService;
-    if (hostId == null || audioService == null) return;
-    unawaited(
-      _service.sendControlCommand(
-        receiverId: hostId,
-        command: ControlCommand(
-          type: ControlCommandType.bufferStatus,
-          arguments: [
-            '${_nativeReceiverActive ? 0 : audioService.bufferedDurationMicros}',
-            '${_nativeReceiverActive ? 0 : audioService.bufferedPackets}',
-          ],
-        ),
+    if (audioService == null && !_nativeReceiverActive) return;
+    final values = _nativeReceiverActive
+        ? await _nativeAudioRuntime.diagnostics()
+        : audioService!.diagnosticsSnapshot;
+    num number(String key, [String? fallback]) {
+      final value = values[key] ?? (fallback == null ? null : values[fallback]);
+      return value is num ? value : 0;
+    }
+
+    await _service.sendControlCommand(
+      receiverId: hostId,
+      command: ControlCommand(
+        type: ControlCommandType.bufferStatus,
+        // Keep the first two legacy fields, then append the diagnostics
+        // payload. All values are numeric and safe for the line protocol.
+        arguments: [
+          '${number('bufferedDurationMicros')}',
+          '${number('currentJitterBufferPackets', 'bufferPackets')}',
+          '${number('packetLossPercent')}',
+          '${number('packetUnderrunCount', 'underruns')}',
+          '${number('packetOverrunCount', 'overruns')}',
+          '${number('roundTripTimeMicros')}',
+          '${number('targetJitterBufferMicros', 'targetBufferMicros')}',
+        ],
       ),
     );
   }
@@ -475,6 +529,7 @@ class ReceiverController extends GetxController {
     _audioErrorSubscription?.cancel();
     _controlEventSubscription.cancel();
     _controlSessionSubscription.cancel();
+    _diagnosticTimer?.cancel();
     _bufferStatusTimer?.cancel();
     messageController.dispose();
     super.onClose();

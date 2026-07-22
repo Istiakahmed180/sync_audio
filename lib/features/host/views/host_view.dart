@@ -5,6 +5,7 @@ import '../../../models/connection_status.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
+import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../controllers/host_controller.dart';
 import 'qr_scanner_view.dart';
@@ -138,6 +139,13 @@ class HostView extends GetView<HostController> {
                       ],
                     ),
                   ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Obx(
+                () => NetworkDiagnosticsCard(
+                  diagnostics: controller.diagnosticsData,
+                  isActive: controller.isAudioStreaming,
                 ),
               ),
               const SizedBox(height: 4),
