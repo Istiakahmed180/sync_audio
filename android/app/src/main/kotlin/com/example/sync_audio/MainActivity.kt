@@ -64,6 +64,7 @@ class MainActivity : FlutterActivity() {
                         startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
                         result.success(null)
                     }
+
                     "listOutputs" -> try {
                         val outputs = listAudioOutputs()
                         Log.i("SyncAudioOutput", "Found ${outputs.size} audio outputs")
@@ -72,6 +73,7 @@ class MainActivity : FlutterActivity() {
                         Log.e("SyncAudioOutput", "Could not list audio outputs", error)
                         result.error("OUTPUT_LIST_FAILED", error.message, null)
                     }
+
                     "selectOutput" -> {
                         val id = (call.arguments as? String)?.toIntOrNull()
                         if (id == null) {
@@ -91,12 +93,17 @@ class MainActivity : FlutterActivity() {
                                 flutterSelected && nativeSelected
                             }
                             if (selected == false) {
-                                result.error("OUTPUT_SELECT_FAILED", "Could not select audio output", null)
+                                result.error(
+                                    "OUTPUT_SELECT_FAILED",
+                                    "Could not select audio output",
+                                    null
+                                )
                             } else {
                                 result.success(null)
                             }
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }
@@ -155,6 +162,7 @@ class MainActivity : FlutterActivity() {
                             "sdk" to Build.VERSION.SDK_INT,
                         ),
                     )
+
                     else -> result.notImplemented()
                 }
             }
@@ -611,19 +619,21 @@ class MainActivity : FlutterActivity() {
         synchronized(audioLock) {
             if (audioTrack != null) return
             val sampleRate = 48000
+            val audioManager = getSystemService(AudioManager::class.java)
+            val bluetoothRoute = currentBluetoothOutput(audioManager) != null
             val minBufferSize = AudioTrack.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
             )
-            audioTrack = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setFlags(AudioAttributes.FLAG_LOW_LATENCY)
-                        .build(),
-                )
+            val attributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            if (!bluetoothRoute) attributes.setFlags(AudioAttributes.FLAG_LOW_LATENCY)
+            val bufferDurationMs = if (bluetoothRoute) 120 else 20
+            val bufferBytes = (sampleRate / 1000 * bufferDurationMs * 2)
+            val builder = AudioTrack.Builder()
+                .setAudioAttributes(attributes.build())
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setSampleRate(sampleRate)
@@ -631,10 +641,12 @@ class MainActivity : FlutterActivity() {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build(),
                 )
-                .setBufferSizeInBytes(minBufferSize.coerceAtLeast(48000 / 1000 * 20 * 2))
+                .setBufferSizeInBytes(minBufferSize.coerceAtLeast(bufferBytes))
                 .setTransferMode(AudioTrack.MODE_STREAM)
-                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-                .build()
+            if (!bluetoothRoute) {
+                builder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            }
+            audioTrack = builder.build()
             check(audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
                 "AudioTrack failed to initialize"
             }
@@ -651,16 +663,33 @@ class MainActivity : FlutterActivity() {
                     .firstOrNull { it.id == id }
                     ?.let { device ->
                         val applied = audioTrack?.setPreferredDevice(device)
-                        Log.i("SyncAudioOutput", "Preferred output ${device.productName} (${device.id}) applied=$applied")
+                        Log.i(
+                            "SyncAudioOutput",
+                            "Preferred output ${device.productName} (${device.id}) applied=$applied"
+                        )
                     }
             }
         }
     }
 
+    private fun currentBluetoothOutput(audioManager: AudioManager): AudioDeviceInfo? {
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        preferredOutputDeviceId?.let { id ->
+            outputs.firstOrNull { it.id == id && isBluetoothOutput(it) }?.let { return it }
+        }
+        return outputs.firstOrNull(::isBluetoothOutput)
+    }
+
+    private fun isBluetoothOutput(device: AudioDeviceInfo): Boolean =
+        device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+
     private fun listAudioOutputs(): List<Map<String, Any>> {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) !=
-                PackageManager.PERMISSION_GRANTED
+            PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(
                 arrayOf(
@@ -672,7 +701,10 @@ class MainActivity : FlutterActivity() {
             return emptyList()
         }
         val manager = getSystemService(AudioManager::class.java)
-        Log.i("SyncAudioOutput", "AudioManager output devices=${manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).size}")
+        Log.i(
+            "SyncAudioOutput",
+            "AudioManager output devices=${manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).size}"
+        )
         val mediaDevices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             // AudioManager also exposes communication routes (Bluetooth SCO
             // and BLE headset) for the same paired headset. They are not
@@ -707,6 +739,7 @@ class MainActivity : FlutterActivity() {
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
                 AudioDeviceInfo.TYPE_BLE_HEADSET,
                 AudioDeviceInfo.TYPE_BLE_SPEAKER -> true
+
                 else -> false
             }
             mapOf(
@@ -717,7 +750,7 @@ class MainActivity : FlutterActivity() {
                 "isBluetooth" to bluetooth,
                 "isSelected" to (preferredOutputDeviceId == device.id),
             )
-            }
+        }
     }
 
     private fun stopAudioTrack() {

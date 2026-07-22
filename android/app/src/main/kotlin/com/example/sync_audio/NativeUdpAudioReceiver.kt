@@ -135,19 +135,20 @@ internal class NativeUdpAudioReceiver(
 
     private fun createAudioTrack(): AudioTrack {
         val sampleRate = 48_000
+        val bluetoothRoute = currentBluetoothOutput() != null
         val minimum = AudioTrack.getMinBufferSize(
             sampleRate,
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
         )
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setFlags(AudioAttributes.FLAG_LOW_LATENCY)
-                    .build(),
-            )
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+        if (!bluetoothRoute) attributes.setFlags(AudioAttributes.FLAG_LOW_LATENCY)
+        val bufferDurationMs = if (bluetoothRoute) 120 else 20
+        val bufferBytes = sampleRate / 1000 * bufferDurationMs * 2
+        val builder = AudioTrack.Builder()
+            .setAudioAttributes(attributes.build())
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setSampleRate(sampleRate)
@@ -155,10 +156,10 @@ internal class NativeUdpAudioReceiver(
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build(),
             )
-            .setBufferSizeInBytes(minimum.coerceAtLeast(3_840))
+            .setBufferSizeInBytes(minimum.coerceAtLeast(bufferBytes))
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-            .build()
+        if (!bluetoothRoute) builder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+        val track = builder.build()
             .also { check(it.state == AudioTrack.STATE_INITIALIZED) { "Native AudioTrack initialization failed" } }
         preferredOutputDeviceId?.let { id ->
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -167,6 +168,20 @@ internal class NativeUdpAudioReceiver(
         }
         return track
     }
+
+    private fun currentBluetoothOutput(): AudioDeviceInfo? {
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        preferredOutputDeviceId?.let { id ->
+            outputs.firstOrNull { it.id == id && isBluetoothOutput(it) }?.let { return it }
+        }
+        return outputs.firstOrNull(::isBluetoothOutput)
+    }
+
+    private fun isBluetoothOutput(device: AudioDeviceInfo): Boolean =
+        device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+            device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+            device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
 
     private fun nowMicros(): Long = (System.nanoTime() - receiverStartNanos) / 1_000
 
