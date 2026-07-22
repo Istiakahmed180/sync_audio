@@ -19,6 +19,7 @@ import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
+import '../../../shared/widgets/app_notification_service.dart';
 
 class HostController extends GetxController {
   static const controlPort = 5050;
@@ -98,6 +99,7 @@ class HostController extends GetxController {
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;
   StreamSubscription<String>? _audioErrorSubscription;
   StreamSubscription<ReceiverSession>? _sessionSubscription;
+  StreamSubscription<String>? _notificationActionSubscription;
   late final StreamSubscription<ControlEvent> _diagnosticsSubscription;
   Timer? _diagnosticTimer;
   Timer? _discoveryTimer;
@@ -280,6 +282,11 @@ class HostController extends GetxController {
     _diagnosticsSubscription = _service.controlEvents.listen(
       _handleControlEvent,
     );
+    if (Platform.isAndroid) {
+      _notificationActionSubscription = AppNotificationService.actions.listen(
+        _handleNotificationAction,
+      );
+    }
     final audioService = _audioService;
     if (audioService != null) {
       _audioStatusSubscription = audioService.statusChanges.listen(
@@ -542,7 +549,55 @@ class HostController extends GetxController {
       commandArguments,
     );
     _ensureDiagnosticTimer();
+    unawaited(_updateMediaNotification());
   }
+
+  Future<void> _handleNotificationAction(String action) async {
+    switch (action) {
+      case 'start':
+        await startSystemAudioStream();
+      case 'stop':
+        await stopSystemAudioStream();
+      case 'mute':
+        await toggleMasterMute();
+      case 'volume_up':
+        await adjustMasterVolume(0.1);
+      case 'volume_down':
+        await adjustMasterVolume(-0.1);
+    }
+    unawaited(_updateMediaNotification());
+  }
+
+  Future<void> toggleMasterMute() async {
+    final addresses = _receiverAddresses();
+    final shouldMute = !addresses.every(
+      (address) => receiverMuted[address] == true,
+    );
+    for (final address in addresses) {
+      receiverMuted[address] = shouldMute;
+      await _sendReceiverVolume(
+        address,
+        shouldMute ? 0 : volumeForReceiver(address),
+      );
+    }
+    receiverMuted.refresh();
+  }
+
+  Future<void> adjustMasterVolume(double delta) async {
+    for (final address in _receiverAddresses()) {
+      final volume = (volumeForReceiver(address) + delta).clamp(0.0, 1.5);
+      setReceiverVolume(address, volume);
+    }
+  }
+
+  Future<void> _updateMediaNotification() => AppNotificationService.showMedia(
+    title: 'Sync Audio',
+    message: isAudioStreaming ? 'Streaming to Receiver(s)' : 'Ready to stream',
+    isPlaying: isAudioStreaming,
+    isMuted:
+        _receiverAddresses().isNotEmpty &&
+        _receiverAddresses().every((address) => receiverMuted[address] == true),
+  );
 
   Future<void> selectCodec(AudioCodecPreference preference) async {
     if (_restartingAudioSettings.value) return;
@@ -698,6 +753,7 @@ class HostController extends GetxController {
     _streamingReceiverAddresses.clear();
     _readyReceiverStreamAddresses.clear();
     receiverSessions.clear();
+    unawaited(_updateMediaNotification());
   }
 
   Future<void> _sendControlCommand(
@@ -1095,6 +1151,7 @@ class HostController extends GetxController {
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();
     _sessionSubscription?.cancel();
+    _notificationActionSubscription?.cancel();
     _diagnosticsSubscription.cancel();
     _diagnosticTimer?.cancel();
     stopDiscoveryPolling();

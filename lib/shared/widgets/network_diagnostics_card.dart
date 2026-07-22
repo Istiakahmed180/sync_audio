@@ -209,7 +209,7 @@ class _HealthSample {
   final int overruns;
 }
 
-class ReceiverNetworkQualityBadge extends StatelessWidget {
+class ReceiverNetworkQualityBadge extends StatefulWidget {
   const ReceiverNetworkQualityBadge({
     required this.diagnostics,
     required this.isActive,
@@ -219,20 +219,61 @@ class ReceiverNetworkQualityBadge extends StatelessWidget {
   final Map<String, Object> diagnostics;
   final bool isActive;
 
+  @override
+  State<ReceiverNetworkQualityBadge> createState() =>
+      _ReceiverNetworkQualityBadgeState();
+}
+
+class _ReceiverNetworkQualityBadgeState
+    extends State<ReceiverNetworkQualityBadge> {
+  final _samples = <_BadgeHealthSample>[];
+
+  @override
+  void didUpdateWidget(covariant ReceiverNetworkQualityBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.diagnostics['metricsScope'] != 'receiver' || !widget.isActive) {
+      _samples.clear();
+      return;
+    }
+    final now = DateTime.now();
+    _samples.add(
+      _BadgeHealthSample(
+        timestamp: now,
+        underruns: _number('packetUnderrunCount', 'underruns').toInt(),
+        overruns: _number('packetOverrunCount', 'overruns').toInt(),
+      ),
+    );
+    _samples.removeWhere(
+      (sample) =>
+          now.difference(sample.timestamp) > const Duration(seconds: 10),
+    );
+  }
+
   num _number(String key, [String? fallback]) {
     final value =
-        diagnostics[key] ?? (fallback == null ? null : diagnostics[fallback]);
+        widget.diagnostics[key] ??
+        (fallback == null ? null : widget.diagnostics[fallback]);
     return value is num ? value : 0;
+  }
+
+  int _recent(int current, int Function(_BadgeHealthSample) read) {
+    if (_samples.length < 2) return 0;
+    final oldest = read(_samples.first);
+    return current >= oldest ? current - oldest : current;
   }
 
   @override
   Widget build(BuildContext context) {
     final rttMs = _number('roundTripTimeMicros') / 1000;
     final loss = _number('packetLossPercent').toDouble();
-    final underruns = _number('packetUnderrunCount', 'underruns').toInt();
-    final label = !isActive || diagnostics['metricsScope'] != 'receiver'
+    final totalUnderruns = _number('packetUnderrunCount', 'underruns').toInt();
+    final totalOverruns = _number('packetOverrunCount', 'overruns').toInt();
+    final underruns = _recent(totalUnderruns, (sample) => sample.underruns);
+    final overruns = _recent(totalOverruns, (sample) => sample.overruns);
+    final label =
+        !widget.isActive || widget.diagnostics['metricsScope'] != 'receiver'
         ? 'Waiting'
-        : loss >= 2 || underruns >= 5 || rttMs >= 120
+        : loss >= 2 || underruns >= 5 || overruns >= 5 || rttMs >= 120
         ? 'Poor'
         : loss > 0 || underruns > 0 || rttMs >= 60
         ? 'Fair'
@@ -261,6 +302,18 @@ class ReceiverNetworkQualityBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BadgeHealthSample {
+  const _BadgeHealthSample({
+    required this.timestamp,
+    required this.underruns,
+    required this.overruns,
+  });
+
+  final DateTime timestamp;
+  final int underruns;
+  final int overruns;
 }
 
 class _QualityBadge extends StatelessWidget {

@@ -6,6 +6,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.provider.Settings
 import android.media.AudioAttributes
@@ -53,6 +54,7 @@ class MainActivity : FlutterActivity() {
     private var nativeSender: NativeUdpAudioSender? = null
     private var nativeReceiver: NativeUdpAudioReceiver? = null
     private var pendingNotification: Triple<Int, String, String>? = null
+    private var pendingMediaNotification: MediaNotificationArgs? = null
     private var preferredOutputDeviceId: Int? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -126,9 +128,34 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "showMedia" -> {
+                        showMediaNotification(
+                            id = call.argument<Int>("id") ?: 1001,
+                            title = call.argument<String>("title") ?: "Sync Audio",
+                            message = call.argument<String>("message") ?: "Sync Audio",
+                            isPlaying = call.argument<Boolean>("isPlaying") ?: false,
+                            isMuted = call.argument<Boolean>("isMuted") ?: false,
+                        )
+                        result.success(null)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/notification_actions")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    notificationActionSink = events
+                    pendingNotificationAction?.let {
+                        events?.success(it)
+                        pendingNotificationAction = null
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    notificationActionSink = null
+                }
+            })
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/background_service")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -550,6 +577,16 @@ class MainActivity : FlutterActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == notificationPermissionRequestCode) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                pendingMediaNotification?.let { media ->
+                    pendingMediaNotification = null
+                    showMediaNotification(
+                        media.id,
+                        media.title,
+                        media.message,
+                        media.isPlaying,
+                        media.isMuted,
+                    )
+                }
                 pendingNotification?.let { (id, title, message) ->
                     pendingNotification = null
                     showStatusNotification(id, title, message)
@@ -613,6 +650,62 @@ class MainActivity : FlutterActivity() {
             id,
             notification,
         )
+    }
+
+    private fun showMediaNotification(
+        id: Int,
+        title: String,
+        message: String,
+        isPlaying: Boolean,
+        isMuted: Boolean,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(
+                    notificationChannelId,
+                    "Sync Audio controls",
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    description = "Start, stop, mute and volume controls for Sync Audio"
+                },
+            )
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingMediaNotification = MediaNotificationArgs(id, title, message, isPlaying, isMuted)
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), notificationPermissionRequestCode)
+            return
+        }
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, notificationChannelId)
+        } else {
+            @Suppress("DEPRECATION") Notification.Builder(this)
+        }
+        val notification = builder
+            .setSmallIcon(R.drawable.ic_stat_sync_audio)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setOngoing(isPlaying)
+            .setCategory(Notification.CATEGORY_TRANSPORT)
+            .addAction(notificationAction("volume_down", "Volume −"))
+            .addAction(notificationAction("mute", if (isMuted) "Unmute" else "Mute"))
+            .addAction(notificationAction(if (isPlaying) "stop" else "start", if (isPlaying) "Stop" else "Start"))
+            .addAction(notificationAction("volume_up", "Volume +"))
+            .build()
+        getSystemService(NotificationManager::class.java).notify(id, notification)
+    }
+
+    private fun notificationAction(action: String, label: String): Notification.Action {
+        val intent = Intent(this, NotificationActionReceiver::class.java)
+            .setAction("com.tdevs.sync_audio.NOTIFICATION_$action")
+        val pending = PendingIntent.getBroadcast(
+            this,
+            action.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return Notification.Action.Builder(null, label, pending).build()
     }
 
     private fun initializeAudioTrack() {
@@ -780,7 +873,24 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        var notificationActionSink: EventChannel.EventSink? = null
+        var pendingNotificationAction: String? = null
+
+        fun dispatchNotificationAction(action: String) {
+            notificationActionSink?.success(action) ?: run {
+                pendingNotificationAction = action
+            }
+        }
+
         private const val PAIRING_KEY_ALIAS = "sync_audio_pairing_key"
         private const val PAIRING_VALUE_KEY = "pairing_token_v2"
     }
 }
+
+private data class MediaNotificationArgs(
+    val id: Int,
+    val title: String,
+    val message: String,
+    val isPlaying: Boolean,
+    val isMuted: Boolean,
+)
