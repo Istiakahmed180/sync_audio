@@ -170,6 +170,7 @@ class UdpAudioService implements AudioStreamService {
   double _playbackVolume = 1.0;
   final bool _autoLatencyEnabled = true;
   int _consecutiveUnderruns = 0;
+  int _healthySinceMicros = 0;
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
@@ -290,6 +291,7 @@ class UdpAudioService implements AudioStreamService {
     _adaptiveJitterEnabled = adaptiveJitter;
     _driftCorrectionEnabled = driftCorrection;
     _maximumDriftCorrectionPpm = maximumDriftCorrectionPpm.clamp(0, 300);
+    _healthySinceMicros = 0;
     _jitter.configure(mode: mode, enabled: adaptiveJitter);
   }
 
@@ -835,6 +837,8 @@ class UdpAudioService implements AudioStreamService {
       _hostToLocalOffsetMicros = 0;
       _driftCorrectionPpm = 0;
       _lastDriftUpdateMicros = 0;
+      _consecutiveUnderruns = 0;
+      _healthySinceMicros = 0;
       _jitter.reset();
       _receivedFecFrames.clear();
       _receiverClock
@@ -1029,6 +1033,22 @@ class UdpAudioService implements AudioStreamService {
       _latencyMode = LatencyMode.stable;
       _jitter.configure(mode: LatencyMode.stable, enabled: true);
       _consecutiveUnderruns = 0;
+      _healthySinceMicros = 0;
+      return;
+    }
+    // Stay in Stable long enough to prove the path has recovered, then lower
+    // latency again. Use the receiver clock so this is independent of the
+    // audio frame size and packet arrival rate.
+    if (_latencyMode == LatencyMode.stable && _consecutiveUnderruns == 0) {
+      final now = _receiverClock.elapsedMicroseconds;
+      _healthySinceMicros = _healthySinceMicros == 0
+          ? now
+          : _healthySinceMicros;
+      if (now - _healthySinceMicros >= 5 * 1000000) {
+        _latencyMode = LatencyMode.balanced;
+        _jitter.configure(mode: LatencyMode.balanced, enabled: true);
+        _healthySinceMicros = 0;
+      }
     }
   }
 
@@ -1046,6 +1066,7 @@ class UdpAudioService implements AudioStreamService {
       if (_jitter.underruns > underrunsBefore) {
         _metrics.packetUnderrun();
         _consecutiveUnderruns++;
+        _healthySinceMicros = 0;
         _autoAdjustLatency();
       } else {
         _consecutiveUnderruns = 0;
