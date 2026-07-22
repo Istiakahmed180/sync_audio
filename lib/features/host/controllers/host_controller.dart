@@ -87,6 +87,12 @@ class HostController extends GetxController {
   final diagnostics = <String, Object>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
+
+  Map<String, Object> receiverDiagnosticsFor(String address) {
+    final values = _receiverDiagnostics[address];
+    return values == null ? const <String, Object>{} : Map.from(values);
+  }
+
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
   StreamSubscription<AudioStreamStatus>? _audioStatusSubscription;

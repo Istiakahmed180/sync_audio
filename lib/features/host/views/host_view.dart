@@ -74,6 +74,8 @@ class HostView extends GetView<HostController> {
               const SizedBox(height: 12),
 
               Obx(() {
+                // Subscribe this receiver list to live diagnostics updates.
+                final diagnosticsCount = controller.diagnostics.length;
                 final addresses = controller.configuredReceiverIps
                     .where(
                       (a) =>
@@ -84,6 +86,7 @@ class HostView extends GetView<HostController> {
                   return const _EmptyReceiverState();
                 }
                 return Column(
+                  key: ValueKey(diagnosticsCount),
                   children: addresses.map((address) {
                     final session = controller.receiverSessionFor(address);
                     final deviceName =
@@ -97,6 +100,10 @@ class HostView extends GetView<HostController> {
                         address: address,
                         deviceName: deviceName,
                         latencyMs: latencyMs,
+                        diagnostics: controller.receiverDiagnosticsFor(address),
+                        isStreaming:
+                            controller.audioStatus.value ==
+                            AudioStreamStatus.streaming,
                         onRemove: () => controller.removeReceiverIp(address),
                         session: session,
                         onConnect: () => controller.connectReceiver(address),
@@ -321,11 +328,15 @@ class _ReceiverTargetCard extends StatelessWidget {
     required this.onDisconnect,
     this.deviceName,
     this.latencyMs,
+    this.diagnostics = const <String, Object>{},
+    this.isStreaming = false,
   });
 
   final String address;
   final String? deviceName;
   final int? latencyMs;
+  final Map<String, Object> diagnostics;
+  final bool isStreaming;
   final VoidCallback onRemove;
   final ReceiverSession? session;
   final VoidCallback onConnect;
@@ -392,6 +403,11 @@ class _ReceiverTargetCard extends StatelessWidget {
                             ),
                           ),
                           _signalIndicator(context),
+                          const SizedBox(width: 4),
+                          ReceiverNetworkQualityBadge(
+                            diagnostics: diagnostics,
+                            isActive: isStreaming,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             _signalLabel(),

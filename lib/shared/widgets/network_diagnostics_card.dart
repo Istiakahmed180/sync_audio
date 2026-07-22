@@ -209,6 +209,60 @@ class _HealthSample {
   final int overruns;
 }
 
+class ReceiverNetworkQualityBadge extends StatelessWidget {
+  const ReceiverNetworkQualityBadge({
+    required this.diagnostics,
+    required this.isActive,
+    super.key,
+  });
+
+  final Map<String, Object> diagnostics;
+  final bool isActive;
+
+  num _number(String key, [String? fallback]) {
+    final value =
+        diagnostics[key] ?? (fallback == null ? null : diagnostics[fallback]);
+    return value is num ? value : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rttMs = _number('roundTripTimeMicros') / 1000;
+    final loss = _number('packetLossPercent').toDouble();
+    final underruns = _number('packetUnderrunCount', 'underruns').toInt();
+    final label = !isActive || diagnostics['metricsScope'] != 'receiver'
+        ? 'Waiting'
+        : loss >= 2 || underruns >= 5 || rttMs >= 120
+        ? 'Poor'
+        : loss > 0 || underruns > 0 || rttMs >= 60
+        ? 'Fair'
+        : 'Excellent';
+    final color = switch (label) {
+      'Excellent' => Colors.green,
+      'Fair' => Colors.orange,
+      'Poor' => Colors.red,
+      _ => Colors.blueGrey,
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QualityBadge extends StatelessWidget {
   const _QualityBadge({required this.quality});
 
