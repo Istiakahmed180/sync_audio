@@ -10,6 +10,7 @@ import '../models/receiver_session.dart';
 import 'audio_capture_service.dart';
 import 'audio_codec.dart';
 import 'audio_packet_codec.dart';
+import 'audio_fec_codec.dart';
 import 'audio_playback_service.dart';
 import 'adaptive_jitter_buffer.dart';
 import 'latency_metrics.dart';
@@ -132,6 +133,7 @@ class UdpAudioService implements AudioStreamService {
   int _streamGeneration = 0;
   int _lastAudioPacketMicros = 0;
   int? _highestReceivedAudioSequence;
+  final _receivedFecFrames = <int, JitterAudioPacket>{};
   bool _receiverSilenceNotified = false;
   Future<void> _encodeQueue = Future<void>.value();
   int _encodeQueueDepth = 0;
@@ -149,6 +151,7 @@ class UdpAudioService implements AudioStreamService {
   final Map<int, _ClockRequest> _clockRequests = <int, _ClockRequest>{};
   int _destinationPort = 0;
   int _packetSequence = 0;
+  final _fecFrames = <_FecAudioFrame>[];
   int _clockSequence = 0;
   Stopwatch? _streamClock;
   final Stopwatch _receiverClock = Stopwatch();
@@ -311,6 +314,7 @@ class UdpAudioService implements AudioStreamService {
           .toList(growable: false);
       _destinationPort = port;
       _packetSequence = 0;
+      _fecFrames.clear();
       _clockSequence = 0;
       _bestRoundTripMicros.clear();
       _droppedPackets = 0;
@@ -318,6 +322,7 @@ class UdpAudioService implements AudioStreamService {
       _pendingEncoderPcm = Uint8List(0);
       _nextAudioTimestampMicros = null;
       _highestReceivedAudioSequence = null;
+      _receivedFecFrames.clear();
       _jitter.reset();
       await encoder.reset();
       _streamClock = Stopwatch()..start();
@@ -655,9 +660,10 @@ class UdpAudioService implements AudioStreamService {
     if (!_streaming || generation != _streamGeneration || encoded.isEmpty) {
       return;
     }
+    final sequence = _packetSequence++;
     final packet = AudioPacketCodec.encode(
       type: AudioPacketType.pcmAudio,
-      sequence: _packetSequence++,
+      sequence: sequence,
       timestampMicros: timestampMicros,
       codecType: encoder.codecType,
       payload: encoded,
@@ -669,15 +675,53 @@ class UdpAudioService implements AudioStreamService {
             key: _sessionKey!,
             sessionId: _securitySessionId!,
           );
-    for (final destination in _destinations) {
-      socket.send(wirePacket, destination, _destinationPort);
-      _totalBytesSent += wirePacket.length;
+    _sendWirePacket(wirePacket, socket);
+    if (encoder.codecType == AudioCodecType.pcm16) {
+      _fecFrames.add(
+        _FecAudioFrame(
+          sequence: sequence,
+          timestampMicros: timestampMicros,
+          payload: encoded,
+        ),
+      );
+      if (_fecFrames.length == AudioFecCodec.groupSize) {
+        final group = List<_FecAudioFrame>.from(_fecFrames);
+        _fecFrames.clear();
+        final parity = AudioPacketCodec.encode(
+          type: AudioPacketType.fecParity,
+          sequence: group.first.sequence,
+          timestampMicros: group.last.timestampMicros,
+          codecType: AudioCodecType.pcm16,
+          payload: AudioFecCodec.encode(
+            groupStartSequence: group.first.sequence,
+            timestampsMicros: group
+                .map((frame) => frame.timestampMicros)
+                .toList(),
+            payloads: group.map((frame) => frame.payload).toList(),
+          ),
+        );
+        final wireParity = _sessionKey == null
+            ? parity
+            : await EncryptedAudioPacketCodec.encrypt(
+                packet: parity,
+                key: _sessionKey!,
+                sessionId: _securitySessionId!,
+              );
+        _sendWirePacket(wireParity, socket);
+      }
     }
     _metrics.packetSent();
     for (final session in _sessions.values.where(
       (value) => value.status == ReceiverSessionStatus.connected,
     )) {
       _updateSession(session.copyWith(status: ReceiverSessionStatus.streaming));
+    }
+  }
+
+  void _sendWirePacket(Uint8List wirePacket, RawDatagramSocket socket) {
+    for (final destination in _destinations) {
+      socket.send(wirePacket, destination, _destinationPort);
+      _totalBytesSent += wirePacket.length;
     }
   }
 
@@ -792,6 +836,7 @@ class UdpAudioService implements AudioStreamService {
       _driftCorrectionPpm = 0;
       _lastDriftUpdateMicros = 0;
       _jitter.reset();
+      _receivedFecFrames.clear();
       _receiverClock
         ..reset()
         ..start();
@@ -905,25 +950,77 @@ class UdpAudioService implements AudioStreamService {
             ? _jitter.targetBufferMicros -
                   LatencyModeConfig.forMode(_latencyMode).normalMicros
             : 0;
-        _jitter.add(
-          JitterAudioPacket(
-            sequence: packet.sequence,
-            timestampMicros:
-                packet.timestampMicros +
-                _hostToLocalOffsetMicros +
-                correction +
-                adaptiveDelay,
-            payload: packet.payload,
-            arrivalMicros: now,
-          ),
+        final jitterPacket = JitterAudioPacket(
+          sequence: packet.sequence,
+          timestampMicros:
+              packet.timestampMicros +
+              _hostToLocalOffsetMicros +
+              correction +
+              adaptiveDelay,
+          payload: packet.payload,
+          arrivalMicros: now,
         );
+        _jitter.add(jitterPacket);
+        _receivedFecFrames[packet.sequence] = jitterPacket;
+        if (_receivedFecFrames.length > 32) {
+          _receivedFecFrames.remove(_receivedFecFrames.keys.first);
+        }
         _metrics.setBuffer(
           currentPackets: _jitter.length,
           targetMicros: _jitter.targetBufferMicros,
         );
+      case AudioPacketType.fecParity:
+        _recoverMissingFecFrame(packet, _receiverClock.elapsedMicroseconds);
       case AudioPacketType.clockSyncResponse:
         break;
     }
+  }
+
+  void _recoverMissingFecFrame(AudioPacket packet, int nowMicros) {
+    if (packet.codecType != AudioCodecType.pcm16) return;
+    final fec = AudioFecCodec.decode(packet.payload);
+    if (fec == null) return;
+    final sequences = List<int>.generate(
+      AudioFecCodec.groupSize,
+      (index) => (fec.groupStartSequence + index) & 0xFFFFFFFF,
+    );
+    final missing = sequences
+        .where((sequence) => !_receivedFecFrames.containsKey(sequence))
+        .toList(growable: false);
+    if (missing.length != 1) return;
+    final recoveredPayload = Uint8List.fromList(fec.parity);
+    for (final sequence in sequences) {
+      final frame = _receivedFecFrames[sequence];
+      if (frame == null) continue;
+      for (var index = 0; index < recoveredPayload.length; index++) {
+        if (index < frame.payload.length) {
+          recoveredPayload[index] ^= frame.payload[index];
+        }
+      }
+    }
+    final missingIndex = sequences.indexOf(missing.single);
+    final nowOnClock = _receiverClock.elapsedMicroseconds;
+    final correction = _driftCorrectionEnabled
+        ? (((nowOnClock - _lastDriftUpdateMicros) * _driftCorrectionPpm) ~/
+                  1000000)
+              .clamp(-20000, 20000)
+        : 0;
+    final adaptiveDelay = _adaptiveJitterEnabled
+        ? _jitter.targetBufferMicros -
+              LatencyModeConfig.forMode(_latencyMode).normalMicros
+        : 0;
+    final recovered = JitterAudioPacket(
+      sequence: missing.single,
+      timestampMicros:
+          fec.timestampsMicros[missingIndex] +
+          _hostToLocalOffsetMicros +
+          correction +
+          adaptiveDelay,
+      payload: recoveredPayload,
+      arrivalMicros: nowOnClock == 0 ? nowMicros : nowOnClock,
+    );
+    _jitter.add(recovered);
+    _receivedFecFrames[missing.single] = recovered;
   }
 
   void _autoAdjustLatency() {
@@ -1032,6 +1129,7 @@ class UdpAudioService implements AudioStreamService {
     _receiverWatchdogTimer = null;
     _lastAudioPacketMicros = 0;
     _highestReceivedAudioSequence = null;
+    _receivedFecFrames.clear();
     _receiverSilenceNotified = false;
     _jitter.reset();
     _clockSynchronized = false;
@@ -1079,4 +1177,16 @@ class _ClockRequest {
 
   final String sessionId;
   final int sentAtMicros;
+}
+
+class _FecAudioFrame {
+  const _FecAudioFrame({
+    required this.sequence,
+    required this.timestampMicros,
+    required this.payload,
+  });
+
+  final int sequence;
+  final int timestampMicros;
+  final Uint8List payload;
 }

@@ -3,12 +3,36 @@ import 'dart:typed_data';
 import 'package:sync_audio/models/control_command.dart';
 import 'package:sync_audio/services/audio_codec.dart';
 import 'package:sync_audio/services/audio_packet_codec.dart';
+import 'package:sync_audio/services/audio_fec_codec.dart';
 import 'package:sync_audio/services/adaptive_jitter_buffer.dart';
 import 'package:sync_audio/services/connection_service.dart';
 import 'package:sync_audio/services/latency_metrics.dart';
 import 'package:sync_audio/services/secure_transport.dart';
 
 void main() {
+  test('FEC parity recovers one missing PCM payload', () {
+    final payloads = List<Uint8List>.generate(
+      AudioFecCodec.groupSize,
+      (index) => Uint8List.fromList([index + 1, index + 2, index + 3]),
+    );
+    final parity = AudioFecCodec.decode(
+      AudioFecCodec.encode(
+        groupStartSequence: 20,
+        timestampsMicros: [100, 200, 300, 400],
+        payloads: payloads,
+      ),
+    );
+    expect(parity, isNotNull);
+    final recovered = Uint8List.fromList(parity!.parity);
+    for (final index in [0, 1, 3]) {
+      for (var byte = 0; byte < recovered.length; byte++) {
+        recovered[byte] ^= payloads[index][byte];
+      }
+    }
+    expect(recovered, payloads[2]);
+    expect(parity.timestampsMicros[2], 300);
+  });
+
   test('PCM codec round-trips and unsupported Opus fails explicitly', () async {
     final pcm = Uint8List.fromList([1, 2, 3, 4]);
     expect(await Pcm16AudioEncoder().encode(pcm), pcm);
