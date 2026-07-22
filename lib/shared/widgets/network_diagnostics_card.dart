@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class NetworkDiagnosticsCard extends StatelessWidget {
+class NetworkDiagnosticsCard extends StatefulWidget {
   const NetworkDiagnosticsCard({
     required this.diagnostics,
     required this.isActive,
@@ -10,26 +10,66 @@ class NetworkDiagnosticsCard extends StatelessWidget {
   final Map<String, Object> diagnostics;
   final bool isActive;
 
+  @override
+  State<NetworkDiagnosticsCard> createState() => _NetworkDiagnosticsCardState();
+}
+
+class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
+  final _samples = <_HealthSample>[];
+
+  @override
+  void didUpdateWidget(covariant NetworkDiagnosticsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.diagnostics['metricsScope'] != 'receiver' || !widget.isActive) {
+      _samples.clear();
+      return;
+    }
+    final now = DateTime.now();
+    final current = _HealthSample(
+      timestamp: now,
+      underruns: _number('packetUnderrunCount', 'underruns').toInt(),
+      overruns: _number('packetOverrunCount', 'overruns').toInt(),
+    );
+    _samples.add(current);
+    _samples.removeWhere(
+      (sample) =>
+          now.difference(sample.timestamp) > const Duration(seconds: 10),
+    );
+  }
+
   num _number(String key, [String? fallback]) {
     final value =
-        diagnostics[key] ?? (fallback == null ? null : diagnostics[fallback]);
+        widget.diagnostics[key] ??
+        (fallback == null ? null : widget.diagnostics[fallback]);
     return value is num ? value : 0;
+  }
+
+  int _recentDelta(int current, int Function(_HealthSample) valueOf) {
+    if (_samples.length < 2) return 0;
+    final oldest = valueOf(_samples.first);
+    return current >= oldest ? current - oldest : current;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasReceiverMetrics = diagnostics['metricsScope'] == 'receiver';
+    final hasReceiverMetrics = widget.diagnostics['metricsScope'] == 'receiver';
     final rttMs = _number('roundTripTimeMicros') / 1000;
     final loss = hasReceiverMetrics
         ? _number('packetLossPercent').toDouble()
         : null;
-    final underruns = hasReceiverMetrics
+    final totalUnderruns = hasReceiverMetrics
         ? _number('packetUnderrunCount', 'underruns').toInt()
         : null;
-    final overruns = hasReceiverMetrics
+    final totalOverruns = hasReceiverMetrics
         ? _number('packetOverrunCount', 'overruns').toInt()
         : null;
+    final underruns = totalUnderruns == null
+        ? null
+        : _recentDelta(totalUnderruns, (sample) => sample.underruns);
+    final overruns = totalOverruns == null
+        ? null
+        : _recentDelta(totalOverruns, (sample) => sample.overruns);
     final currentPackets = hasReceiverMetrics
         ? _number('currentJitterBufferPackets', 'bufferPackets').toInt()
         : null;
@@ -37,7 +77,7 @@ class NetworkDiagnosticsCard extends StatelessWidget {
         ? _number('targetJitterBufferMicros', 'targetBufferMicros') / 1000
         : null;
     final quality = _quality(
-      isActive: isActive,
+      isActive: widget.isActive,
       rttMs: rttMs,
       packetLoss: loss ?? 0,
       underruns: underruns ?? 0,
@@ -155,6 +195,18 @@ class NetworkDiagnosticsCard extends StatelessWidget {
     if (value <= 0) return '—';
     return '${value.round()} ms';
   }
+}
+
+class _HealthSample {
+  const _HealthSample({
+    required this.timestamp,
+    required this.underruns,
+    required this.overruns,
+  });
+
+  final DateTime timestamp;
+  final int underruns;
+  final int overruns;
 }
 
 class _QualityBadge extends StatelessWidget {

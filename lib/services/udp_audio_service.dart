@@ -938,12 +938,21 @@ class UdpAudioService implements AudioStreamService {
   void _drainPlaybackBuffer() {
     if (!_receiving || !_clockSynchronized) return;
     final now = _receiverClock.elapsedMicroseconds;
+    final underrunsBefore = _jitter.underruns;
     final packet = _jitter.takeReady(now);
     if (packet == null) {
       _droppedPackets = _jitter.underruns;
-      _metrics.packetUnderrun();
-      _consecutiveUnderruns++;
-      _autoAdjustLatency();
+      // A packet can be present but not ready yet because it is still inside
+      // the configured jitter target. Count only an actual jitter-buffer
+      // timeout, otherwise the 5 ms playback timer marks healthy streams as
+      // continuously underrunning and the UI reports Poor network health.
+      if (_jitter.underruns > underrunsBefore) {
+        _metrics.packetUnderrun();
+        _consecutiveUnderruns++;
+        _autoAdjustLatency();
+      } else {
+        _consecutiveUnderruns = 0;
+      }
       return;
     }
     _consecutiveUnderruns = 0;
