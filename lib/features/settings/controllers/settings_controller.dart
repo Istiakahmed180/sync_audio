@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 
 class SettingsController extends GetxController {
@@ -20,12 +23,24 @@ class SettingsController extends GetxController {
   final deviceModel = 'Unknown'.obs;
   final androidVersion = 'Unknown'.obs;
   final androidSdk = 'Unknown'.obs;
+  final trustedDevices = <PairedDevice>[].obs;
+  final _pairedDeviceStore = PairedDeviceStore();
 
   @override
   void onInit() {
     super.onInit();
     _load();
     _loadDeviceInfo();
+    unawaited(loadTrustedDevices());
+  }
+
+  Future<void> loadTrustedDevices() async {
+    trustedDevices.value = await _pairedDeviceStore.loadPaired();
+  }
+
+  Future<void> revokeTrustedDevice(String ipAddress) async {
+    await _pairedDeviceStore.removePair(ipAddress);
+    await loadTrustedDevices();
   }
 
   Future<void> _loadDeviceInfo() async {

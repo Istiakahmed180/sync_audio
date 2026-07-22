@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/constants/app_constants.dart';
+import '../../../services/paired_device_store.dart';
 import '../controllers/settings_controller.dart';
 
 class SettingsView extends GetView<SettingsController> {
@@ -21,6 +22,10 @@ class SettingsView extends GetView<SettingsController> {
           _sectionTitle(context, 'Advanced'),
           const SizedBox(height: 12),
           _AdvancedSettingsCard(controller: controller),
+          const SizedBox(height: 24),
+          _sectionTitle(context, 'Security'),
+          const SizedBox(height: 12),
+          _TrustedDevicesCard(controller: controller),
           const SizedBox(height: 24),
           _sectionTitle(context, 'About'),
           const SizedBox(height: 12),
@@ -89,6 +94,78 @@ class SettingsView extends GetView<SettingsController> {
       context,
     ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
   );
+}
+
+class _TrustedDevicesCard extends StatelessWidget {
+  const _TrustedDevicesCard({required this.controller});
+  final SettingsController controller;
+
+  @override
+  Widget build(BuildContext context) => Obx(() {
+    final devices = controller.trustedDevices;
+    return Card(
+      child: Column(
+        children: [
+          const ListTile(
+            leading: Icon(Icons.verified_user_outlined),
+            title: Text('Trusted devices'),
+            subtitle: Text(
+              'Only devices with the correct pairing code can connect.',
+            ),
+          ),
+          const Divider(height: 1),
+          if (devices.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('No trusted devices yet.'),
+              ),
+            )
+          else
+            ...devices.map(
+              (device) => ListTile(
+                leading: const Icon(Icons.devices_other_outlined),
+                title: Text(
+                  device.name.trim().isEmpty ? 'Unknown device' : device.name,
+                ),
+                subtitle: Text('${device.ipAddress}:${device.port}'),
+                trailing: IconButton(
+                  tooltip: 'Revoke device',
+                  icon: const Icon(Icons.remove_circle_outline),
+                  onPressed: () => _confirmRevoke(context, device),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  });
+
+  Future<void> _confirmRevoke(BuildContext context, PairedDevice device) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revoke trusted device?'),
+        content: Text(
+          'Remove ${device.name} from the trusted device list? You can pair it again later with the pairing code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await controller.revokeTrustedDevice(device.ipAddress);
+    }
+  }
 }
 
 class _ThemeSelector extends StatelessWidget {
