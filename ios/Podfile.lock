@@ -1,0 +1,48 @@
+PODS:
+  - cryptography_flutter (0.0.1):
+    - Flutter
+  - Flutter (1.0.0)
+  - mobile_scanner (7.0.0):
+    - Flutter
+    - FlutterMacOS
+  - opus_codec_ios (3.0.5):
+    - Flutter
+  - share_plus (0.0.1):
+    - Flutter
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - cryptography_flutter (from `.symlinks/plugins/cryptography_flutter/ios`)
+  - Flutter (from `Flutter`)
+  - mobile_scanner (from `.symlinks/plugins/mobile_scanner/darwin`)
+  - opus_codec_ios (from `.symlinks/plugins/opus_codec_ios/ios`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+
+EXTERNAL SOURCES:
+  cryptography_flutter:
+    :path: ".symlinks/plugins/cryptography_flutter/ios"
+  Flutter:
+    :path: Flutter
+  mobile_scanner:
+    :path: ".symlinks/plugins/mobile_scanner/darwin"
+  opus_codec_ios:
+    :path: ".symlinks/plugins/opus_codec_ios/ios"
+  share_plus:
+    :path: ".symlinks/plugins/share_plus/ios"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+
+SPEC CHECKSUMS:
+  cryptography_flutter: 4868d92d3e47f91f0bc321e63e6fa0387f365f11
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  mobile_scanner: 9157936403f5a0644ca3779a38ff8404c5434a93
+  opus_codec_ios: 92a104ce4500126b25cf0abddf379af393846fd2
+  share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+
+PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+
+COCOAPODS: 1.16.2

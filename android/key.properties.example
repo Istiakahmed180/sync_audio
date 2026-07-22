@@ -1,0 +1,5 @@
+# Copy this file to android/key.properties and fill in your release keystore values.
+storePassword=change-me
+keyPassword=change-me
+keyAlias=sync-audio
+storeFile=/absolute/path/to/sync-audio-release.jks

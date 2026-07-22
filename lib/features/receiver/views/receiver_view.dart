@@ -277,6 +277,7 @@ class _ConnectionInfoCard extends StatelessWidget {
                     ? () {
                         final shareText =
                             'I\'m "$deviceName" — connect to:\nIP: $ipAddress:5050\nPairing code: $pairingCode\n\nScan or enter these on the Host device.';
+                        // ignore: deprecated_member_use
                         Share.share(
                           shareText,
                           subject: 'Sync Audio — $deviceName',

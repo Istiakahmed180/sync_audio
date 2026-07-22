@@ -3,7 +3,7 @@ set -e
 
 # ========= CONFIG =========
 APP_NAME="Sync Audio"
-PACKAGE_NAME="com.tdevs.skilltrack"
+PACKAGE_NAME="com.tdevs.syncaudio"
 BUILD_TYPE="apk"   # apk | appbundle
 BUILD_TARGET="${1:-android}" # android | macos
 CREATE_MACOS_DMG=true
@@ -22,8 +22,9 @@ flutter pub get
 
 # ---------------- Change App Package Name ----------------
 if [ "$CHANGE_PACKAGE" = true ]; then
-  echo "📦 Changing app package name..."
-  flutter pub run change_app_package_name:payment_method "$PACKAGE_NAME"
+  echo "📦 Package ID is configured in android/app/build.gradle.kts: $PACKAGE_NAME"
+  echo "❌ Automatic package renaming is not supported by this script. Update the Gradle namespace and Kotlin package together."
+  exit 1
 fi
 
 # ---------------- Android App Name ----------------
@@ -31,8 +32,6 @@ if [ "$UPDATE_ANDROID_NAME" = true ]; then
   echo "📱 Updating Android app name..."
 
   STRINGS_FILE="android/app/src/main/res/values/strings.xml"
-  mkdir -p android/app/src/payment_method/res/values
-
   if [ ! -f "$STRINGS_FILE" ]; then
     cat <<EOF > "$STRINGS_FILE"
 <resources>
@@ -70,6 +69,11 @@ fi
 # ---------------- Build ----------------
 if [ "$BUILD_APP" = true ]; then
   echo "🚀 Building app..."
+
+  if [ "$BUILD_TARGET" = "android" ] && [ ! -f "android/key.properties" ]; then
+    echo "❌ Missing android/key.properties. Copy android/key.properties.example and configure release signing first."
+    exit 1
+  fi
 
   flutter clean
   flutter pub get

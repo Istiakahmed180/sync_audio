@@ -509,7 +509,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.syncAudio.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tdevs.syncaudio.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/sync_audio.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/sync_audio";
@@ -524,7 +524,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.syncAudio.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tdevs.syncaudio.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/sync_audio.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/sync_audio";
@@ -539,7 +539,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.syncAudio.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tdevs.syncaudio.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/sync_audio.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/sync_audio";

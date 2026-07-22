@@ -23,7 +23,7 @@ import AVFoundation
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    setupAudioChannels(messenger: engineBridge.binaryMessenger)
+    setupAudioChannels(messenger: engineBridge.applicationRegistrar.messenger())
   }
 
   // MARK: - Channel Setup
