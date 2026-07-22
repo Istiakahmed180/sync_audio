@@ -136,6 +136,7 @@ class UdpAudioService implements AudioStreamService {
   int _encodeQueueDepth = 0;
   static const _maxEncodeQueueDepth = 8;
   Uint8List _pendingEncoderPcm = Uint8List(0);
+  int? _nextAudioTimestampMicros;
   AudioStreamStatus _status = AudioStreamStatus.idle;
   bool _streaming = false;
   bool _receiving = false;
@@ -314,6 +315,7 @@ class UdpAudioService implements AudioStreamService {
       _droppedPackets = 0;
       _totalBytesSent = 0;
       _pendingEncoderPcm = Uint8List(0);
+      _nextAudioTimestampMicros = null;
       _jitter.reset();
       await encoder.reset();
       _streamClock = Stopwatch()..start();
@@ -542,29 +544,23 @@ class UdpAudioService implements AudioStreamService {
   void _sendPcmPacket(Uint8List pcm, int generation) {
     if (!_streaming || generation != _streamGeneration) return;
     _metrics.captureStarted();
-    if (encoder.codecType == AudioCodecType.pcm16) {
-      // Preserve normal capture buffers, but split unusually large macOS
-      // buffers before they reach the UDP socket. 2048 bytes plus the packet
-      // header remains within the supported datagram size on the target LAN.
-      const maxPcmPayload = 2048;
-      if (pcm.length <= maxPcmPayload) {
-        _enqueuePcmFrame(pcm, generation);
-        return;
-      }
-      final frameBytes = encoder.config.frameBytes;
-      for (var offset = 0; offset < pcm.length; offset += frameBytes) {
-        final end = (offset + frameBytes).clamp(0, pcm.length);
-        _enqueuePcmFrame(
-          Uint8List.fromList(pcm.sublist(offset, end)),
-          generation,
-        );
-      }
+    // Keep already MTU-safe small capture chunks intact. Larger macOS chunks
+    // are normalized into exact codec frames below, while this preserves the
+    // existing packet behavior for normal 20ms-ish capture buffers.
+    if (encoder.codecType == AudioCodecType.pcm16 &&
+        _pendingEncoderPcm.isEmpty &&
+        pcm.length <= 2048) {
+      _enqueuePcmFrame(
+        pcm,
+        generation,
+        timestampMicros: _audioTimestampForNextFrame(pcm.length),
+      );
       return;
     }
-    // Keep every UDP datagram at one negotiated audio frame. This is
-    // important on macOS where BlackHole may deliver a larger audio buffer;
-    // a 3840-byte PCM payload exceeds the usual Wi-Fi MTU and causes
-    // EMSGSIZE/"Message too long" from RawDatagramSocket.
+    // Keep every UDP datagram at one negotiated audio frame. macOS capture
+    // APIs commonly deliver larger buffers; splitting those buffers without
+    // preserving their audio timeline makes several packets appear to have
+    // the same playback timestamp and causes receiver queue underruns.
     final combined = Uint8List(_pendingEncoderPcm.length + pcm.length)
       ..setRange(0, _pendingEncoderPcm.length, _pendingEncoderPcm)
       ..setRange(
@@ -575,16 +571,40 @@ class UdpAudioService implements AudioStreamService {
     final frameBytes = encoder.config.frameBytes;
     var offset = 0;
     while (combined.length - offset >= frameBytes) {
+      final frame = Uint8List.fromList(
+        combined.sublist(offset, offset + frameBytes),
+      );
       _enqueuePcmFrame(
-        Uint8List.fromList(combined.sublist(offset, offset + frameBytes)),
+        frame,
         generation,
+        timestampMicros: _audioTimestampForNextFrame(frame.length),
       );
       offset += frameBytes;
     }
     _pendingEncoderPcm = Uint8List.fromList(combined.sublist(offset));
   }
 
-  void _enqueuePcmFrame(Uint8List pcm, int generation) {
+  int _audioTimestampForNextFrame(int frameBytes) {
+    final clock = _streamClock;
+    final now = clock?.elapsedMicroseconds ?? 0;
+    final normalDelay = LatencyModeConfig.forMode(_latencyMode).normalMicros;
+    final frameDurationMicros =
+        (frameBytes * 1000000) ~/ (encoder.config.sampleRate * 2);
+    final minimumTimestamp = now + normalDelay;
+    final previous = _nextAudioTimestampMicros;
+    if (previous == null || previous < minimumTimestamp - frameDurationMicros * 2) {
+      _nextAudioTimestampMicros = minimumTimestamp;
+    }
+    final timestamp = _nextAudioTimestampMicros!;
+    _nextAudioTimestampMicros = timestamp + frameDurationMicros;
+    return timestamp;
+  }
+
+  void _enqueuePcmFrame(
+    Uint8List pcm,
+    int generation, {
+    required int timestampMicros,
+  }) {
     if (!_streaming || generation != _streamGeneration) return;
     if (_encodeQueueDepth >= _maxEncodeQueueDepth) {
       _emitError('Audio encoder is behind; dropping a capture frame.');
@@ -594,7 +614,7 @@ class UdpAudioService implements AudioStreamService {
     _encodeQueue = _encodeQueue
         .then((_) async {
           try {
-            await _encodeAndSendPcm(pcm, generation);
+          await _encodeAndSendPcm(pcm, generation, timestampMicros);
           } catch (_) {
             await _handleEncodingError();
           }
@@ -614,13 +634,15 @@ class UdpAudioService implements AudioStreamService {
     _setStatus(AudioStreamStatus.error);
   }
 
-  Future<void> _encodeAndSendPcm(Uint8List pcm, int generation) async {
+  Future<void> _encodeAndSendPcm(
+    Uint8List pcm,
+    int generation,
+    int timestampMicros,
+  ) async {
     final socket = _socket;
-    final clock = _streamClock;
     if (!_streaming ||
         generation != _streamGeneration ||
         socket == null ||
-        clock == null ||
         pcm.isEmpty) {
       return;
     }
@@ -633,9 +655,7 @@ class UdpAudioService implements AudioStreamService {
     final packet = AudioPacketCodec.encode(
       type: AudioPacketType.pcmAudio,
       sequence: _packetSequence++,
-      timestampMicros:
-          clock.elapsedMicroseconds +
-          LatencyModeConfig.forMode(_latencyMode).normalMicros,
+      timestampMicros: timestampMicros,
       codecType: encoder.codecType,
       payload: encoded,
     );
@@ -670,6 +690,7 @@ class UdpAudioService implements AudioStreamService {
     _clockRequests.clear();
     _bestRoundTripMicros.clear();
     _pendingEncoderPcm = Uint8List(0);
+    _nextAudioTimestampMicros = null;
     await decoder.reset();
     _streamClock?.stop();
     _streamClock = null;
