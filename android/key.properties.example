@@ -2,4 +2,4 @@
 storePassword=change-me
 keyPassword=change-me
 keyAlias=sync-audio
-storeFile=/absolute/path/to/sync-audio-release.jks
+storeFile=../sync-audio-release.jks
