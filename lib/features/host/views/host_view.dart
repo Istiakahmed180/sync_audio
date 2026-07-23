@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/receiver_session.dart';
+import '../../../app/constants/platform_capabilities.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -15,6 +16,20 @@ class HostView extends GetView<HostController> {
 
   @override
   Widget build(BuildContext context) {
+    if (!PlatformCapabilities.supportsHost) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Host Device')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              PlatformCapabilities.hostSupportMessage,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     return _HostDiscoveryLifecycle(
       controller: controller,
       child: Scaffold(

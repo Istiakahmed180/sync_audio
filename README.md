@@ -241,8 +241,12 @@ automatically would require a microphone or an audio loopback signal.
 
 ### iOS / macOS
 
-- `NSMicrophoneUsageDescription` — used for audio capture
+- iOS is Receiver-only: iOS system-audio capture is not available to this app.
+- `NSMicrophoneUsageDescription` — reserved for the iOS microphone capture
+  implementation; it is not advertised as system-audio Host capture.
 - `NSCameraUsageDescription` — QR code scanning (iOS)
+- iPhone and iPad can open **Receiver Device**, show their pairing code, and
+  play audio sent by an Android, macOS, or Windows Host.
 - macOS 13+ — Screen & System Audio Recording permission for the fallback
   system-audio capture path
 - macOS — BlackHole 2ch is recommended for deterministic browser/system-audio

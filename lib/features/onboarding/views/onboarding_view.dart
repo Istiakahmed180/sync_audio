@@ -214,7 +214,7 @@ class _HostPage extends StatelessWidget {
           const SizedBox(height: 16),
           _FeatureItem(
             icon: Icons.android_rounded,
-            text: 'Android only — captures supported app audio',
+            text: 'Host works on Android, macOS, and Windows',
             scheme: scheme,
           ),
           const SizedBox(height: 8),
@@ -285,7 +285,7 @@ class _ReceiverPage extends StatelessWidget {
           const SizedBox(height: 16),
           _FeatureItem(
             icon: Icons.devices_rounded,
-            text: 'Works on Android devices',
+            text: 'Receivers can run on Android, iOS, macOS, and Windows',
             scheme: scheme,
           ),
           const SizedBox(height: 8),

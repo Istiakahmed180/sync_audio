@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/constants/app_constants.dart';
+import '../../../app/constants/platform_capabilities.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../shared/widgets/mode_selection_card.dart';
 import '../controllers/home_controller.dart';
@@ -36,9 +35,9 @@ class HomeView extends GetView<HomeController> {
             ),
             const SizedBox(height: 12),
             Text(
-              Platform.isAndroid
-                  ? 'Use this Android device as the Host or Receiver on the same Wi‑Fi network.'
-                  : 'Use this computer as the Host and connect one or more Android Receivers on the same Wi‑Fi network.',
+              PlatformCapabilities.supportsHost
+                  ? 'Use this device as the Host or Receiver on the same Wi‑Fi network.'
+                  : 'Use this device as a Receiver on the same Wi‑Fi network.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 32),
@@ -49,15 +48,24 @@ class HomeView extends GetView<HomeController> {
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            ModeSelectionCard(
-              title: 'Host Device',
-              description: Platform.isAndroid
-                  ? 'Capture and send audio to all Receivers.'
-                  : 'Capture computer audio and send it to Android Receivers.',
-              icon: Icons.wifi_tethering_rounded,
-              onTap: () => Get.toNamed(AppRoutes.host),
-            ),
-            const SizedBox(height: 12),
+            if (PlatformCapabilities.supportsHost) ...[
+              ModeSelectionCard(
+                title: 'Host Device',
+                description: 'Capture and send audio to all Receivers.',
+                icon: Icons.wifi_tethering_rounded,
+                onTap: () => Get.toNamed(AppRoutes.host),
+              ),
+              const SizedBox(height: 12),
+            ] else ...[
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Host unavailable on this device'),
+                  subtitle: Text(PlatformCapabilities.hostSupportMessage),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             ModeSelectionCard(
               title: 'Receiver Device',
               description:
