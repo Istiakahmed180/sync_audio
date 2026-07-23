@@ -515,6 +515,7 @@ class ReceiverController extends GetxController {
           '${number('packetOverrunCount', 'overruns')}',
           '${number('roundTripTimeMicros')}',
           '${number('targetJitterBufferMicros', 'targetBufferMicros')}',
+          '${number('networkJitterMicros')}',
         ],
       ),
     );

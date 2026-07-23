@@ -20,7 +20,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
   @override
   void didUpdateWidget(covariant NetworkDiagnosticsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.diagnostics['metricsScope'] != 'receiver' || !widget.isActive) {
+    if (!widget.isActive) {
       _samples.clear();
       return;
     }
@@ -29,6 +29,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
       timestamp: now,
       underruns: _number('packetUnderrunCount', 'underruns').toInt(),
       overruns: _number('packetOverrunCount', 'overruns').toInt(),
+      totalBytes: _number('totalBytesSent').toInt(),
     );
     _samples.add(current);
     _samples.removeWhere(
@@ -48,6 +49,18 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
     if (_samples.length < 2) return 0;
     final oldest = valueOf(_samples.first);
     return current >= oldest ? current - oldest : current;
+  }
+
+  double? _bitrateKbps() {
+    if (_samples.length < 2) return null;
+    final oldest = _samples.first;
+    final newest = _samples.last;
+    final elapsedSeconds =
+        newest.timestamp.difference(oldest.timestamp).inMicroseconds / 1000000;
+    if (elapsedSeconds <= 0 || newest.totalBytes < oldest.totalBytes) {
+      return null;
+    }
+    return (newest.totalBytes - oldest.totalBytes) * 8 / elapsedSeconds / 1000;
   }
 
   @override
@@ -76,12 +89,17 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
     final targetBufferMs = hasReceiverMetrics
         ? _number('targetJitterBufferMicros', 'targetBufferMicros') / 1000
         : null;
+    final jitterMs = hasReceiverMetrics
+        ? _number('networkJitterMicros') / 1000
+        : null;
+    final bitrateKbps = _bitrateKbps();
     final quality = _quality(
       isActive: widget.isActive,
       rttMs: rttMs,
       packetLoss: loss ?? 0,
       underruns: underruns ?? 0,
       hasReceiverMetrics: hasReceiverMetrics,
+      jitterMs: jitterMs ?? 0,
     );
 
     return Card(
@@ -113,6 +131,18 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
               runSpacing: 8,
               children: [
                 _MetricTile(label: 'Latency', value: _formatMs(rttMs)),
+                _MetricTile(
+                  label: 'Jitter',
+                  value: jitterMs == null
+                      ? 'Receiver data pending'
+                      : _formatMs(jitterMs),
+                ),
+                _MetricTile(
+                  label: 'Bitrate',
+                  value: bitrateKbps == null
+                      ? 'Waiting for traffic'
+                      : '${bitrateKbps.toStringAsFixed(1)} kbps',
+                ),
                 _MetricTile(
                   label: 'Packet loss',
                   value: loss == null
@@ -153,6 +183,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
     required double packetLoss,
     required int underruns,
     required bool hasReceiverMetrics,
+    required num jitterMs,
   }) {
     if (!isActive) {
       return const _NetworkQuality(
@@ -168,7 +199,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
         color: Colors.blueGrey,
       );
     }
-    if (packetLoss >= 2 || underruns >= 5 || rttMs >= 120) {
+    if (packetLoss >= 2 || underruns >= 5 || rttMs >= 120 || jitterMs >= 50) {
       return const _NetworkQuality(
         label: 'Poor',
         message:
@@ -176,7 +207,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
         color: Colors.red,
       );
     }
-    if (packetLoss > 0 || underruns > 0 || rttMs >= 60) {
+    if (packetLoss > 0 || underruns > 0 || rttMs >= 60 || jitterMs >= 20) {
       return const _NetworkQuality(
         label: 'Fair',
         message:
@@ -202,11 +233,13 @@ class _HealthSample {
     required this.timestamp,
     required this.underruns,
     required this.overruns,
+    required this.totalBytes,
   });
 
   final DateTime timestamp;
   final int underruns;
   final int overruns;
+  final int totalBytes;
 }
 
 class ReceiverNetworkQualityBadge extends StatefulWidget {

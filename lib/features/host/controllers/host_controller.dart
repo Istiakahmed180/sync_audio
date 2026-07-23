@@ -704,7 +704,11 @@ class HostController extends GetxController {
       };
       return;
     }
-    diagnostics.value = _aggregateReceiverDiagnostics(receiverValues);
+    diagnostics.value = <String, Object>{
+      ..._aggregateReceiverDiagnostics(receiverValues),
+      if (local['totalBytesSent'] is num)
+        'totalBytesSent': local['totalBytesSent']!,
+    };
   }
 
   void _handleControlEvent(ControlEvent event) {
@@ -732,6 +736,7 @@ class HostController extends GetxController {
       // reports the other counters, but cannot calculate this value locally.
       'roundTripTimeMicros': audioSession?.roundTripTimeMicros ?? values[5]!,
       'targetJitterBufferMicros': values[6]!,
+      if (values.length >= 8) 'networkJitterMicros': values[7]!,
     };
     _receiverDiagnosticsUpdatedAt[event.sourceId] = DateTime.now();
     unawaited(
@@ -783,6 +788,7 @@ class HostController extends GetxController {
       'packetOverrunCount': maximum('packetOverrunCount').round(),
       'roundTripTimeMicros': maximum('roundTripTimeMicros').round(),
       'targetJitterBufferMicros': maximum('targetJitterBufferMicros').round(),
+      'networkJitterMicros': average('networkJitterMicros').round(),
     };
   }
 

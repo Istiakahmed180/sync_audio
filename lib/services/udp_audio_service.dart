@@ -857,7 +857,6 @@ class UdpAudioService implements AudioStreamService {
 
   Future<void> _handleReceiverDatagram(Datagram source) async {
     Uint8List data = source.data;
-    _metrics.packetArrived();
     if (EncryptedAudioPacketCodec.isEncrypted(data)) {
       final key = _sessionKey;
       final sessionId = _securitySessionId;
@@ -907,6 +906,7 @@ class UdpAudioService implements AudioStreamService {
         );
       case AudioPacketType.pcmAudio:
         if (packet.codecType != decoder.codecType) return;
+        _metrics.packetArrived(packetTimestampMicros: packet.timestampMicros);
         final now = _receiverClock.elapsedMicroseconds;
         final highestSequence = _highestReceivedAudioSequence;
         if (highestSequence != null) {

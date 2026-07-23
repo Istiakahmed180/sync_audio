@@ -54,6 +54,7 @@ class LatencyMetricsSnapshot {
     required this.playbackQueueDelayMicros,
     required this.estimatedTotalLatencyMicros,
     required this.roundTripTimeMicros,
+    required this.networkJitterMicros,
     required this.packetLossPercent,
     required this.packetReorderCount,
     required this.packetUnderrunCount,
@@ -78,6 +79,7 @@ class LatencyMetricsSnapshot {
   final int playbackQueueDelayMicros;
   final int estimatedTotalLatencyMicros;
   final int roundTripTimeMicros;
+  final int networkJitterMicros;
   final double packetLossPercent;
   final int packetReorderCount;
   final int packetUnderrunCount;
@@ -97,6 +99,7 @@ class LatencyMetricsSnapshot {
     'jitterBufferWaitingMicros': jitterBufferWaitingMicros,
     'estimatedTotalLatencyMicros': estimatedTotalLatencyMicros,
     'roundTripTimeMicros': roundTripTimeMicros,
+    'networkJitterMicros': networkJitterMicros,
     'packetLossPercent': packetLossPercent,
     'packetReorderCount': packetReorderCount,
     'packetUnderrunCount': packetUnderrunCount,
@@ -124,6 +127,8 @@ class LatencyMetricsTracker {
   int _queueDelay = 0;
   int _totalLatency = 0;
   int _rtt = 0;
+  int _networkJitter = 0;
+  int? _previousTransitMicros;
   int _receivedPackets = 0;
   int _lostPackets = 0;
   int _reorders = 0;
@@ -150,9 +155,19 @@ class LatencyMetricsTracker {
 
   void packetSent() => _send = nowMicros;
 
-  void packetArrived() {
+  void packetArrived({int? packetTimestampMicros}) {
     _arrival = nowMicros;
     _receivedPackets++;
+    if (packetTimestampMicros == null) return;
+    final transit = _arrival - packetTimestampMicros;
+    final previousTransit = _previousTransitMicros;
+    if (previousTransit != null) {
+      _networkJitter = _smooth(
+        _networkJitter,
+        (transit - previousTransit).abs(),
+      );
+    }
+    _previousTransitMicros = transit;
   }
 
   void decrypted(Duration duration) =>
@@ -208,6 +223,7 @@ class LatencyMetricsTracker {
     playbackQueueDelayMicros: _queueDelay,
     estimatedTotalLatencyMicros: _totalLatency,
     roundTripTimeMicros: _rtt,
+    networkJitterMicros: _networkJitter,
     packetLossPercent: _receivedPackets + _lostPackets == 0
         ? 0
         : _lostPackets * 100 / (_receivedPackets + _lostPackets),
