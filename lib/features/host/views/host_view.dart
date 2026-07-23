@@ -89,6 +89,8 @@ class HostView extends GetView<HostController> {
               const SizedBox(height: 12),
               _SavedSpeakerGroupsSection(controller: controller),
               const SizedBox(height: 12),
+              _AllReceiverVolumeControl(controller: controller),
+              const SizedBox(height: 12),
 
               Obx(() {
                 // Subscribe this receiver list to live diagnostics updates.
@@ -339,6 +341,76 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
                     ),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AllReceiverVolumeControl extends StatelessWidget {
+  const _AllReceiverVolumeControl({required this.controller});
+
+  final HostController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.volume_up_rounded),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'All receiver volume',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${(controller.masterReceiverVolume.value * 100).round()}%',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: controller.configuredReceiverIps.isEmpty
+                        ? null
+                        : controller.toggleMuteAll,
+                    icon: Icon(
+                      controller.areAllReceiversMuted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_mute_rounded,
+                    ),
+                    label: Text(
+                      controller.areAllReceiversMuted
+                          ? 'Unmute all'
+                          : 'Mute all',
+                    ),
+                  ),
+                ],
+              ),
+              Slider(
+                value: controller.masterReceiverVolume.value,
+                min: 0,
+                max: 1.5,
+                divisions: 150,
+                label:
+                    '${(controller.masterReceiverVolume.value * 100).round()}%',
+                onChanged: controller.configuredReceiverIps.isEmpty
+                    ? null
+                    : controller.setAllReceiverVolumes,
+              ),
+              Text(
+                'Adjusts every configured Receiver together. Individual Receiver controls remain available below.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         ),

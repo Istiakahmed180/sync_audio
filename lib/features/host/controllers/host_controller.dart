@@ -128,6 +128,7 @@ class HostController extends GetxController {
   final _pairedStore = PairedDeviceStore();
   final receiverVolumes = <String, double>{}.obs;
   final receiverMuted = <String, bool>{}.obs;
+  final masterReceiverVolume = 1.0.obs;
   final pairedDevices = <PairedDevice>[].obs;
   final savedGroups = <DeviceGroup>[].obs;
   DateTime? _statsStartTime;
@@ -216,6 +217,32 @@ class HostController extends GetxController {
         receiverMuted[address] == true ? 0 : volumeForReceiver(address),
       ),
     );
+  }
+
+  void setAllReceiverVolumes(double volume) {
+    final normalized = volume.clamp(0.0, 1.5).toDouble();
+    masterReceiverVolume.value = normalized;
+    for (final address in configuredReceiverIps) {
+      setReceiverVolume(address, normalized);
+    }
+  }
+
+  bool get areAllReceiversMuted =>
+      configuredReceiverIps.isNotEmpty &&
+      configuredReceiverIps.every((address) => receiverMuted[address] == true);
+
+  void toggleMuteAll() {
+    final shouldMute = !areAllReceiversMuted;
+    for (final address in configuredReceiverIps) {
+      receiverMuted[address] = shouldMute;
+      unawaited(
+        _sendReceiverVolume(
+          address,
+          shouldMute ? 0 : volumeForReceiver(address),
+        ),
+      );
+    }
+    receiverMuted.refresh();
   }
 
   Future<void> _sendReceiverVolume(String address, double volume) async {
