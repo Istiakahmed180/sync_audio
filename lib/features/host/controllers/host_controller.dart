@@ -18,6 +18,7 @@ import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
+import '../../../services/session_restore_store.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
 import '../../../shared/widgets/app_notification_service.dart';
@@ -57,6 +58,7 @@ class HostController extends GetxController {
   final CalibrationStore _calibrationStore;
   final DeviceDiscoveryService _discoveryService;
   final NativeAudioRuntime _nativeAudioRuntime;
+  final _sessionRestoreStore = SessionRestoreStore();
   final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
   final receiverIpInputController = TextEditingController();
@@ -135,6 +137,7 @@ class HostController extends GetxController {
   final isBulkReceiverActionRunning = false.obs;
   DateTime? _statsStartTime;
   bool _statsActive = false;
+  bool _restoringSession = false;
 
   /// The TCP control service and UDP audio service use different session IDs
   /// for the same receiver (for example, `192.168.1.10` vs
@@ -441,6 +444,66 @@ class HostController extends GetxController {
     }
     unawaited(loadSavedGroups());
     unawaited(loadPairedDevices());
+    unawaited(_restoreLastSession());
+  }
+
+  Future<void> _restoreLastSession() async {
+    if (_restoringSession) return;
+    _restoringSession = true;
+    try {
+      final snapshot = await _sessionRestoreStore.loadHostSession();
+      if (snapshot == null || snapshot.receivers.isEmpty) return;
+      configuredReceiverIps.assignAll(
+        snapshot.receivers.map((receiver) => receiver.ipAddress),
+      );
+      portController.text = '${snapshot.receivers.first.port}';
+      audioPortController.text = '${snapshot.audioPort}';
+      codecPreference.value = AudioCodecPreference.values.firstWhere(
+        (value) => value.name == snapshot.codec,
+        orElse: () => AudioCodecPreference.auto,
+      );
+      latencyMode.value = LatencyMode.values.firstWhere(
+        (value) => value.name == snapshot.latencyMode,
+        orElse: () => LatencyMode.stable,
+      );
+      adaptiveJitter.value = snapshot.adaptiveJitter;
+      driftCorrection.value = snapshot.driftCorrection;
+      maximumDriftCorrectionPpm.value = snapshot.maximumDriftCorrectionPpm
+          .clamp(0, 300);
+      for (final receiver in snapshot.receivers) {
+        receiverPairingControllers[receiver.ipAddress] = TextEditingController(
+          text: receiver.pairingCode,
+        );
+        unawaited(_resolveReceiverName(receiver.ipAddress));
+      }
+      await connect();
+    } finally {
+      _restoringSession = false;
+    }
+  }
+
+  Future<void> _saveSessionConfiguration() async {
+    if (_restoringSession || configuredReceiverIps.isEmpty) return;
+    final port = int.tryParse(portController.text.trim()) ?? controlPort;
+    final audioPort = int.tryParse(audioPortController.text.trim()) ?? 5051;
+    await _sessionRestoreStore.saveHostSession(
+      HostSessionSnapshot(
+        receivers: [
+          for (final ip in configuredReceiverIps)
+            RestoredReceiver(
+              ipAddress: ip,
+              port: port,
+              pairingCode: receiverPairingControllers[ip]?.text.trim() ?? '',
+            ),
+        ],
+        audioPort: audioPort,
+        codec: codecPreference.value.name,
+        latencyMode: latencyMode.value.name,
+        adaptiveJitter: adaptiveJitter.value,
+        driftCorrection: driftCorrection.value,
+        maximumDriftCorrectionPpm: maximumDriftCorrectionPpm.value,
+      ),
+    );
   }
 
   void startDiscoveryPolling({bool showBusyIndicator = true}) {
@@ -517,6 +580,7 @@ class HostController extends GetxController {
       );
     }
     await _service.connectToReceivers(receivers: receivers);
+    unawaited(_saveSessionConfiguration());
   }
 
   Future<void> disconnect() async {
@@ -814,6 +878,7 @@ class HostController extends GetxController {
     try {
       if (wasStreaming) await stopSystemAudioStream();
       codecPreference.value = preference;
+      unawaited(_saveSessionConfiguration());
       await _audioService?.selectCodec(preference);
       if (wasStreaming) await startSystemAudioStream();
     } finally {
@@ -828,6 +893,7 @@ class HostController extends GetxController {
     try {
       if (wasStreaming) await stopSystemAudioStream();
       latencyMode.value = mode;
+      unawaited(_saveSessionConfiguration());
       await _audioService?.configureLatency(
         mode: mode,
         adaptiveJitter: adaptiveJitter.value,
@@ -1046,6 +1112,7 @@ class HostController extends GetxController {
     pairingTokenController.clear();
     errorMessage.value = null;
     unawaited(_resolveReceiverName(address));
+    unawaited(_saveSessionConfiguration());
   }
 
   Future<void> _resolveReceiverName(String address) async {
@@ -1068,6 +1135,7 @@ class HostController extends GetxController {
     discoveredDeviceLatencyMs.remove(address);
     receiverCalibrationMicros.remove(address);
     receiverPairingControllers.remove(address)?.dispose();
+    unawaited(_saveSessionConfiguration());
   }
 
   /// Applies the Receiver QR payload: IP address:port:pairing code.
@@ -1113,6 +1181,7 @@ class HostController extends GetxController {
       unawaited(_resolveReceiverName(address));
     }
     errorMessage.value = null;
+    unawaited(_saveSessionConfiguration());
     return true;
   }
 

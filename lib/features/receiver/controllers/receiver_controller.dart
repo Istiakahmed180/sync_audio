@@ -18,6 +18,7 @@ import '../../../services/background_connection_service.dart';
 import '../../../services/pairing_store.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/scheduled_streaming_service.dart';
+import '../../../services/session_restore_store.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/audio_output_route_service.dart';
 
@@ -59,6 +60,7 @@ class ReceiverController extends GetxController {
   final NativeAudioRuntime _nativeAudioRuntime;
   final AudioOutputRouteService _audioOutputRouteService =
       AudioOutputRouteService();
+  final _sessionRestoreStore = SessionRestoreStore();
   final audioOutputs = <AudioOutputDevice>[].obs;
   final isLoadingAudioOutputs = false.obs;
   final pairingToken = 'Loading…'.obs;
@@ -117,6 +119,7 @@ class ReceiverController extends GetxController {
     isConnectedToHost.value = _service.isConnected;
     _pairingReady = _loadPairingToken();
     unawaited(_loadTrustedDevices());
+    unawaited(_restoreServerIfNeeded());
     _messageSubscription = _service.receivedMessages.listen((message) {
       lastReceivedMessage.value = message;
     });
@@ -159,6 +162,12 @@ class ReceiverController extends GetxController {
         (message) => errorMessage.value = message,
       );
     }
+  }
+
+  Future<void> _restoreServerIfNeeded() async {
+    if (!await _sessionRestoreStore.shouldRestoreReceiverServer()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!isServerRunning.value) await startServer();
   }
 
   Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
@@ -346,6 +355,7 @@ class ReceiverController extends GetxController {
     localIpAddress.value = address ?? 'Not available';
     isServerRunning.value = _service.isServerRunning;
     if (isServerRunning.value) {
+      await _sessionRestoreStore.setReceiverServerRunning(true);
       _startPairingExpiryTimer();
       await _discoveryService.startResponder(
         deviceId: address ?? 'receiver',
@@ -383,6 +393,7 @@ class ReceiverController extends GetxController {
     isServerRunning.value = false;
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;
+    await _sessionRestoreStore.setReceiverServerRunning(false);
     await BackgroundConnectionService.stop();
   }
 

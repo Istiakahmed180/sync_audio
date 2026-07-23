@@ -191,6 +191,7 @@ Host screen:
 | **Jitter buffer** | Adaptive bounded jitter buffer with drift correction |
 | **Light/Dark theme** | System, light, and dark mode support |
 | **Desktop tray mode** | Closing the Windows, macOS, or Linux window hides it to the system tray while active connections and streams continue; use the tray menu to show or quit |
+| **Session restore** | On restart, restores the previous Host receiver list and reconnects automatically; Receiver mode can restore its server state |
 
 ---
 
