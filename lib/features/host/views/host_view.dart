@@ -109,6 +109,8 @@ class HostView extends GetView<HostController> {
                   key: ValueKey('$diagnosticsCount-$nearbyCount'),
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _ReceiverBulkActions(controller: controller),
+                    const SizedBox(height: 8),
                     if (nearbyCount > 0) ...[
                       Text(
                         'Nearby receivers',
@@ -905,6 +907,69 @@ class _EmptyReceiverState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ReceiverBulkActions extends StatelessWidget {
+  const _ReceiverBulkActions({required this.controller});
+
+  final HostController controller;
+
+  Future<void> _confirmRemoveAll(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove all receivers?'),
+        content: const Text(
+          'This will disconnect every configured receiver and stop the current stream.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove all'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await controller.removeAllReceivers();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: controller.isBulkReceiverActionRunning.value
+                ? null
+                : controller.reconnectAllReceivers,
+            icon: controller.isBulkReceiverActionRunning.value
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            label: const Text('Reconnect all'),
+          ),
+          OutlinedButton.icon(
+            onPressed: controller.isBulkReceiverActionRunning.value
+                ? null
+                : () => _confirmRemoveAll(context),
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: const Text('Remove all receivers'),
+          ),
+        ],
       ),
     );
   }

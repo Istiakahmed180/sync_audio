@@ -132,6 +132,7 @@ class HostController extends GetxController {
   final masterReceiverVolume = 1.0.obs;
   final pairedDevices = <PairedDevice>[].obs;
   final savedGroups = <DeviceGroup>[].obs;
+  final isBulkReceiverActionRunning = false.obs;
   DateTime? _statsStartTime;
   bool _statsActive = false;
 
@@ -531,6 +532,47 @@ class HostController extends GetxController {
       _readyReceiverStreamAddresses.remove(address);
     }
     await _service.disconnectFrom(address);
+  }
+
+  Future<void> reconnectAllReceivers() async {
+    if (isBulkReceiverActionRunning.value) return;
+    final addresses = configuredReceiverIps.toList(growable: false);
+    if (addresses.isEmpty) {
+      return _showError('Add at least one receiver first.');
+    }
+    isBulkReceiverActionRunning.value = true;
+    try {
+      for (final address in addresses) {
+        await disconnectReceiver(address);
+      }
+      for (final address in addresses) {
+        await connectReceiver(address);
+      }
+    } finally {
+      isBulkReceiverActionRunning.value = false;
+    }
+  }
+
+  Future<void> removeAllReceivers() async {
+    if (isBulkReceiverActionRunning.value) return;
+    final addresses = configuredReceiverIps.toList(growable: false);
+    if (addresses.isEmpty) return;
+    isBulkReceiverActionRunning.value = true;
+    try {
+      if (_audioService?.isStreaming ?? false) {
+        await stopSystemAudioStream();
+      }
+      for (final address in addresses) {
+        await _service.disconnectFrom(address);
+        removeReceiverIp(address);
+      }
+      receiverSessions.removeWhere(
+        (session) => addresses.contains(session.ipAddress),
+      );
+      receiverSessions.refresh();
+    } finally {
+      isBulkReceiverActionRunning.value = false;
+    }
   }
 
   void _handleStatus(ConnectionStatus status) {
