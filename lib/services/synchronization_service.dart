@@ -57,12 +57,13 @@ class ClockSynchronizationService implements SynchronizationService {
     required int receivedAtMicros,
     required int remoteTimestampMicros,
   }) {
-    final rtt =
-        (receivedAtMicros - sentAtMicros).clamp(0, 60 * 1000000).toInt();
+    final rtt = (receivedAtMicros - sentAtMicros)
+        .clamp(0, 60 * 1000000)
+        .toInt();
     final sampleOffset =
         ((remoteTimestampMicros - sentAtMicros) +
-                (remoteTimestampMicros - receivedAtMicros)) ~/
-            2;
+            (remoteTimestampMicros - receivedAtMicros)) ~/
+        2;
     final previous = _estimates[sessionId];
     final isNewBest = previous == null || rtt < previous.bestRoundTripMicros;
     final comparisonRtt = previous?.bestRoundTripMicros ?? rtt;

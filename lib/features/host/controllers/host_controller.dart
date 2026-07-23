@@ -84,7 +84,8 @@ class HostController extends GetxController {
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
 
-  bool get isAudioStreaming => _audioService?.isStreaming ?? false;
+  bool get isAudioStreaming =>
+      _nativeHostActive || (_audioService?.isStreaming ?? false);
   final diagnostics = <String, Object>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
@@ -518,14 +519,43 @@ class HostController extends GetxController {
         sessionId: _streamSessionId,
       );
     }
+    final nativeEligible =
+        Platform.isAndroid &&
+        !pairingText.contains('=') &&
+        (audioService.activeCodecType == AudioCodecType.pcm16 ||
+            audioService.activeCodecType == AudioCodecType.opus);
+    var nativeStarted = false;
+    if (nativeEligible) {
+      try {
+        await _nativeAudioRuntime.startNativeHostStream(
+          destinations: addresses,
+          port: port,
+          codec: audioService.activeCodecType,
+          encrypted: pairingText.isNotEmpty,
+          latencyMode: latencyMode.value,
+          sessionId: _streamSessionId,
+          pairingToken: pairingText.isEmpty ? null : pairingText,
+        );
+        _nativeHostActive = true;
+        nativeStarted = true;
+        audioStatus.value = AudioStreamStatus.streaming;
+      } catch (_) {
+        // Native capture/Opus is optional. The Dart path remains the
+        // compatibility fallback for devices without the native bridge.
+        _nativeHostActive = false;
+      }
+    }
     final commandArguments = <String>[
       _streamSessionId,
       '0',
       audioService.activeCodecType.name,
-      latencyMode.value.name,
+      if (nativeStarted) 'native' else latencyMode.value.name,
+      if (nativeStarted) latencyMode.value.name,
     ];
-    await audioService.startStreaming(ipAddresses: addresses, port: port);
-    if (!audioService.isStreaming) {
+    if (!nativeStarted) {
+      await audioService.startStreaming(ipAddresses: addresses, port: port);
+    }
+    if (!nativeStarted && !audioService.isStreaming) {
       await _sendControlCommand(addresses, ControlCommandType.streamStop, [
         _streamSessionId,
       ]);
@@ -749,6 +779,7 @@ class HostController extends GetxController {
       _nativeHostActive = false;
     }
     await _audioService?.stopStreaming();
+    audioStatus.value = AudioStreamStatus.stopped;
     receiverCount.value = 0;
     _streamingReceiverAddresses.clear();
     _readyReceiverStreamAddresses.clear();
@@ -1066,6 +1097,26 @@ class HostController extends GetxController {
 
   Future<void> _autoStartForConnectedReceivers() async {
     if (_autoStreamInProgress) return;
+    if (_nativeHostActive) {
+      final addresses = _receiverAddresses();
+      final additions = addresses
+          .where((address) => !_streamingReceiverAddresses.contains(address))
+          .toList(growable: false);
+      final reconnects = addresses
+          .where((address) => !_readyReceiverStreamAddresses.contains(address))
+          .toList(growable: false);
+      if (additions.isEmpty && reconnects.isEmpty) return;
+      _autoStreamInProgress = true;
+      try {
+        await _addReceiversToActiveNativeStream(
+          additions,
+          reconnects: reconnects,
+        );
+      } finally {
+        _autoStreamInProgress = false;
+      }
+      return;
+    }
     final audioService = _audioService;
     if (audioService == null) return;
     final addresses = _receiverAddresses();
@@ -1126,6 +1177,38 @@ class HostController extends GetxController {
       _streamSessionId,
       '0',
       audioService.activeCodecType.name,
+      latencyMode.value.name,
+    ];
+    await _sendControlCommand(
+      addresses,
+      ControlCommandType.streamPrepare,
+      commandArguments,
+    );
+    await _sendControlCommand(
+      addresses,
+      ControlCommandType.streamStart,
+      commandArguments,
+    );
+    _streamingReceiverAddresses.addAll(addresses);
+    _readyReceiverStreamAddresses.addAll(addresses);
+    receiverCount.value = _streamingReceiverAddresses.length;
+  }
+
+  Future<void> _addReceiversToActiveNativeStream(
+    List<String> additions, {
+    required List<String> reconnects,
+  }) async {
+    if (!_nativeHostActive) return;
+    if (additions.isNotEmpty) {
+      await _nativeAudioRuntime.addNativeHostReceivers(additions);
+    }
+    final addresses = {...additions, ...reconnects}.toList(growable: false);
+    if (addresses.isEmpty) return;
+    final commandArguments = <String>[
+      _streamSessionId,
+      '0',
+      _audioService?.activeCodecType.name ?? AudioCodecType.pcm16.name,
+      'native',
       latencyMode.value.name,
     ];
     await _sendControlCommand(

@@ -17,6 +17,7 @@ internal data class NativeAudioPacket(
         const val TYPE_CLOCK_OFFSET = 4
         const val TYPE_CLOCK_DRIFT = 5
         const val CODEC_PCM16 = 1
+        const val CODEC_OPUS = 2
         private const val MAGIC = 0x5341
         private const val VERSION = 2
         private const val HEADER_BYTES = 17
@@ -47,7 +48,7 @@ internal data class NativeAudioPacket(
             if (buffer.get().toInt() != VERSION) return null
             val type = buffer.get().toInt()
             val codec = buffer.get().toInt()
-            if (type !in TYPE_PCM..TYPE_CLOCK_DRIFT || codec !in CODEC_PCM16..CODEC_PCM16) {
+            if (type !in TYPE_PCM..TYPE_CLOCK_DRIFT || codec !in CODEC_PCM16..CODEC_OPUS) {
                 return null
             }
             val sequence = buffer.int.toLong() and 0xFFFFFFFFL

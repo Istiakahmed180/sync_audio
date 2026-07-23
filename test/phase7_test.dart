@@ -136,41 +136,44 @@ void main() {
     expect(snapshot.toRedactedMap().containsKey('rawAudio'), isFalse);
   });
 
-  test('clock synchronization filters samples per session and bounds drift', () async {
-    final service = ClockSynchronizationService();
-    await service.synchronize();
-    expect(service.isSynchronizing, isTrue);
+  test(
+    'clock synchronization filters samples per session and bounds drift',
+    () async {
+      final service = ClockSynchronizationService();
+      await service.synchronize();
+      expect(service.isSynchronizing, isTrue);
 
-    final first = service.recordSample(
-      sessionId: 'receiver-a',
-      sentAtMicros: 1000,
-      receivedAtMicros: 3000,
-      remoteTimestampMicros: 2500,
-    );
-    expect(first.roundTripTimeMicros, 2000);
-    expect(first.offsetMicros, 500);
+      final first = service.recordSample(
+        sessionId: 'receiver-a',
+        sentAtMicros: 1000,
+        receivedAtMicros: 3000,
+        remoteTimestampMicros: 2500,
+      );
+      expect(first.roundTripTimeMicros, 2000);
+      expect(first.offsetMicros, 500);
 
-    final second = service.recordSample(
-      sessionId: 'receiver-a',
-      sentAtMicros: 1_001_000,
-      receivedAtMicros: 1_003_000,
-      remoteTimestampMicros: 1_002_500,
-    );
-    expect(second.offsetMicros, 500);
-    expect(second.driftPpm.abs(), lessThanOrEqualTo(5000));
+      final second = service.recordSample(
+        sessionId: 'receiver-a',
+        sentAtMicros: 1_001_000,
+        receivedAtMicros: 1_003_000,
+        remoteTimestampMicros: 1_002_500,
+      );
+      expect(second.offsetMicros, 500);
+      expect(second.driftPpm.abs(), lessThanOrEqualTo(5000));
 
-    final independent = service.recordSample(
-      sessionId: 'receiver-b',
-      sentAtMicros: 1000,
-      receivedAtMicros: 5000,
-      remoteTimestampMicros: 4000,
-    );
-    expect(independent.offsetMicros, 1000);
+      final independent = service.recordSample(
+        sessionId: 'receiver-b',
+        sentAtMicros: 1000,
+        receivedAtMicros: 5000,
+        remoteTimestampMicros: 4000,
+      );
+      expect(independent.offsetMicros, 1000);
 
-    service.resetSession('receiver-a');
-    await service.stop();
-    expect(service.isSynchronizing, isFalse);
-  });
+      service.resetSession('receiver-a');
+      await service.stop();
+      expect(service.isSynchronizing, isFalse);
+    },
+  );
 
   test('TCP pairing and PING/PONG emit typed control events', () async {
     final receiver = TcpConnectionService()..setPairingToken('123456');

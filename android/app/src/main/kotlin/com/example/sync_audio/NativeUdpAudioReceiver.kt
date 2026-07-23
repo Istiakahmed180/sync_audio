@@ -16,6 +16,7 @@ internal class NativeUdpAudioReceiver(
     private val latencyMode: String,
     private val sessionId: String?,
     private val pairingToken: String?,
+    private val codec: Int,
     private val audioManager: AudioManager,
 ) {
     private val running = AtomicBoolean(false)
@@ -24,6 +25,7 @@ internal class NativeUdpAudioReceiver(
     private var receiveThread: Thread? = null
     private var playbackThread: Thread? = null
     private var audioTrack: AudioTrack? = null
+    private var opusDecoder = 0L
     @Volatile private var preferredOutputDeviceId: Int? = null
     private var receiverStartNanos = 0L
     @Volatile private var hostToLocalOffsetMicros = 0L
@@ -36,6 +38,11 @@ internal class NativeUdpAudioReceiver(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         jitter.configure(latencyMode)
+        if (codec == NativeAudioPacket.CODEC_OPUS) {
+            check(OpusCodecNative.isAvailable()) { "Native Opus is unavailable" }
+            opusDecoder = OpusCodecNative.createDecoder()
+            check(opusDecoder != 0L) { "Could not create native Opus decoder" }
+        }
         receiverStartNanos = System.nanoTime()
         audioTrack = createAudioTrack()
         socket = DatagramSocket(port)
@@ -82,7 +89,12 @@ internal class NativeUdpAudioReceiver(
                     }
                     NativeAudioPacket.TYPE_CLOCK_DRIFT -> driftPpm = packet.timestampMicros.coerceIn(-300, 300)
                     NativeAudioPacket.TYPE_PCM -> {
-                        if (packet.codec != NativeAudioPacket.CODEC_PCM16) continue
+                        if (packet.codec != codec) continue
+                        val pcm = if (codec == NativeAudioPacket.CODEC_OPUS) {
+                            OpusCodecNative.decode(opusDecoder, packet.payload) ?: continue
+                        } else {
+                            packet.payload
+                        }
                         val now = nowMicros()
                         if (!clockOffsetInitialized) {
                             // Native-only sessions do not have the Dart clock
@@ -97,7 +109,7 @@ internal class NativeUdpAudioReceiver(
                             NativeJitterPacket(
                                 sequence = packet.sequence,
                                 timestampMicros = packet.timestampMicros + hostToLocalOffsetMicros + correction,
-                                payload = packet.payload,
+                                payload = pcm,
                                 arrivalMicros = now,
                             ),
                         )
@@ -196,7 +208,7 @@ internal class NativeUdpAudioReceiver(
     }
 
     fun diagnostics(): Map<String, Any> = mapOf(
-        "path" to "native_pcm",
+        "path" to if (codec == NativeAudioPacket.CODEC_OPUS) "native_opus" else "native_pcm",
         "bufferPackets" to jitter.size,
         "targetBufferMicros" to jitter.targetMicros,
         "underruns" to jitter.underruns,
@@ -224,6 +236,8 @@ internal class NativeUdpAudioReceiver(
         }
         audioTrack = null
         jitter.reset()
+        OpusCodecNative.destroyDecoder(opusDecoder)
+        opusDecoder = 0L
         clockOffsetInitialized = false
     }
 }

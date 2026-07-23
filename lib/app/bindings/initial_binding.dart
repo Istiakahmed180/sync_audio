@@ -36,14 +36,20 @@ class InitialBinding extends Bindings {
       fenix: true,
     );
     Get.lazyPut<DeviceDiscoveryService>(
-      UdpDeviceDiscoveryService.new, fenix: true);
+      UdpDeviceDiscoveryService.new,
+      fenix: true,
+    );
     Get.lazyPut<SynchronizationService>(
-      ClockSynchronizationService.new, fenix: true);
+      ClockSynchronizationService.new,
+      fenix: true,
+    );
     Get.lazyPut<CalibrationStore>(SharedPrefsCalibrationStore.new, fenix: true);
     Get.lazyPut<PairingStore>(SharedPrefsPairingStore.new, fenix: true);
     Get.lazyPut<NativeAudioRuntime>(NativeAudioRuntime.new, fenix: true);
     Get.lazyPut<ScheduledStreamingService>(
-      ScheduledStreamingService.new, fenix: true);
+      ScheduledStreamingService.new,
+      fenix: true,
+    );
   }
 
   static AudioCaptureService _captureServiceFactory() {

@@ -204,17 +204,22 @@ class MainActivity : FlutterActivity() {
                         val mode = call.argument<String>("latencyMode") ?: "balanced"
                         val sessionId = call.argument<String>("sessionId")
                         val pairingToken = call.argument<String>("pairingToken")
-                        if (codec != "pcm16" || destinations.isNullOrEmpty() || port == null || sessionId == null ||
+                        if (codec !in listOf("pcm16", "opus") || destinations.isNullOrEmpty() || port == null || sessionId == null ||
                             (encrypted && pairingToken.isNullOrEmpty())
                         ) {
                             result.error(
                                 "NATIVE_PATH_UNAVAILABLE",
-                                "Native path currently supports PCM16 with optional AES-GCM",
+                                "Native path requires PCM16 or Opus and valid stream security settings",
                                 null
                             )
                             return@setMethodCallHandler
                         }
                         try {
+                            val nativeCodec = if (codec == "opus") NativeAudioPacket.CODEC_OPUS else NativeAudioPacket.CODEC_PCM16
+                            if (nativeCodec == NativeAudioPacket.CODEC_OPUS && !OpusCodecNative.isAvailable()) {
+                                result.error("NATIVE_OPUS_UNAVAILABLE", "Native Opus is unavailable", null)
+                                return@setMethodCallHandler
+                            }
                             pendingNativeSender?.stop()
                             pendingNativeSender = NativeUdpAudioSender(
                                 destinations = destinations.map(InetAddress::getByName),
@@ -222,6 +227,7 @@ class MainActivity : FlutterActivity() {
                                 targetDelayMicros = latencyDelayMicros(mode),
                                 sessionId = sessionId,
                                 pairingToken = if (encrypted) pairingToken else null,
+                                codec = nativeCodec,
                             )
                             requestSystemAudioCapture(result, pendingNativeSender)
                         } catch (error: Exception) {
@@ -239,22 +245,41 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "addNativeHostReceivers" -> {
+                        val destinations = call.argument<List<String>>("destinations")
+                        if (destinations.isNullOrEmpty()) {
+                            result.error("INVALID_DESTINATIONS", "No receivers supplied", null)
+                        } else if (nativeSender == null) {
+                            result.error("NATIVE_HOST_NOT_RUNNING", "Native host is not running", null)
+                        } else {
+                            nativeSender?.addDestinations(destinations.map(InetAddress::getByName))
+                            result.success(null)
+                        }
+                    }
+
                     "startNativeReceiver" -> {
                         val port = call.argument<Int>("port")
                         val mode = call.argument<String>("latencyMode") ?: "balanced"
+                        val codec = call.argument<String>("codec") ?: "pcm16"
                         val sessionId = call.argument<String>("sessionId")
                         val pairingToken = call.argument<String>("pairingToken")
-                        if (port == null) {
-                            result.error("INVALID_PORT", "Native receiver port is missing", null)
+                        if (port == null || codec !in listOf("pcm16", "opus")) {
+                            result.error("INVALID_NATIVE_CODEC", "Native receiver port or codec is invalid", null)
                             return@setMethodCallHandler
                         }
                         try {
+                            val nativeCodec = if (codec == "opus") NativeAudioPacket.CODEC_OPUS else NativeAudioPacket.CODEC_PCM16
+                            if (nativeCodec == NativeAudioPacket.CODEC_OPUS && !OpusCodecNative.isAvailable()) {
+                                result.error("NATIVE_OPUS_UNAVAILABLE", "Native Opus is unavailable", null)
+                                return@setMethodCallHandler
+                            }
                             nativeReceiver?.stop()
                             nativeReceiver = NativeUdpAudioReceiver(
                                 port = port,
                                 latencyMode = mode,
                                 sessionId = sessionId,
                                 pairingToken = pairingToken,
+                                codec = nativeCodec,
                                 audioManager = getSystemService(AudioManager::class.java),
                             ).also { it.start() }
                             result.success(null)

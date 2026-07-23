@@ -35,9 +35,10 @@ for system audio; older macOS versions use the microphone fallback.
 
 For encrypted transport, use one shared pairing token, restart the session, and confirm that audio stops when the token is changed or a packet is tampered with. Never paste pairing tokens into bug reports.
 
-The current native path is PCM16-only. It supports the established AES-GCM
-session format when one shared pairing token is used; Opus and per-IP token
-fan-out remain on the established Dart fallback.
+The Android native path supports PCM16 and Opus, including AES-GCM when one
+shared pairing token is used. Per-IP token fan-out remains on the established
+Dart fallback. If the native Opus library or MediaProjection path is
+unavailable, the Host falls back to the Dart transport automatically.
 
 Expected engineering targets, to be measured rather than assumed:
 

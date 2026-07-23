@@ -374,7 +374,8 @@ class ReceiverController extends GetxController {
         final nativeRequested =
             event.command.arguments.length >= 4 &&
             event.command.arguments[3] == 'native' &&
-            event.command.arguments[2] == AudioCodecType.pcm16.name;
+            (event.command.arguments[2] == AudioCodecType.pcm16.name ||
+                event.command.arguments[2] == AudioCodecType.opus.name);
         if (isPrepare) {
           // A new Host start can follow a cancelled/failed previous attempt.
           // Clear any receiver left from that attempt before applying the new
@@ -419,7 +420,10 @@ class ReceiverController extends GetxController {
           try {
             await _nativeAudioRuntime.startNativeReceiver(
               port: AppConstants.audioPort,
-              latencyMode: LatencyMode.stable,
+              latencyMode: _nativeLatencyMode(event.command.arguments),
+              codec: event.command.arguments[2] == AudioCodecType.opus.name
+                  ? AudioCodecType.opus
+                  : AudioCodecType.pcm16,
               sessionId: sessionId,
               pairingToken: _pairingTokenValue,
             );
@@ -467,6 +471,14 @@ class ReceiverController extends GetxController {
       default:
         break;
     }
+  }
+
+  LatencyMode _nativeLatencyMode(List<String> arguments) {
+    if (arguments.length < 5) return LatencyMode.stable;
+    return LatencyMode.values.firstWhere(
+      (mode) => mode.name == arguments[4],
+      orElse: () => LatencyMode.stable,
+    );
   }
 
   void _sendBufferStatus() {

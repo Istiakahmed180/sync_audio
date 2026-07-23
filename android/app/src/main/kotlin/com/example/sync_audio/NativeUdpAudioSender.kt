@@ -9,12 +9,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 
 internal class NativeUdpAudioSender(
-    private val destinations: List<InetAddress>,
+    destinations: List<InetAddress>,
     private val port: Int,
     private val targetDelayMicros: Long,
     private val sessionId: String,
     private val pairingToken: String?,
+    private val codec: Int,
 ) {
+    private val destinations = destinations.toMutableList()
     private val running = AtomicBoolean(false)
     private val queue = ArrayBlockingQueue<ByteArray>(8)
     private var socket: DatagramSocket? = null
@@ -22,6 +24,7 @@ internal class NativeUdpAudioSender(
     private var startNanos = 0L
     private var sequence = 0L
     private var pending = ByteArray(0)
+    private var opusEncoder = 0L
     private var clockSequence = 0L
     private var lastClockSyncMicros = 0L
     private val clockRequests = HashMap<Long, Long>()
@@ -32,11 +35,24 @@ internal class NativeUdpAudioSender(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         require(destinations.isNotEmpty()) { "Native sender requires a receiver" }
+        if (codec == NativeAudioPacket.CODEC_OPUS) {
+            check(OpusCodecNative.isAvailable()) { "Native Opus is unavailable" }
+            opusEncoder = OpusCodecNative.createEncoder()
+            check(opusEncoder != 0L) { "Could not create native Opus encoder" }
+        }
         socket = DatagramSocket()
         socket?.soTimeout = 1
         startNanos = System.nanoTime()
         SystemAudioPcmBus.nativeSink = { bytes -> onPcm(bytes) }
         worker = Thread({ sendLoop() }, "sync-native-udp-sender").also { it.start() }
+    }
+
+    fun addDestinations(newDestinations: List<InetAddress>) {
+        synchronized(destinations) {
+            newDestinations
+                .filter { candidate -> destinations.none { it.hostAddress == candidate.hostAddress } }
+                .forEach(destinations::add)
+        }
     }
 
     private fun onPcm(bytes: ByteArray) {
@@ -59,15 +75,22 @@ internal class NativeUdpAudioSender(
                 if (frame != null) {
                     val audioSequence = sequence++
                     val timestamp = elapsedMicros() + targetDelayMicros
+                    val encoded = if (codec == NativeAudioPacket.CODEC_OPUS) {
+                        OpusCodecNative.encode(opusEncoder, frame)
+                            ?: throw IllegalStateException("Native Opus encoding failed")
+                    } else {
+                        frame
+                    }
                     val clear = NativeAudioPacket.encode(
                         type = NativeAudioPacket.TYPE_PCM,
                         sequence = audioSequence,
                         timestampMicros = timestamp,
-                        payload = frame,
+                        payload = encoded,
+                        codec = codec,
                     )
                     val wire = if (pairingToken.isNullOrEmpty()) clear else
                         NativeSecureAudioPacket.encrypt(clear, sessionId, pairingToken, audioSequence)
-                    destinations.forEach { destination ->
+                    synchronized(destinations) { destinations.toList() }.forEach { destination ->
                         socket?.send(DatagramPacket(wire, wire.size, destination, port))
                     }
                 }
@@ -86,7 +109,7 @@ internal class NativeUdpAudioSender(
     }
 
     private fun sendClockRequests(nowMicros: Long) {
-        destinations.forEach { destination ->
+        synchronized(destinations) { destinations.toList() }.forEach { destination ->
             val requestSequence = clockSequence++
             clockRequests[requestSequence] = nowMicros
             val request = NativeAudioPacket.encode(
@@ -146,6 +169,8 @@ internal class NativeUdpAudioSender(
         socket?.close()
         socket = null
         pending = ByteArray(0)
+        OpusCodecNative.destroyEncoder(opusEncoder)
+        opusEncoder = 0L
         clockRequests.clear()
         syncStates.clear()
     }

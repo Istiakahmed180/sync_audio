@@ -35,15 +35,24 @@ class NativeAudioRuntime {
     }
   }
 
+  Future<void> addNativeHostReceivers(List<String> destinations) {
+    return _channel.invokeMethod<void>(
+      'addNativeHostReceivers',
+      <String, Object>{'destinations': destinations},
+    );
+  }
+
   Future<void> startNativeReceiver({
     required int port,
     required LatencyMode latencyMode,
+    required AudioCodecType codec,
     String? sessionId,
     String? pairingToken,
   }) {
     final arguments = <String, Object>{
       'port': port,
       'latencyMode': latencyMode.name,
+      'codec': codec.name,
     };
     if (sessionId != null) arguments['sessionId'] = sessionId;
     if (pairingToken != null) arguments['pairingToken'] = pairingToken;
