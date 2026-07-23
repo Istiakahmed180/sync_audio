@@ -16,6 +16,7 @@ import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
+import '../../../services/network_preflight_service.dart';
 import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
@@ -58,6 +59,7 @@ class HostController extends GetxController {
   final CalibrationStore _calibrationStore;
   final DeviceDiscoveryService _discoveryService;
   final NativeAudioRuntime _nativeAudioRuntime;
+  final _networkPreflightService = NetworkPreflightService();
   final _sessionRestoreStore = SessionRestoreStore();
   final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
@@ -134,6 +136,8 @@ class HostController extends GetxController {
   final masterReceiverVolume = 1.0.obs;
   final pairedDevices = <PairedDevice>[].obs;
   final savedGroups = <DeviceGroup>[].obs;
+  final preflightResults = <String, NetworkPreflightResult>{}.obs;
+  final preflightRunning = <String>{}.obs;
   final isBulkReceiverActionRunning = false.obs;
   DateTime? _statsStartTime;
   bool _statsActive = false;
@@ -160,6 +164,31 @@ class HostController extends GetxController {
 
   Future<void> loadSavedGroups() async {
     savedGroups.value = await _pairedStore.loadGroups();
+  }
+
+  Future<void> runNetworkTest(String address) async {
+    if (preflightRunning.contains(address)) return;
+    preflightRunning.add(address);
+    preflightRunning.refresh();
+    try {
+      final controlPortValue =
+          int.tryParse(portController.text.trim()) ??
+          HostController.controlPort;
+      final audioPort = int.tryParse(audioPortController.text.trim()) ?? 5051;
+      final session = receiverSessionFor(address);
+      final result = await _networkPreflightService.run(
+        address: address,
+        controlPort: controlPortValue,
+        audioPort: audioPort,
+        isControlConnected:
+            session?.controlStatus == ControlConnectionStatus.connected,
+      );
+      preflightResults[address] = result;
+      preflightResults.refresh();
+    } finally {
+      preflightRunning.remove(address);
+      preflightRunning.refresh();
+    }
   }
 
   Future<void> saveCurrentAsGroup(String groupName) async {
@@ -1138,6 +1167,8 @@ class HostController extends GetxController {
     discoveredDeviceLatencyMs.remove(address);
     receiverCalibrationMicros.remove(address);
     receiverPairingControllers.remove(address)?.dispose();
+    preflightResults.remove(address);
+    preflightRunning.remove(address);
     unawaited(_saveSessionConfiguration());
   }
 

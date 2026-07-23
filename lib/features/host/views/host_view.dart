@@ -8,6 +8,7 @@ import '../../../app/constants/platform_capabilities.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../../services/network_preflight_service.dart';
 import '../controllers/host_controller.dart';
 import 'qr_scanner_view.dart';
 
@@ -159,6 +160,11 @@ class HostView extends GetView<HostController> {
                                   session,
                                   delta,
                                 ),
+                          preflightResult: controller.preflightResults[address],
+                          isPreflightRunning: controller.preflightRunning
+                              .contains(address),
+                          onRunPreflight: () =>
+                              controller.runNetworkTest(address),
                         ),
                       );
                     }),
@@ -562,6 +568,9 @@ class _ReceiverTargetCard extends StatelessWidget {
     required this.onConnect,
     required this.onDisconnect,
     this.onAdjustCalibration,
+    required this.onRunPreflight,
+    required this.isPreflightRunning,
+    this.preflightResult,
     this.deviceName,
     this.latencyMs,
     this.diagnostics = const <String, Object>{},
@@ -580,6 +589,9 @@ class _ReceiverTargetCard extends StatelessWidget {
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
   final Future<void> Function(int deltaMilliseconds)? onAdjustCalibration;
+  final Future<void> Function() onRunPreflight;
+  final bool isPreflightRunning;
+  final NetworkPreflightResult? preflightResult;
 
   String get _displayName =>
       (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
@@ -754,8 +766,85 @@ class _ReceiverTargetCard extends StatelessWidget {
               calibrationMicros: calibrationMicros,
               onAdjust: onAdjustCalibration,
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: isPreflightRunning ? null : onRunPreflight,
+                icon: isPreflightRunning
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.network_check_rounded),
+                label: Text(
+                  isPreflightRunning ? 'Testing network…' : 'Test network',
+                ),
+              ),
+            ),
+            if (preflightResult != null)
+              _PreflightResultView(result: preflightResult!),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PreflightResultView extends StatelessWidget {
+  const _PreflightResultView({required this.result});
+
+  final NetworkPreflightResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 4, bottom: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: (result.passed ? Colors.green : scheme.error).withValues(
+          alpha: .08,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            result.passed ? 'Network is ready' : 'Network test found a problem',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 4),
+          ...result.checks.map(
+            (check) => Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  switch (check.state) {
+                    PreflightCheckState.passed => Icons.check_circle,
+                    PreflightCheckState.failed => Icons.error,
+                    PreflightCheckState.skipped => Icons.info_outline,
+                  },
+                  size: 16,
+                  color: switch (check.state) {
+                    PreflightCheckState.passed => Colors.green,
+                    PreflightCheckState.failed => scheme.error,
+                    PreflightCheckState.skipped => scheme.onSurfaceVariant,
+                  },
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${check.label}: ${check.detail}${check.latencyMs == null ? '' : ' (${check.latencyMs} ms)'}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
