@@ -15,6 +15,7 @@ import 'audio_playback_service.dart';
 import 'adaptive_jitter_buffer.dart';
 import 'latency_metrics.dart';
 import 'secure_transport.dart';
+import 'synchronization_service.dart';
 
 abstract class AudioStreamService {
   Stream<AudioStreamStatus> get statusChanges;
@@ -101,10 +102,13 @@ class UdpAudioService implements AudioStreamService {
     required this.captureService,
     AudioEncoder? encoder,
     AudioDecoder? decoder,
+    SynchronizationService? synchronizationService,
     this.jitterBuffer = const Duration(milliseconds: 120),
     this.syncInterval = const Duration(seconds: 1),
   }) : encoder = encoder ?? Pcm16AudioEncoder(),
-       decoder = decoder ?? Pcm16AudioDecoder();
+       decoder = decoder ?? Pcm16AudioDecoder(),
+       synchronizationService =
+           synchronizationService ?? ClockSynchronizationService();
 
   final AudioPlaybackService playbackService;
   final AudioCaptureService captureService;
@@ -112,6 +116,7 @@ class UdpAudioService implements AudioStreamService {
   AudioDecoder decoder;
   final Duration jitterBuffer;
   final Duration syncInterval;
+  final SynchronizationService synchronizationService;
   LatencyMode _latencyMode = LatencyMode.stable;
   bool _adaptiveJitterEnabled = true;
   bool _driftCorrectionEnabled = true;
@@ -145,9 +150,6 @@ class UdpAudioService implements AudioStreamService {
   bool _receiving = false;
   List<InternetAddress> _destinations = const [];
   final Map<String, ReceiverSession> _sessions = <String, ReceiverSession>{};
-  // The lowest observed RTT is the least affected by Wi-Fi queueing. Keep it
-  // per receiver so clock-offset samples use the cleanest network path.
-  final Map<String, int> _bestRoundTripMicros = <String, int>{};
   final Map<int, _ClockRequest> _clockRequests = <int, _ClockRequest>{};
   int _destinationPort = 0;
   int _packetSequence = 0;
@@ -318,7 +320,7 @@ class UdpAudioService implements AudioStreamService {
       _packetSequence = 0;
       _fecFrames.clear();
       _clockSequence = 0;
-      _bestRoundTripMicros.clear();
+      await synchronizationService.synchronize();
       _droppedPackets = 0;
       _totalBytesSent = 0;
       _pendingEncoderPcm = Uint8List(0);
@@ -431,6 +433,7 @@ class UdpAudioService implements AudioStreamService {
         .toList(growable: false);
     for (final id in sessionIds) {
       _sessions.remove(id);
+      synchronizationService.resetSession(id);
     }
     if (_destinations.isEmpty) {
       await stopStreaming();
@@ -488,57 +491,35 @@ class UdpAudioService implements AudioStreamService {
       final receivedAt = _streamClock!.elapsedMicroseconds;
       final session = _sessions[request.sessionId];
       if (session == null) continue;
-      final roundTripTime = receivedAt - request.sentAtMicros;
-      final sampleOffset =
-          ((packet.timestampMicros - request.sentAtMicros) +
-              (packet.timestampMicros - receivedAt)) ~/
-          2;
-      final bestRoundTrip = _bestRoundTripMicros[request.sessionId];
-      final isNewBest = bestRoundTrip == null || roundTripTime < bestRoundTrip;
-      if (isNewBest) {
-        _bestRoundTripMicros[request.sessionId] = roundTripTime;
-      }
-      final comparisonRoundTrip = bestRoundTrip ?? roundTripTime;
-      // Prefer a new minimum-RTT sample. Heavily queued samples are still
-      // useful, but only with a small weight so they do not move every
-      // receiver's playback clock audibly on a busy Wi-Fi network.
-      final alpha = session.lastSyncMicros == null
-          ? 1.0
-          : isNewBest
-          ? 0.65
-          : roundTripTime <= comparisonRoundTrip + 2000
-          ? 0.25
-          : 0.06;
-      final filteredOffset =
-          session.clockOffsetMicros +
-          ((sampleOffset - session.clockOffsetMicros) * alpha).round();
-      final elapsed = session.lastSyncMicros == null
-          ? 0
-          : receivedAt - session.lastSyncMicros!;
-      final driftPpm = elapsed <= 0
-          ? session.clockDriftPpm
-          : (((filteredOffset - session.clockOffsetMicros) * 1000000) / elapsed)
-                .round();
+      final estimate = synchronizationService.recordSample(
+        sessionId: request.sessionId,
+        sentAtMicros: request.sentAtMicros,
+        receivedAtMicros: receivedAt,
+        remoteTimestampMicros: packet.timestampMicros,
+      );
       final updated = session.copyWith(
         status: ReceiverSessionStatus.connected,
-        clockOffsetMicros: filteredOffset,
-        clockDriftPpm: driftPpm.clamp(-5000, 5000),
-        roundTripTimeMicros: roundTripTime,
+        clockOffsetMicros: estimate.offsetMicros,
+        clockDriftPpm: estimate.driftPpm,
+        roundTripTimeMicros: estimate.roundTripTimeMicros,
         lastSyncMicros: receivedAt,
         reconnectAttempt: 0,
       );
       _updateSession(updated);
       _metrics.clockSample(
-        rttMicros: roundTripTime,
-        offsetMicros: filteredOffset,
+        rttMicros: estimate.roundTripTimeMicros,
+        offsetMicros: estimate.offsetMicros,
       );
       final appliedDrift = _driftCorrectionEnabled
-          ? driftPpm.clamp(
+          ? estimate.driftPpm.clamp(
               -_maximumDriftCorrectionPpm,
               _maximumDriftCorrectionPpm,
             )
           : 0;
-      _metrics.setDrift(estimatedPpm: driftPpm, appliedPpm: appliedDrift);
+      _metrics.setDrift(
+        estimatedPpm: estimate.driftPpm,
+        appliedPpm: appliedDrift,
+      );
       _sendClockOffset(updated, packet.sequence);
       _sendClockDrift(updated, packet.sequence, appliedDrift);
     }
@@ -737,7 +718,7 @@ class UdpAudioService implements AudioStreamService {
     _clockSyncTimer?.cancel();
     _clockSyncTimer = null;
     _clockRequests.clear();
-    _bestRoundTripMicros.clear();
+    await synchronizationService.stop();
     _pendingEncoderPcm = Uint8List(0);
     _nextAudioTimestampMicros = null;
     await decoder.reset();

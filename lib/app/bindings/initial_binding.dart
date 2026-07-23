@@ -31,13 +31,14 @@ class InitialBinding extends Bindings {
       () => UdpAudioService(
         playbackService: Get.find<AudioPlaybackService>(),
         captureService: Get.find<AudioCaptureService>(),
+        synchronizationService: Get.find<SynchronizationService>(),
       ),
       fenix: true,
     );
     Get.lazyPut<DeviceDiscoveryService>(
       UdpDeviceDiscoveryService.new, fenix: true);
     Get.lazyPut<SynchronizationService>(
-      PlaceholderSynchronizationService.new, fenix: true);
+      ClockSynchronizationService.new, fenix: true);
     Get.lazyPut<CalibrationStore>(SharedPrefsCalibrationStore.new, fenix: true);
     Get.lazyPut<PairingStore>(SharedPrefsPairingStore.new, fenix: true);
     Get.lazyPut<NativeAudioRuntime>(NativeAudioRuntime.new, fenix: true);
