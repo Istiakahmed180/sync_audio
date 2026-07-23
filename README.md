@@ -181,6 +181,7 @@ Host screen:
 | **QR pairing** | Host scans the Receiver's QR code for one‑tap setup |
 | **Manual pairing** | Enter IP and pairing code by hand |
 | **Device discovery** | Host broadcasts to find nearby Receivers on the LAN |
+| **mDNS fallback** | Finds Receivers when LAN UDP broadcast is blocked but multicast DNS is available |
 | **Saved groups** | Save receiver sets as named groups for quick re‑setup |
 | **Paired devices** | Previously connected devices appear for quick re‑add |
 | **Scheduled streaming** | Set a daily time window for automatic audio start/stop |
@@ -294,8 +295,8 @@ files and DLLs are required.
 - **No universal sample-rate guarantee.** The recommended route is 48 kHz mono
   PCM; hardware or virtual devices with other formats may need OS-level format
   configuration.
-- **No NSD/mDNS discovery.** UDP broadcast discovery only — all devices must be
-  on the same subnet.
+- **mDNS fallback still depends on multicast access.** Networks that block both
+  broadcast and multicast require QR or manual pairing.
 - **Single shared pairing token for encryption.** Per‑device tokens only work
   for control pairing, not for encrypted audio fan‑out.
 - **Scheduling is best‑effort.** Runs on a 30‑second polling timer. Does not use
