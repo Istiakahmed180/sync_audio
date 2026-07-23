@@ -9,6 +9,7 @@ enum ControlCommandType {
   setPlaybackOffset,
   setPlaybackVolume,
   setDeviceName,
+  setDeviceNameAck,
   bufferStatus,
   error,
 }
@@ -25,6 +26,7 @@ extension ControlCommandTypeWireName on ControlCommandType {
     ControlCommandType.setPlaybackOffset => 'SET_PLAYBACK_OFFSET',
     ControlCommandType.setPlaybackVolume => 'SET_PLAYBACK_VOLUME',
     ControlCommandType.setDeviceName => 'SET_DEVICE_NAME',
+    ControlCommandType.setDeviceNameAck => 'SET_DEVICE_NAME_ACK',
     ControlCommandType.bufferStatus => 'BUFFER_STATUS',
     ControlCommandType.error => 'ERROR',
   };
@@ -66,6 +68,7 @@ class ControlCommand {
         ControlCommandType.setPlaybackOffset => count == 1,
         ControlCommandType.setPlaybackVolume => count == 1,
         ControlCommandType.setDeviceName => count == 1,
+        ControlCommandType.setDeviceNameAck => count == 2,
         // Versioned receiver diagnostics. The first two fields remain the
         // legacy buffered duration/packet count so older peers can still
         // parse and use this command.

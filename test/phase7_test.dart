@@ -54,6 +54,10 @@ void main() {
       ['BUFFER_UNDERRUN', 'packet lost'],
     );
     expect(ControlCommand.parse('PONG:bad'), isNull);
+    expect(
+      ControlCommand.parse('SET_DEVICE_NAME_ACK:OK:Living%20Room')?.arguments,
+      ['OK', 'Living%20Room'],
+    );
   });
 
   test('encrypted audio packets reject tampering and replay', () async {

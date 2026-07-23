@@ -119,6 +119,7 @@ class HostController extends GetxController {
   bool _autoStreamInProgress = false;
   final _receiverDiagnostics = <String, Map<String, Object>>{};
   final _receiverDiagnosticsUpdatedAt = <String, DateTime>{};
+  final _renameAcks = <String, Completer<ControlCommand>>{};
   final _streamingReceiverAddresses = <String>{};
   final _readyReceiverStreamAddresses = <String>{};
   final _restartingAudioSettings = false.obs;
@@ -391,15 +392,44 @@ class HostController extends GetxController {
         session.controlStatus != ControlConnectionStatus.connected) {
       return _showError('Connect to the receiver before renaming it.');
     }
-    await _service.sendControlCommand(
-      receiverId: session.id,
-      command: ControlCommand(
-        type: ControlCommandType.setDeviceName,
-        arguments: [name],
-      ),
+    final ack = Completer<ControlCommand>();
+    _renameAcks[session.id]?.completeError(
+      StateError('A newer rename request replaced this request.'),
     );
-    // Update the connection service's cached session as well. Otherwise a
-    // later ping/status event can publish its stale name back to the Host UI.
+    _renameAcks[session.id] = ack;
+    try {
+      await _service.sendControlCommand(
+        receiverId: session.id,
+        command: ControlCommand(
+          type: ControlCommandType.setDeviceName,
+          arguments: [name],
+        ),
+      );
+      final response = await ack.future.timeout(const Duration(seconds: 4));
+      final status = response.arguments.first;
+      if (status != 'OK') {
+        return _showError(
+          response.arguments.length > 1
+              ? response.arguments[1]
+              : 'Receiver rejected the new name.',
+        );
+      }
+      final confirmedName = response.arguments.length > 1
+          ? Uri.decodeComponent(response.arguments[1])
+          : '';
+      if (confirmedName != name) {
+        return _showError('Receiver confirmed a different name.');
+      }
+    } on TimeoutException {
+      return _showError('Receiver did not confirm the name change.');
+    } catch (_) {
+      return _showError('Could not rename the Receiver.');
+    } finally {
+      if (identical(_renameAcks[session.id], ack)) {
+        _renameAcks.remove(session.id);
+      }
+    }
+    // Update the cached session only after the Receiver confirms persistence.
     _service.setRemoteDeviceName(receiverId: session.id, name: name);
     discoveredDeviceNames[address] = name;
     final index = receiverSessions.indexWhere((item) => item.id == session.id);
@@ -1032,6 +1062,10 @@ class HostController extends GetxController {
   }
 
   void _handleControlEvent(ControlEvent event) {
+    if (event.command.type == ControlCommandType.setDeviceNameAck) {
+      _renameAcks.remove(event.sourceId)?.complete(event.command);
+      return;
+    }
     if (event.command.type != ControlCommandType.bufferStatus ||
         event.command.arguments.length < 7) {
       return;

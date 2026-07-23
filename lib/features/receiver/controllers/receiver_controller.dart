@@ -580,7 +580,40 @@ class ReceiverController extends GetxController {
           unawaited(audioService.setPlaybackVolume(volume));
         }
       case ControlCommandType.setDeviceName:
-        _applyLocalDeviceName(event.command.arguments.first);
+        final requestedName = event.command.arguments.first.trim();
+        if (requestedName.isEmpty) {
+          await _service.sendControlCommand(
+            receiverId: event.sourceId,
+            command: const ControlCommand(
+              type: ControlCommandType.setDeviceNameAck,
+              arguments: ['ERROR', 'Receiver name cannot be empty.'],
+            ),
+          );
+          break;
+        }
+        if (requestedName.length > 40) {
+          await _service.sendControlCommand(
+            receiverId: event.sourceId,
+            command: const ControlCommand(
+              type: ControlCommandType.setDeviceNameAck,
+              arguments: [
+                'ERROR',
+                'Receiver name must be 40 characters or fewer.',
+              ],
+            ),
+          );
+          break;
+        }
+        _applyLocalDeviceName(requestedName);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('receiver_device_name', requestedName);
+        await _service.sendControlCommand(
+          receiverId: event.sourceId,
+          command: ControlCommand(
+            type: ControlCommandType.setDeviceNameAck,
+            arguments: ['OK', Uri.encodeComponent(requestedName)],
+          ),
+        );
       case ControlCommandType.bufferStatus:
         if (event.command.arguments.length >= 6) {
           final rtt = int.tryParse(event.command.arguments[5]);
