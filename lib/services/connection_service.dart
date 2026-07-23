@@ -296,7 +296,10 @@ class TcpConnectionService implements ConnectionService {
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
-      if (_establishedConnections.contains(id)) _scheduleReconnect(id);
+      // Keep trying while this receiver remains desired. This covers both a
+      // previously established socket lost during a Wi-Fi hiccup and a
+      // receiver that is temporarily unavailable during the initial connect.
+      if (_desiredReceivers.containsKey(id)) _scheduleReconnect(id);
     } on TimeoutException {
       _emitError(
         'Connection to ${target.ipAddress} timed out. Make sure the device is on the same Wi‑Fi network.',
@@ -304,7 +307,7 @@ class TcpConnectionService implements ConnectionService {
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
       );
-      if (_establishedConnections.contains(id)) _scheduleReconnect(id);
+      if (_desiredReceivers.containsKey(id)) _scheduleReconnect(id);
     } finally {
       _connecting.remove(id);
     }
