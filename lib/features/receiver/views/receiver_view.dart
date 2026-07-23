@@ -176,6 +176,7 @@ class ReceiverView extends GetView<ReceiverController> {
                   deviceName: controller.deviceName.value,
                   ipAddress: controller.localIpAddress.value,
                   pairingCode: controller.pairingToken.value,
+                  deviceId: controller.deviceId.value,
                   expiresAt: controller.pairingTokenExpiresAt.value,
                 ),
               ),
@@ -202,16 +203,18 @@ class _ConnectionInfoCard extends StatelessWidget {
     required this.deviceName,
     required this.ipAddress,
     required this.pairingCode,
+    required this.deviceId,
     required this.expiresAt,
   });
 
   final String deviceName;
   final String ipAddress;
   final String pairingCode;
+  final String deviceId;
   final DateTime? expiresAt;
 
   String get _connectionInfo =>
-      '$ipAddress:5050:$pairingCode:${Uri.encodeComponent(deviceName)}';
+      '$ipAddress:5050:$pairingCode:${Uri.encodeComponent(deviceName)}:$deviceId';
 
   @override
   Widget build(BuildContext context) {

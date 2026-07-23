@@ -80,6 +80,7 @@ class HostController extends GetxController {
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
   final discoveredDeviceNames = <String, String>{}.obs;
+  final discoveredDeviceIds = <String, String>{}.obs;
   final discoveredDeviceLatencyMs = <String, int>{}.obs;
   final discoveredDevices = <AudioDevice>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
@@ -205,6 +206,11 @@ class HostController extends GetxController {
       DeviceGroup(
         name: name,
         deviceIps: configuredReceiverIps.toList(),
+        deviceIds: {
+          for (final ip in configuredReceiverIps)
+            if (discoveredDeviceIds[ip]?.isNotEmpty == true)
+              ip: discoveredDeviceIds[ip]!,
+        },
         pairingCodes: pairingCodes,
         receiverVolumes: {
           for (final ip in configuredReceiverIps) ip: volumeForReceiver(ip),
@@ -219,8 +225,10 @@ class HostController extends GetxController {
   }
 
   Future<void> applyGroup(DeviceGroup group) async {
+    final resolvedAddresses = await _resolveGroupAddresses(group);
+    final addresses = resolvedAddresses.keys.toList(growable: false);
     final previousCalibrations = <String, int>{
-      for (final ip in group.deviceIps)
+      for (final ip in addresses)
         ip:
             receiverCalibrationMicros[ip] ??
             receiverSessionFor(ip)?.playbackCalibrationMicros ??
@@ -231,17 +239,18 @@ class HostController extends GetxController {
     }
     receiverPairingControllers.clear();
     configuredReceiverIps.clear();
-    for (final ip in group.deviceIps) {
+    for (final ip in addresses) {
+      final savedIp = resolvedAddresses[ip]!;
       configuredReceiverIps.add(ip);
       receiverPairingControllers[ip] = TextEditingController(
-        text: group.pairingCodes[ip] ?? '',
+        text: group.pairingCodes[savedIp] ?? '',
       );
-      final volume = group.receiverVolumes[ip];
+      final volume = group.receiverVolumes[savedIp];
       if (volume != null) {
         receiverVolumes[ip] = volume.clamp(0.0, 1.5).toDouble();
         receiverMuted[ip] = volume <= 0;
       }
-      final calibration = group.receiverCalibrations[ip];
+      final calibration = group.receiverCalibrations[savedIp];
       if (calibration != null) {
         receiverCalibrationMicros[ip] = calibration;
       }
@@ -250,9 +259,10 @@ class HostController extends GetxController {
     receiverVolumes.refresh();
     receiverMuted.refresh();
     receiverCalibrationMicros.refresh();
-    for (final ip in group.deviceIps) {
+    for (final ip in addresses) {
+      final savedIp = resolvedAddresses[ip]!;
       final session = receiverSessionFor(ip);
-      final calibration = group.receiverCalibrations[ip];
+      final calibration = group.receiverCalibrations[savedIp];
       if (calibration != null) {
         await _calibrationStore.write(ip, calibration);
       }
@@ -263,13 +273,37 @@ class HostController extends GetxController {
           await adjustReceiverCalibration(session, delta);
         }
       }
-      if (group.receiverVolumes.containsKey(ip)) {
+      if (group.receiverVolumes.containsKey(savedIp)) {
         await _sendReceiverVolume(
           ip,
           receiverMuted[ip] == true ? 0 : volumeForReceiver(ip),
         );
       }
     }
+  }
+
+  Future<Map<String, String>> _resolveGroupAddresses(DeviceGroup group) async {
+    final resolved = <String, String>{};
+    Map<String, AudioDevice> byId = const <String, AudioDevice>{};
+    if (group.deviceIds.isNotEmpty) {
+      try {
+        final devices = await _discoveryService.discover();
+        byId = {for (final device in devices) device.id: device};
+      } catch (_) {
+        // Fall back to the saved IPs when discovery is unavailable.
+      }
+    }
+    for (final savedIp in group.deviceIps) {
+      final deviceId = group.deviceIds[savedIp];
+      final device = deviceId == null ? null : byId[deviceId];
+      final address = device?.ipAddress ?? savedIp;
+      resolved[address] = savedIp;
+      if (device != null) {
+        discoveredDeviceIds[address] = device.id;
+        discoveredDeviceNames[address] = device.name;
+      }
+    }
+    return resolved;
   }
 
   Future<void> deleteGroup(String name) async {
@@ -375,7 +409,12 @@ class HostController extends GetxController {
       );
       receiverSessions.refresh();
     }
-    await _pairedStore.savePair(ip: address, port: session.port, name: name);
+    await _pairedStore.savePair(
+      ip: address,
+      port: session.port,
+      name: name,
+      deviceId: discoveredDeviceIds[address],
+    );
     await loadPairedDevices();
   }
 
@@ -485,8 +524,19 @@ class HostController extends GetxController {
     try {
       final snapshot = await _sessionRestoreStore.loadHostSession();
       if (snapshot == null || snapshot.receivers.isEmpty) return;
+      List<AudioDevice> discovered = const <AudioDevice>[];
+      try {
+        discovered = await _discoveryService.discover();
+      } catch (_) {
+        // Session restore must still work from the last known IP when the
+        // current network blocks discovery or is temporarily unavailable.
+      }
+      final devicesById = {for (final device in discovered) device.id: device};
       configuredReceiverIps.assignAll(
-        snapshot.receivers.map((receiver) => receiver.ipAddress),
+        snapshot.receivers.map(
+          (receiver) =>
+              devicesById[receiver.deviceId]?.ipAddress ?? receiver.ipAddress,
+        ),
       );
       portController.text = '${snapshot.receivers.first.port}';
       audioPortController.text = '${snapshot.audioPort}';
@@ -503,10 +553,19 @@ class HostController extends GetxController {
       maximumDriftCorrectionPpm.value = snapshot.maximumDriftCorrectionPpm
           .clamp(0, 300);
       for (final receiver in snapshot.receivers) {
-        receiverPairingControllers[receiver.ipAddress] = TextEditingController(
+        final address =
+            devicesById[receiver.deviceId]?.ipAddress ?? receiver.ipAddress;
+        final device = receiver.deviceId == null
+            ? null
+            : devicesById[receiver.deviceId];
+        if (device != null) {
+          discoveredDeviceIds[address] = device.id;
+          discoveredDeviceNames[address] = device.name;
+        }
+        receiverPairingControllers[address] = TextEditingController(
           text: receiver.pairingCode,
         );
-        unawaited(_resolveReceiverName(receiver.ipAddress));
+        unawaited(_resolveReceiverName(address));
       }
       await connect();
     } finally {
@@ -526,6 +585,7 @@ class HostController extends GetxController {
               ipAddress: ip,
               port: port,
               pairingCode: receiverPairingControllers[ip]?.text.trim() ?? '',
+              deviceId: discoveredDeviceIds[ip],
             ),
         ],
         audioPort: audioPort,
@@ -654,7 +714,14 @@ class HostController extends GetxController {
       ],
     );
     final deviceName = discoveredDeviceNames[address] ?? address;
-    unawaited(_pairedStore.savePair(ip: address, port: port, name: deviceName));
+    unawaited(
+      _pairedStore.savePair(
+        ip: address,
+        port: port,
+        name: deviceName,
+        deviceId: discoveredDeviceIds[address],
+      ),
+    );
     unawaited(loadPairedDevices());
   }
 
@@ -1153,6 +1220,7 @@ class HostController extends GetxController {
       for (final device in devices) {
         if (device.ipAddress == address && device.name.trim().isNotEmpty) {
           discoveredDeviceNames[address] = device.name.trim();
+          discoveredDeviceIds[address] = device.id;
           return;
         }
       }
@@ -1164,6 +1232,7 @@ class HostController extends GetxController {
   void removeReceiverIp(String address) {
     configuredReceiverIps.remove(address);
     discoveredDeviceNames.remove(address);
+    discoveredDeviceIds.remove(address);
     discoveredDeviceLatencyMs.remove(address);
     receiverCalibrationMicros.remove(address);
     receiverPairingControllers.remove(address)?.dispose();
@@ -1175,16 +1244,17 @@ class HostController extends GetxController {
   /// Applies the Receiver QR payload: IP address:port:pairing code.
   bool addReceiverFromQrData(String rawData) {
     final parts = rawData.trim().split(':');
-    if (parts.length < 3 || parts.length > 4) {
+    if (parts.length < 3 || parts.length > 5) {
       _showError('Invalid Receiver QR code.');
       return false;
     }
     final address = parts[0].trim();
     final port = int.tryParse(parts[1].trim());
     final pairingCode = parts[2].trim();
-    final deviceName = parts.length == 4
+    final deviceName = parts.length >= 4
         ? Uri.decodeComponent(parts[3].trim())
         : '';
+    final deviceId = parts.length >= 5 ? parts[4].trim() : '';
     final parsedIp = InternetAddress.tryParse(address);
     if (parsedIp == null || parsedIp.type != InternetAddressType.IPv4) {
       _showError('QR code contains an invalid Receiver IP address.');
@@ -1214,6 +1284,7 @@ class HostController extends GetxController {
       // Keep older QR codes (without a name field) working as well.
       unawaited(_resolveReceiverName(address));
     }
+    if (deviceId.isNotEmpty) discoveredDeviceIds[address] = deviceId;
     errorMessage.value = null;
     unawaited(_saveSessionConfiguration());
     return true;
@@ -1238,6 +1309,9 @@ class HostController extends GetxController {
       discoveredDeviceNames.removeWhere(
         (address, _) => !visibleAddresses.contains(address),
       );
+      discoveredDeviceIds.removeWhere(
+        (address, _) => !visibleAddresses.contains(address),
+      );
       discoveredDeviceLatencyMs.removeWhere(
         (address, _) => !visibleAddresses.contains(address),
       );
@@ -1251,6 +1325,7 @@ class HostController extends GetxController {
         // on some Android/network stacks. Never show the Host itself as a
         // Receiver, even if the responder returned a wrong address.
         discoveredDeviceNames[device.ipAddress] = device.name;
+        discoveredDeviceIds[device.ipAddress] = device.id;
         discoveredDeviceLatencyMs[device.ipAddress] = device.latencyMs;
         if (!configuredReceiverIps.contains(device.ipAddress)) {
           configuredReceiverIps.add(device.ipAddress);

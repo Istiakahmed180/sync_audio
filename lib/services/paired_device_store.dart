@@ -6,12 +6,14 @@ class PairedDevice {
   final String ipAddress;
   final int port;
   final String name;
+  final String? deviceId;
   final DateTime lastConnected;
 
   const PairedDevice({
     required this.ipAddress,
     required this.port,
     required this.name,
+    this.deviceId,
     required this.lastConnected,
   });
 
@@ -19,6 +21,7 @@ class PairedDevice {
     'ipAddress': ipAddress,
     'port': port,
     'name': name,
+    if (deviceId != null && deviceId!.isNotEmpty) 'deviceId': deviceId,
     'lastConnected': lastConnected.toIso8601String(),
   };
 
@@ -26,6 +29,7 @@ class PairedDevice {
     ipAddress: json['ipAddress'] as String,
     port: json['port'] as int,
     name: json['name'] as String,
+    deviceId: (json['deviceId'] as String?)?.trim(),
     lastConnected: DateTime.parse(json['lastConnected'] as String),
   );
 }
@@ -36,6 +40,7 @@ class DeviceGroup {
   final Map<String, String> pairingCodes;
   final Map<String, double> receiverVolumes;
   final Map<String, int> receiverCalibrations;
+  final Map<String, String> deviceIds;
 
   const DeviceGroup({
     required this.name,
@@ -43,6 +48,7 @@ class DeviceGroup {
     this.pairingCodes = const <String, String>{},
     this.receiverVolumes = const <String, double>{},
     this.receiverCalibrations = const <String, int>{},
+    this.deviceIds = const <String, String>{},
   });
 
   Map<String, dynamic> toJson() => {
@@ -51,11 +57,13 @@ class DeviceGroup {
     'pairingCodes': pairingCodes,
     'receiverVolumes': receiverVolumes,
     'receiverCalibrations': receiverCalibrations,
+    'deviceIds': deviceIds,
   };
 
   factory DeviceGroup.fromJson(Map<String, dynamic> json) {
     final rawVolumes = json['receiverVolumes'] as Map?;
     final rawCalibrations = json['receiverCalibrations'] as Map?;
+    final rawDeviceIds = json['deviceIds'] as Map?;
     return DeviceGroup(
       name: json['name'] as String,
       deviceIps: List<String>.from(json['deviceIps'] as List),
@@ -73,6 +81,9 @@ class DeviceGroup {
           : rawCalibrations.map(
               (key, value) => MapEntry(key.toString(), (value as num).toInt()),
             ),
+      deviceIds: rawDeviceIds == null
+          ? const <String, String>{}
+          : Map<String, String>.from(rawDeviceIds),
     );
   }
 }
@@ -99,15 +110,21 @@ class PairedDeviceStore {
     required String ip,
     required int port,
     required String name,
+    String? deviceId,
   }) async {
     final devices = await loadPaired();
-    devices.removeWhere((d) => d.ipAddress == ip);
+    devices.removeWhere(
+      (d) =>
+          d.ipAddress == ip ||
+          (deviceId != null && deviceId.isNotEmpty && d.deviceId == deviceId),
+    );
     devices.insert(
       0,
       PairedDevice(
         ipAddress: ip,
         port: port,
         name: name,
+        deviceId: deviceId,
         lastConnected: DateTime.now(),
       ),
     );

@@ -21,6 +21,7 @@ import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/audio_output_route_service.dart';
+import '../../../services/device_identity_store.dart';
 
 class ReceiverController extends GetxController {
   static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
@@ -60,6 +61,7 @@ class ReceiverController extends GetxController {
   final NativeAudioRuntime _nativeAudioRuntime;
   final AudioOutputRouteService _audioOutputRouteService =
       AudioOutputRouteService();
+  final _deviceIdentityStore = DeviceIdentityStore();
   final _sessionRestoreStore = SessionRestoreStore();
   final audioOutputs = <AudioOutputDevice>[].obs;
   final isLoadingAudioOutputs = false.obs;
@@ -70,6 +72,7 @@ class ReceiverController extends GetxController {
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
   final deviceName = 'My Speaker'.obs;
+  final deviceId = ''.obs;
   final isServerRunning = false.obs;
   final isConnectedToHost = false.obs;
   final lastReceivedMessage = ''.obs;
@@ -109,6 +112,7 @@ class ReceiverController extends GetxController {
     super.onInit();
     unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
+    unawaited(_loadDeviceIdentity());
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().start();
     }
@@ -225,6 +229,10 @@ class ReceiverController extends GetxController {
     }
   }
 
+  Future<void> _loadDeviceIdentity() async {
+    deviceId.value = await _deviceIdentityStore.getOrCreate();
+  }
+
   Future<void> _loadPairingToken() async {
     try {
       final existing = await _pairingStore.readToken();
@@ -282,7 +290,7 @@ class ReceiverController extends GetxController {
     await _loadPairingToken();
     if (isServerRunning.value) {
       await _discoveryService.startResponder(
-        deviceId: localIpAddress.value,
+        deviceId: deviceId.value,
         deviceName: deviceName.value,
         controlPort: defaultPort,
         pairingCode: _pairingTokenValue ?? '',
@@ -333,7 +341,7 @@ class ReceiverController extends GetxController {
     if (isServerRunning.value) {
       unawaited(
         _discoveryService.startResponder(
-          deviceId: localIpAddress.value,
+          deviceId: deviceId.value,
           deviceName: trimmed,
           controlPort: defaultPort,
           pairingCode: _pairingTokenValue ?? '',
@@ -348,6 +356,7 @@ class ReceiverController extends GetxController {
       return;
     }
     errorMessage.value = null;
+    await _loadDeviceIdentity();
     await _pairingReady;
     await _loadTrustedDevices();
     _service.setLocalDeviceName(deviceName.value);
@@ -358,7 +367,7 @@ class ReceiverController extends GetxController {
       await _sessionRestoreStore.setReceiverServerRunning(true);
       _startPairingExpiryTimer();
       await _discoveryService.startResponder(
-        deviceId: address ?? 'receiver',
+        deviceId: deviceId.value,
         deviceName: deviceName.value,
         controlPort: defaultPort,
         pairingCode: _pairingTokenValue ?? '',

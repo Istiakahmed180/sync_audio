@@ -7,16 +7,19 @@ class RestoredReceiver {
     required this.ipAddress,
     required this.port,
     required this.pairingCode,
+    this.deviceId,
   });
 
   final String ipAddress;
   final int port;
   final String pairingCode;
+  final String? deviceId;
 
   Map<String, Object> toJson() => {
     'ipAddress': ipAddress,
     'port': port,
     'pairingCode': pairingCode,
+    if (deviceId != null && deviceId!.isNotEmpty) 'deviceId': deviceId!,
   };
 
   factory RestoredReceiver.fromJson(Map<String, dynamic> json) =>
@@ -24,6 +27,7 @@ class RestoredReceiver {
         ipAddress: json['ipAddress'] as String,
         port: json['port'] as int,
         pairingCode: json['pairingCode'] as String,
+        deviceId: (json['deviceId'] as String?)?.trim(),
       );
 }
 
