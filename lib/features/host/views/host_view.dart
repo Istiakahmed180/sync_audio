@@ -673,6 +673,8 @@ class _ReceiverTargetCard extends StatelessWidget {
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
+                          _PresenceBadge(session: session),
+                          const SizedBox(width: 6),
                           _signalIndicator(context),
                           const SizedBox(width: 4),
                           ReceiverNetworkQualityBadge(
@@ -752,6 +754,58 @@ class _ReceiverTargetCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PresenceBadge extends StatelessWidget {
+  const _PresenceBadge({required this.session});
+
+  final ReceiverSession? session;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = session?.controlStatus;
+    final isOnline = status == ControlConnectionStatus.connected;
+    final isConnecting =
+        status == ControlConnectionStatus.connecting ||
+        status == ControlConnectionStatus.reconnecting;
+    final color = isOnline
+        ? Colors.green
+        : isConnecting
+        ? Colors.orange
+        : Theme.of(context).colorScheme.error;
+    final label = isOnline
+        ? 'Online'
+        : isConnecting
+        ? 'Connecting'
+        : 'Offline';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
