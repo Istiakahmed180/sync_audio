@@ -3,12 +3,15 @@ import 'package:flutter/services.dart';
 import 'audio_capture_service.dart';
 
 class MacosAudioCaptureService implements AudioCaptureService {
-  static const _controlChannel = MethodChannel('sync_audio/macos_audio_capture');
+  static const _controlChannel = MethodChannel(
+    'sync_audio/macos_audio_capture',
+  );
   static const _streamChannel = EventChannel('sync_audio/macos_audio_stream');
 
   @override
-  Stream<Uint8List> get pcmChunks =>
-      _streamChannel.receiveBroadcastStream().map((chunk) {
+  Stream<Uint8List> get pcmChunks => _streamChannel
+      .receiveBroadcastStream()
+      .map((chunk) {
         if (chunk is Uint8List) return chunk;
         if (chunk is ByteData) {
           return chunk.buffer.asUint8List(
@@ -21,7 +24,8 @@ class MacosAudioCaptureService implements AudioCaptureService {
         } catch (_) {
           return Uint8List(0);
         }
-      }).where((bytes) => bytes.isNotEmpty);
+      })
+      .where((bytes) => bytes.isNotEmpty);
 
   bool _isCapturing = false;
 

@@ -7,15 +7,17 @@ class WindowsAudioCaptureService implements AudioCaptureService {
   static const _streamChannel = EventChannel('sync_audio/win_audio_stream');
 
   @override
-  Stream<Uint8List> get pcmChunks =>
-      _streamChannel.receiveBroadcastStream().map((chunk) {
+  Stream<Uint8List> get pcmChunks => _streamChannel
+      .receiveBroadcastStream()
+      .map((chunk) {
         try {
           if (chunk is Uint8List) return chunk;
           return Uint8List.fromList(List<int>.from(chunk as List<dynamic>));
         } catch (_) {
           return Uint8List(0);
         }
-      }).where((bytes) => bytes.isNotEmpty);
+      })
+      .where((bytes) => bytes.isNotEmpty);
 
   bool _isCapturing = false;
 
