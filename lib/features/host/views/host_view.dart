@@ -129,6 +129,9 @@ class HostView extends GetView<HostController> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _ReceiverTargetCard(
                           address: address,
+                          calibrationMicros: controller.calibrationForReceiver(
+                            address,
+                          ),
                           deviceName: deviceName,
                           latencyMs: latencyMs,
                           diagnostics: controller.receiverDiagnosticsFor(
@@ -544,6 +547,7 @@ class _ManualEntryForm extends StatelessWidget {
 class _ReceiverTargetCard extends StatelessWidget {
   const _ReceiverTargetCard({
     required this.address,
+    required this.calibrationMicros,
     required this.onRemove,
     required this.session,
     required this.onConnect,
@@ -556,6 +560,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   });
 
   final String address;
+  final int calibrationMicros;
   final String? deviceName;
   final int? latencyMs;
   final Map<String, Object> diagnostics;
@@ -695,7 +700,7 @@ class _ReceiverTargetCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             _CalibrationControls(
-              calibrationMicros: session?.playbackCalibrationMicros ?? 0,
+              calibrationMicros: calibrationMicros,
               onAdjust: onAdjustCalibration,
             ),
           ],

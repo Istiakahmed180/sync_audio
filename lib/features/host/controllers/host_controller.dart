@@ -128,6 +128,7 @@ class HostController extends GetxController {
   final _pairedStore = PairedDeviceStore();
   final receiverVolumes = <String, double>{}.obs;
   final receiverMuted = <String, bool>{}.obs;
+  final receiverCalibrationMicros = <String, int>{}.obs;
   final masterReceiverVolume = 1.0.obs;
   final pairedDevices = <PairedDevice>[].obs;
   final savedGroups = <DeviceGroup>[].obs;
@@ -420,6 +421,7 @@ class HostController extends GetxController {
     final receivers = <ReceiverSession>[];
     for (final address in addresses) {
       final calibration = await _calibrationStore.read(address) ?? 0;
+      receiverCalibrationMicros[address] = calibration;
       receivers.add(
         ReceiverSession(
           id: address,
@@ -459,6 +461,7 @@ class HostController extends GetxController {
     _service.setPairingToken(null);
     _service.setPairingTokens({address: pairingCode});
     final calibration = await _calibrationStore.read(address) ?? 0;
+    receiverCalibrationMicros[address] = calibration;
     await _service.connectToReceivers(
       receivers: [
         ReceiverSession(
@@ -938,6 +941,7 @@ class HostController extends GetxController {
     configuredReceiverIps.remove(address);
     discoveredDeviceNames.remove(address);
     discoveredDeviceLatencyMs.remove(address);
+    receiverCalibrationMicros.remove(address);
     receiverPairingControllers.remove(address)?.dispose();
   }
 
@@ -1070,7 +1074,11 @@ class HostController extends GetxController {
   ) async {
     final audioService = _audioService;
     final calibrationMicros =
-        session.playbackCalibrationMicros + deltaMilliseconds * 1000;
+        (receiverCalibrationMicros[session.ipAddress] ??
+            session.playbackCalibrationMicros) +
+        deltaMilliseconds * 1000;
+    receiverCalibrationMicros[session.ipAddress] = calibrationMicros;
+    receiverCalibrationMicros.refresh();
     // Update the control session immediately so the card reflects the button
     // press even while the UDP/control commands are in flight.
     final controlIndex = receiverSessions.indexWhere(
@@ -1119,6 +1127,13 @@ class HostController extends GetxController {
       );
       receiverSessions.refresh();
     }
+  }
+
+  int calibrationForReceiver(String address) {
+    final cached = receiverCalibrationMicros[address];
+    if (cached != null) return cached;
+    final session = receiverSessionFor(address);
+    return session?.playbackCalibrationMicros ?? 0;
   }
 
   ReceiverSession _mergeDisplaySessions(List<ReceiverSession> sessions) {
