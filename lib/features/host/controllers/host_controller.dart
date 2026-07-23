@@ -157,18 +157,37 @@ class HostController extends GetxController {
   }
 
   Future<void> saveCurrentAsGroup(String groupName) async {
-    if (configuredReceiverIps.isEmpty) return;
+    final name = groupName.trim();
+    if (name.isEmpty || configuredReceiverIps.isEmpty) return;
+    final pairingCodes = <String, String>{};
+    for (final ip in configuredReceiverIps) {
+      final code = receiverPairingControllers[ip]?.text.trim() ?? '';
+      if (RegExp(r'^\d{8}$').hasMatch(code)) {
+        pairingCodes[ip] = code;
+      }
+    }
     await _pairedStore.saveGroup(
-      DeviceGroup(name: groupName, deviceIps: configuredReceiverIps.toList()),
+      DeviceGroup(
+        name: name,
+        deviceIps: configuredReceiverIps.toList(),
+        pairingCodes: pairingCodes,
+      ),
     );
     await loadSavedGroups();
   }
 
   Future<void> applyGroup(DeviceGroup group) async {
+    for (final controller in receiverPairingControllers.values) {
+      controller.dispose();
+    }
+    receiverPairingControllers.clear();
     configuredReceiverIps.clear();
     for (final ip in group.deviceIps) {
       configuredReceiverIps.add(ip);
-      receiverPairingControllers[ip] ??= TextEditingController();
+      receiverPairingControllers[ip] = TextEditingController(
+        text: group.pairingCodes[ip] ?? '',
+      );
+      unawaited(_resolveReceiverName(ip));
     }
   }
 

@@ -87,6 +87,8 @@ class HostView extends GetView<HostController> {
                 ],
               ),
               const SizedBox(height: 12),
+              _SavedSpeakerGroupsSection(controller: controller),
+              const SizedBox(height: 12),
 
               Obx(() {
                 // Subscribe this receiver list to live diagnostics updates.
@@ -222,6 +224,115 @@ class HostView extends GetView<HostController> {
                       )
                     : const SizedBox.shrink(),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedSpeakerGroupsSection extends StatelessWidget {
+  const _SavedSpeakerGroupsSection({required this.controller});
+
+  final HostController controller;
+
+  Future<void> _saveGroup(BuildContext context) async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save speaker group'),
+        content: TextField(
+          controller: nameController,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Group name',
+            hintText: 'Living Room',
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(context).pop(nameController.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    if (name == null || name.isEmpty) return;
+    await controller.saveCurrentAsGroup(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.speaker_group_outlined),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Saved speaker groups',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Save current receivers as a group',
+                    onPressed: controller.configuredReceiverIps.isEmpty
+                        ? null
+                        : () => _saveGroup(context),
+                    icon: const Icon(Icons.save_outlined),
+                  ),
+                ],
+              ),
+              if (controller.savedGroups.isEmpty)
+                Text(
+                  'Add receivers first, then save them as a reusable group.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              else
+                ...controller.savedGroups.map(
+                  (group) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.speaker_group_rounded),
+                    title: Text(group.name),
+                    subtitle: Text(
+                      '${group.deviceIps.length} receiver${group.deviceIps.length == 1 ? '' : 's'}',
+                    ),
+                    onTap: () => controller.applyGroup(group),
+                    trailing: Wrap(
+                      spacing: 0,
+                      children: [
+                        IconButton(
+                          tooltip: 'Apply group',
+                          onPressed: () => controller.applyGroup(group),
+                          icon: const Icon(Icons.playlist_play_rounded),
+                        ),
+                        IconButton(
+                          tooltip: 'Delete group',
+                          onPressed: () => controller.deleteGroup(group.name),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

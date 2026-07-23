@@ -33,14 +33,26 @@ class PairedDevice {
 class DeviceGroup {
   final String name;
   final List<String> deviceIps;
+  final Map<String, String> pairingCodes;
 
-  const DeviceGroup({required this.name, required this.deviceIps});
+  const DeviceGroup({
+    required this.name,
+    required this.deviceIps,
+    this.pairingCodes = const <String, String>{},
+  });
 
-  Map<String, dynamic> toJson() => {'name': name, 'deviceIps': deviceIps};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'deviceIps': deviceIps,
+    'pairingCodes': pairingCodes,
+  };
 
   factory DeviceGroup.fromJson(Map<String, dynamic> json) => DeviceGroup(
     name: json['name'] as String,
     deviceIps: List<String>.from(json['deviceIps'] as List),
+    pairingCodes: json['pairingCodes'] == null
+        ? const <String, String>{}
+        : Map<String, String>.from(json['pairingCodes'] as Map),
   );
 }
 
@@ -54,26 +66,46 @@ class PairedDeviceStore {
     if (data == null) return [];
     try {
       final list = jsonDecode(data) as List;
-      return list.map((e) => PairedDevice.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => PairedDevice.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
   }
 
-  Future<void> savePair({required String ip, required int port, required String name}) async {
+  Future<void> savePair({
+    required String ip,
+    required int port,
+    required String name,
+  }) async {
     final devices = await loadPaired();
     devices.removeWhere((d) => d.ipAddress == ip);
-    devices.insert(0, PairedDevice(ipAddress: ip, port: port, name: name, lastConnected: DateTime.now()));
+    devices.insert(
+      0,
+      PairedDevice(
+        ipAddress: ip,
+        port: port,
+        name: name,
+        lastConnected: DateTime.now(),
+      ),
+    );
     if (devices.length > 20) devices.removeRange(20, devices.length);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_pairedKey, jsonEncode(devices.map((d) => d.toJson()).toList()));
+    await prefs.setString(
+      _pairedKey,
+      jsonEncode(devices.map((d) => d.toJson()).toList()),
+    );
   }
 
   Future<void> removePair(String ip) async {
     final devices = await loadPaired();
     devices.removeWhere((d) => d.ipAddress == ip);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_pairedKey, jsonEncode(devices.map((d) => d.toJson()).toList()));
+    await prefs.setString(
+      _pairedKey,
+      jsonEncode(devices.map((d) => d.toJson()).toList()),
+    );
   }
 
   Future<List<DeviceGroup>> loadGroups() async {
@@ -82,7 +114,9 @@ class PairedDeviceStore {
     if (data == null) return [];
     try {
       final list = jsonDecode(data) as List;
-      return list.map((e) => DeviceGroup.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => DeviceGroup.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
@@ -93,13 +127,19 @@ class PairedDeviceStore {
     groups.removeWhere((g) => g.name == group.name);
     groups.add(group);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_groupsKey, jsonEncode(groups.map((g) => g.toJson()).toList()));
+    await prefs.setString(
+      _groupsKey,
+      jsonEncode(groups.map((g) => g.toJson()).toList()),
+    );
   }
 
   Future<void> removeGroup(String name) async {
     final groups = await loadGroups();
     groups.removeWhere((g) => g.name == name);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_groupsKey, jsonEncode(groups.map((g) => g.toJson()).toList()));
+    await prefs.setString(
+      _groupsKey,
+      jsonEncode(groups.map((g) => g.toJson()).toList()),
+    );
   }
 }
