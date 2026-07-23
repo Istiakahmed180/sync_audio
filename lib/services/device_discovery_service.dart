@@ -43,6 +43,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     socket.broadcastEnabled = true;
     final devices = <String, AudioDevice>{};
     final nonce = DateTime.now().microsecondsSinceEpoch.toString();
+    final startedAt = DateTime.now();
     final completer = Completer<void>();
     final subscription = socket.listen((event) {
       if (event != RawSocketEvent.read) return;
@@ -65,6 +66,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
           ipAddress: address,
           port: port,
           pairingCode: fields.length == 7 ? fields[5] : null,
+          latencyMs: DateTime.now().difference(startedAt).inMilliseconds,
         );
       }
     });

@@ -91,6 +91,7 @@ class HostView extends GetView<HostController> {
               Obx(() {
                 // Subscribe this receiver list to live diagnostics updates.
                 final diagnosticsCount = controller.diagnostics.length;
+                final nearbyCount = controller.discoveredDevices.length;
                 final addresses = controller.configuredReceiverIps
                     .where(
                       (a) =>
@@ -101,32 +102,46 @@ class HostView extends GetView<HostController> {
                   return const _EmptyReceiverState();
                 }
                 return Column(
-                  key: ValueKey(diagnosticsCount),
-                  children: addresses.map((address) {
-                    final session = controller.receiverSessionFor(address);
-                    final deviceName =
-                        session?.deviceName ??
-                        controller.discoveredDeviceNames[address];
-                    final latencyMs =
-                        controller.discoveredDeviceLatencyMs[address];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _ReceiverTargetCard(
-                        address: address,
-                        deviceName: deviceName,
-                        latencyMs: latencyMs,
-                        diagnostics: controller.receiverDiagnosticsFor(address),
-                        isStreaming:
-                            controller.audioStatus.value ==
-                            AudioStreamStatus.streaming,
-                        onRemove: () => controller.removeReceiverIp(address),
-                        session: session,
-                        onConnect: () => controller.connectReceiver(address),
-                        onDisconnect: () =>
-                            controller.disconnectReceiver(address),
+                  key: ValueKey('$diagnosticsCount-$nearbyCount'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (nearbyCount > 0) ...[
+                      Text(
+                        'Nearby receivers',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    );
-                  }).toList(),
+                      const SizedBox(height: 8),
+                    ],
+                    ...addresses.map((address) {
+                      final session = controller.receiverSessionFor(address);
+                      final deviceName =
+                          session?.deviceName ??
+                          controller.discoveredDeviceNames[address];
+                      final latencyMs =
+                          controller.discoveredDeviceLatencyMs[address];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _ReceiverTargetCard(
+                          address: address,
+                          deviceName: deviceName,
+                          latencyMs: latencyMs,
+                          diagnostics: controller.receiverDiagnosticsFor(
+                            address,
+                          ),
+                          isStreaming:
+                              controller.audioStatus.value ==
+                              AudioStreamStatus.streaming,
+                          onRemove: () => controller.removeReceiverIp(address),
+                          session: session,
+                          onConnect: () => controller.connectReceiver(address),
+                          onDisconnect: () =>
+                              controller.disconnectReceiver(address),
+                        ),
+                      );
+                    }),
+                  ],
                 );
               }),
               const SizedBox(height: 12),
@@ -233,6 +248,9 @@ class _HostDiscoveryLifecycleState extends State<_HostDiscoveryLifecycle> {
   @override
   void initState() {
     super.initState();
+    // Discovery is useful immediately on the Host screen. QR and manual
+    // pairing remain available when the network blocks UDP broadcast.
+    widget.controller.startDiscoveryPolling(showBusyIndicator: false);
   }
 
   @override

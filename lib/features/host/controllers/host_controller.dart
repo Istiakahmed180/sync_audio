@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../models/audio_stream_status.dart';
+import '../../../models/audio_device.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
@@ -76,6 +77,7 @@ class HostController extends GetxController {
   final configuredReceiverIps = <String>[].obs;
   final discoveredDeviceNames = <String, String>{}.obs;
   final discoveredDeviceLatencyMs = <String, int>{}.obs;
+  final discoveredDevices = <AudioDevice>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
   // Stable is the safer default for Wi-Fi + Bluetooth receiver setups.
@@ -105,6 +107,7 @@ class HostController extends GetxController {
   Timer? _diagnosticTimer;
   Timer? _discoveryTimer;
   bool _discoveryInProgress = false;
+  bool _showDiscoveryBusyIndicator = true;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _startingSystemAudio = false;
@@ -309,8 +312,9 @@ class HostController extends GetxController {
     unawaited(loadPairedDevices());
   }
 
-  void startDiscoveryPolling() {
+  void startDiscoveryPolling({bool showBusyIndicator = true}) {
     if (_discoveryTimer != null) return;
+    _showDiscoveryBusyIndicator = showBusyIndicator;
     isDiscoveryPolling.value = true;
     discoveryStatus.value = 'Searching for Receivers…';
     unawaited(discoverReceivers());
@@ -934,20 +938,34 @@ class HostController extends GetxController {
   Future<void> discoverReceivers() async {
     if (_discoveryInProgress) return;
     _discoveryInProgress = true;
-    isDiscoveringReceivers.value = true;
+    if (_showDiscoveryBusyIndicator) {
+      isDiscoveringReceivers.value = true;
+    }
     try {
       final devices = await _discoveryService.discover();
       final localAddresses = await _localIpv4Addresses();
+      final visibleDevices = devices
+          .where((device) => !localAddresses.contains(device.ipAddress))
+          .toList(growable: false);
+      discoveredDevices.assignAll(visibleDevices);
+      final visibleAddresses = visibleDevices
+          .map((device) => device.ipAddress)
+          .toSet();
+      discoveredDeviceNames.removeWhere(
+        (address, _) => !visibleAddresses.contains(address),
+      );
+      discoveredDeviceLatencyMs.removeWhere(
+        (address, _) => !visibleAddresses.contains(address),
+      );
       for (final address
           in configuredReceiverIps.where(localAddresses.contains).toList()) {
         configuredReceiverIps.remove(address);
         receiverPairingControllers.remove(address)?.dispose();
       }
-      for (final device in devices) {
+      for (final device in visibleDevices) {
         // A UDP discovery response can contain the request sender's address
         // on some Android/network stacks. Never show the Host itself as a
         // Receiver, even if the responder returned a wrong address.
-        if (localAddresses.contains(device.ipAddress)) continue;
         discoveredDeviceNames[device.ipAddress] = device.name;
         discoveredDeviceLatencyMs[device.ipAddress] = device.latencyMs;
         if (!configuredReceiverIps.contains(device.ipAddress)) {
@@ -960,11 +978,11 @@ class HostController extends GetxController {
           receiverPairingControllers[device.ipAddress]?.text = pairingCode;
         }
       }
-      discoveryStatus.value = devices.isEmpty
+      discoveryStatus.value = visibleDevices.isEmpty
           ? (isDiscoveryPolling.value
                 ? 'Searching for Receivers…'
                 : 'Search stopped.')
-          : '${devices.length} Receiver${devices.length == 1 ? '' : 's'} found';
+          : '${visibleDevices.length} Receiver${visibleDevices.length == 1 ? '' : 's'} found';
     } catch (_) {
       // Discovery is best-effort. A blocked broadcast must not show a false
       // error snackbar or interrupt manual/QR setup.
@@ -973,7 +991,9 @@ class HostController extends GetxController {
           : 'Search stopped.';
     } finally {
       _discoveryInProgress = false;
-      isDiscoveringReceivers.value = false;
+      if (_showDiscoveryBusyIndicator) {
+        isDiscoveringReceivers.value = false;
+      }
     }
   }
 
