@@ -159,6 +159,7 @@ class UdpAudioService implements AudioStreamService {
   final Stopwatch _receiverClock = Stopwatch();
   int _droppedPackets = 0;
   int _totalBytesSent = 0;
+  int _totalBytesReceived = 0;
   SecretKey? _sessionKey;
   String? _securitySessionId;
   final _sessionKeyService = SessionKeyService();
@@ -214,6 +215,7 @@ class UdpAudioService implements AudioStreamService {
   Map<String, Object> get diagnosticsSnapshot {
     final map = latencyMetrics.toRedactedMap();
     map['totalBytesSent'] = _totalBytesSent;
+    map['totalBytesReceived'] = _totalBytesReceived;
     return map;
   }
 
@@ -813,6 +815,7 @@ class UdpAudioService implements AudioStreamService {
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
       _receiving = true;
       _playbackQueue = Future<void>.value();
+      _totalBytesReceived = 0;
       _playbackQueueDepth = 0;
       _clockSynchronized = false;
       _hostToLocalOffsetMicros = 0;
@@ -857,6 +860,7 @@ class UdpAudioService implements AudioStreamService {
 
   Future<void> _handleReceiverDatagram(Datagram source) async {
     Uint8List data = source.data;
+    _totalBytesReceived += data.length;
     if (EncryptedAudioPacketCodec.isEncrypted(data)) {
       final key = _sessionKey;
       final sessionId = _securitySessionId;

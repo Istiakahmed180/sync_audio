@@ -29,7 +29,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
       timestamp: now,
       underruns: _number('packetUnderrunCount', 'underruns').toInt(),
       overruns: _number('packetOverrunCount', 'overruns').toInt(),
-      totalBytes: _number('totalBytesSent').toInt(),
+      totalBytes: _trafficBytes(),
     );
     _samples.add(current);
     _samples.removeWhere(
@@ -49,6 +49,13 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
     if (_samples.length < 2) return 0;
     final oldest = valueOf(_samples.first);
     return current >= oldest ? current - oldest : current;
+  }
+
+  int _trafficBytes() {
+    final sent = widget.diagnostics['totalBytesSent'];
+    if (sent is num && sent > 0) return sent.toInt();
+    final received = widget.diagnostics['totalBytesReceived'];
+    return received is num ? received.toInt() : 0;
   }
 
   double? _bitrateKbps() {
