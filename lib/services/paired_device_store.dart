@@ -34,26 +34,47 @@ class DeviceGroup {
   final String name;
   final List<String> deviceIps;
   final Map<String, String> pairingCodes;
+  final Map<String, double> receiverVolumes;
+  final Map<String, int> receiverCalibrations;
 
   const DeviceGroup({
     required this.name,
     required this.deviceIps,
     this.pairingCodes = const <String, String>{},
+    this.receiverVolumes = const <String, double>{},
+    this.receiverCalibrations = const <String, int>{},
   });
 
   Map<String, dynamic> toJson() => {
     'name': name,
     'deviceIps': deviceIps,
     'pairingCodes': pairingCodes,
+    'receiverVolumes': receiverVolumes,
+    'receiverCalibrations': receiverCalibrations,
   };
 
-  factory DeviceGroup.fromJson(Map<String, dynamic> json) => DeviceGroup(
-    name: json['name'] as String,
-    deviceIps: List<String>.from(json['deviceIps'] as List),
-    pairingCodes: json['pairingCodes'] == null
-        ? const <String, String>{}
-        : Map<String, String>.from(json['pairingCodes'] as Map),
-  );
+  factory DeviceGroup.fromJson(Map<String, dynamic> json) {
+    final rawVolumes = json['receiverVolumes'] as Map?;
+    final rawCalibrations = json['receiverCalibrations'] as Map?;
+    return DeviceGroup(
+      name: json['name'] as String,
+      deviceIps: List<String>.from(json['deviceIps'] as List),
+      pairingCodes: json['pairingCodes'] == null
+          ? const <String, String>{}
+          : Map<String, String>.from(json['pairingCodes'] as Map),
+      receiverVolumes: rawVolumes == null
+          ? const <String, double>{}
+          : rawVolumes.map(
+              (key, value) =>
+                  MapEntry(key.toString(), (value as num).toDouble()),
+            ),
+      receiverCalibrations: rawCalibrations == null
+          ? const <String, int>{}
+          : rawCalibrations.map(
+              (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+            ),
+    );
+  }
 }
 
 class PairedDeviceStore {

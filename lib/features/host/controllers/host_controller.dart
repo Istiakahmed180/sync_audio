@@ -174,12 +174,26 @@ class HostController extends GetxController {
         name: name,
         deviceIps: configuredReceiverIps.toList(),
         pairingCodes: pairingCodes,
+        receiverVolumes: {
+          for (final ip in configuredReceiverIps) ip: volumeForReceiver(ip),
+        },
+        receiverCalibrations: {
+          for (final ip in configuredReceiverIps)
+            ip: calibrationForReceiver(ip),
+        },
       ),
     );
     await loadSavedGroups();
   }
 
   Future<void> applyGroup(DeviceGroup group) async {
+    final previousCalibrations = <String, int>{
+      for (final ip in group.deviceIps)
+        ip:
+            receiverCalibrationMicros[ip] ??
+            receiverSessionFor(ip)?.playbackCalibrationMicros ??
+            0,
+    };
     for (final controller in receiverPairingControllers.values) {
       controller.dispose();
     }
@@ -190,7 +204,39 @@ class HostController extends GetxController {
       receiverPairingControllers[ip] = TextEditingController(
         text: group.pairingCodes[ip] ?? '',
       );
+      final volume = group.receiverVolumes[ip];
+      if (volume != null) {
+        receiverVolumes[ip] = volume.clamp(0.0, 1.5).toDouble();
+        receiverMuted[ip] = volume <= 0;
+      }
+      final calibration = group.receiverCalibrations[ip];
+      if (calibration != null) {
+        receiverCalibrationMicros[ip] = calibration;
+      }
       unawaited(_resolveReceiverName(ip));
+    }
+    receiverVolumes.refresh();
+    receiverMuted.refresh();
+    receiverCalibrationMicros.refresh();
+    for (final ip in group.deviceIps) {
+      final session = receiverSessionFor(ip);
+      final calibration = group.receiverCalibrations[ip];
+      if (calibration != null) {
+        await _calibrationStore.write(ip, calibration);
+      }
+      if (session != null && calibration != null) {
+        final delta = ((calibration - (previousCalibrations[ip] ?? 0)) / 1000)
+            .round();
+        if (delta != 0) {
+          await adjustReceiverCalibration(session, delta);
+        }
+      }
+      if (group.receiverVolumes.containsKey(ip)) {
+        await _sendReceiverVolume(
+          ip,
+          receiverMuted[ip] == true ? 0 : volumeForReceiver(ip),
+        );
+      }
     }
   }
 
