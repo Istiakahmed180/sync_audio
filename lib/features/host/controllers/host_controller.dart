@@ -335,6 +335,9 @@ class HostController extends GetxController {
         arguments: [name],
       ),
     );
+    // Update the connection service's cached session as well. Otherwise a
+    // later ping/status event can publish its stale name back to the Host UI.
+    _service.setRemoteDeviceName(receiverId: session.id, name: name);
     discoveredDeviceNames[address] = name;
     final index = receiverSessions.indexWhere((item) => item.id == session.id);
     if (index != -1) {

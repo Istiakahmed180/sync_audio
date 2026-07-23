@@ -63,6 +63,18 @@ extension ConnectionServiceDeviceName on ConnectionService {
       (this as TcpConnectionService).setLocalDeviceName(name);
     }
   }
+
+  /// Keeps the Host's cached session in sync after a remote Receiver is
+  /// renamed. Without this, the next connection/status update can emit the
+  /// stale name held by the TCP service and overwrite the UI state.
+  void setRemoteDeviceName({required String receiverId, required String name}) {
+    if (this is TcpConnectionService) {
+      (this as TcpConnectionService).setRemoteDeviceName(
+        receiverId: receiverId,
+        name: name,
+      );
+    }
+  }
 }
 
 class TcpConnectionService implements ConnectionService {
@@ -611,6 +623,14 @@ class TcpConnectionService implements ConnectionService {
   void setLocalDeviceName(String name) {
     final trimmed = name.trim();
     if (trimmed.isNotEmpty) _localDeviceName = trimmed;
+  }
+
+  void setRemoteDeviceName({required String receiverId, required String name}) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final session = _sessions[receiverId];
+    if (session == null) return;
+    _updateSession(session.copyWith(deviceName: trimmed));
   }
 
   void setTrustedDeviceAddresses(Iterable<String> addresses) {
