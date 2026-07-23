@@ -47,9 +47,15 @@ class SettingsView extends GetView<SettingsController> {
           const SizedBox(height: 8),
           Obx(
             () => _SettingRow(
-              label: 'Android version',
-              value:
-                  '${controller.androidVersion.value} (SDK ${controller.androidSdk.value})',
+              label: controller.osVersionLabel,
+              value: controller.osVersion.value,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Obx(
+            () => _SettingRow(
+              label: controller.osBuildLabel,
+              value: controller.osBuild.value,
             ),
           ),
           const SizedBox(height: 24),

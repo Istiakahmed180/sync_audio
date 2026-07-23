@@ -24,6 +24,7 @@ import AVFoundation
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     setupAudioChannels(messenger: engineBridge.applicationRegistrar.messenger())
+    setupDeviceInfoChannel(messenger: engineBridge.applicationRegistrar.messenger())
   }
 
   // MARK: - Channel Setup
@@ -31,6 +32,30 @@ import AVFoundation
   private func setupAudioChannels(messenger: FlutterBinaryMessenger) {
     setupCaptureChannel(messenger: messenger)
     setupPlaybackChannel(messenger: messenger)
+  }
+
+  private func setupDeviceInfoChannel(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "sync_audio/device_info",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "getDeviceName":
+        result(UIDevice.current.name)
+      case "getDeviceInfo":
+        result([
+          "platform": "iOS",
+          "manufacturer": "Apple",
+          "model": UIDevice.current.model,
+          "deviceName": UIDevice.current.name,
+          "osVersion": "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
+          "build": UIDevice.current.systemVersion,
+        ])
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   // MARK: - Audio Capture (Microphone)

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -19,19 +20,57 @@ class SettingsController extends GetxController {
   final totalStreamTimeMinutes = 0.obs;
   final totalDataSentMb = 0.0.obs;
   final totalPacketsLost = 0.obs;
+  final platformName = 'Android'.obs;
   final deviceManufacturer = 'Unknown'.obs;
   final deviceModel = 'Unknown'.obs;
-  final androidVersion = 'Unknown'.obs;
-  final androidSdk = 'Unknown'.obs;
+  final osVersion = 'Unknown'.obs;
+  final osBuild = 'Unknown'.obs;
   final trustedDevices = <PairedDevice>[].obs;
   final _pairedDeviceStore = PairedDeviceStore();
 
   @override
   void onInit() {
     super.onInit();
+    _applyPlatformFallback();
     _load();
     _loadDeviceInfo();
     unawaited(loadTrustedDevices());
+  }
+
+  void _applyPlatformFallback() {
+    if (kIsWeb) {
+      platformName.value = 'Web';
+      deviceManufacturer.value = 'Browser';
+      deviceModel.value = 'Web browser';
+      osVersion.value = 'Web platform';
+      osBuild.value = 'Browser';
+      return;
+    }
+    platformName.value = switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'iOS',
+      TargetPlatform.macOS => 'macOS',
+      TargetPlatform.windows => 'Windows',
+      TargetPlatform.linux => 'Linux',
+      TargetPlatform.android => 'Android',
+      TargetPlatform.fuchsia => 'Fuchsia',
+    };
+    deviceManufacturer.value = switch (defaultTargetPlatform) {
+      TargetPlatform.iOS || TargetPlatform.macOS => 'Apple',
+      TargetPlatform.windows => 'Microsoft',
+      TargetPlatform.linux => 'Linux community',
+      TargetPlatform.android => 'Android device',
+      TargetPlatform.fuchsia => 'Google',
+    };
+    deviceModel.value = switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'iPhone/iPad',
+      TargetPlatform.macOS => 'Mac',
+      TargetPlatform.windows => 'Windows PC',
+      TargetPlatform.linux => 'Linux PC',
+      TargetPlatform.android => 'Android device',
+      TargetPlatform.fuchsia => 'Fuchsia device',
+    };
+    osVersion.value = platformName.value;
+    osBuild.value = 'Unknown';
   }
 
   Future<void> loadTrustedDevices() async {
@@ -49,16 +88,23 @@ class SettingsController extends GetxController {
         'getDeviceInfo',
       );
       if (info == null) return;
+      platformName.value = '${info['platform'] ?? platformName.value}';
       deviceManufacturer.value = '${info['manufacturer'] ?? 'Unknown'}';
       deviceModel.value = '${info['model'] ?? 'Unknown'}';
-      androidVersion.value = '${info['androidVersion'] ?? 'Unknown'}';
-      androidSdk.value = '${info['sdk'] ?? 'Unknown'}';
+      osVersion.value =
+          '${info['osVersion'] ?? info['androidVersion'] ?? 'Unknown'}';
+      osBuild.value = '${info['build'] ?? info['sdk'] ?? 'Unknown'}';
     } on MissingPluginException {
       // Keep platform-neutral fallback values.
     } catch (_) {
       // Device information is cosmetic.
     }
   }
+
+  String get osVersionLabel =>
+      platformName.value == 'Android' ? 'Android version' : 'OS version';
+
+  String get osBuildLabel => platformName.value == 'Android' ? 'SDK' : 'Build';
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();

@@ -42,6 +42,65 @@ static flutter::EncodableList ListWaveOutDevices(UINT selected_device) {
 AudioPlugin::AudioPlugin(flutter::BinaryMessenger* messenger) {
   SetupCaptureChannel(messenger);
   SetupPlaybackChannel(messenger);
+  SetupDeviceInfoChannel(messenger);
+}
+
+void AudioPlugin::SetupDeviceInfoChannel(
+    flutter::BinaryMessenger* messenger) {
+  auto channel = std::make_unique<flutter::MethodChannel<>>(
+      messenger, "sync_audio/device_info",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  channel->SetMethodCallHandler(
+      [](const flutter::MethodCall<>& call,
+         std::unique_ptr<flutter::MethodResult<>> result) {
+        std::wstring computer_name(MAX_COMPUTERNAME_LENGTH + 1, L'\\0');
+        DWORD name_size = static_cast<DWORD>(computer_name.size());
+        if (!GetComputerNameW(computer_name.data(), &name_size)) {
+          computer_name = L"Windows PC";
+        } else {
+          computer_name.resize(name_size);
+        }
+
+        const std::string device_name = Utf8FromUtf16(computer_name);
+        if (call.method_name() == "getDeviceName") {
+          result->Success(flutter::EncodableValue(device_name));
+          return;
+        }
+        if (call.method_name() == "getDeviceInfo") {
+          SYSTEM_INFO system_info = {};
+          GetNativeSystemInfo(&system_info);
+          const char* architecture = "Unknown";
+          switch (system_info.wProcessorArchitecture) {
+            case PROCESSOR_ARCHITECTURE_AMD64:
+              architecture = "x64";
+              break;
+            case PROCESSOR_ARCHITECTURE_ARM64:
+              architecture = "ARM64";
+              break;
+            case PROCESSOR_ARCHITECTURE_INTEL:
+              architecture = "x86";
+              break;
+          }
+
+          flutter::EncodableMap info;
+          info[flutter::EncodableValue("platform")] =
+              flutter::EncodableValue("Windows");
+          info[flutter::EncodableValue("manufacturer")] =
+              flutter::EncodableValue("Microsoft");
+          info[flutter::EncodableValue("model")] =
+              flutter::EncodableValue("Windows PC");
+          info[flutter::EncodableValue("deviceName")] =
+              flutter::EncodableValue(device_name);
+          info[flutter::EncodableValue("osVersion")] =
+              flutter::EncodableValue("Windows");
+          info[flutter::EncodableValue("build")] =
+              flutter::EncodableValue(architecture);
+          result->Success(flutter::EncodableValue(info));
+          return;
+        }
+        result->NotImplemented();
+      });
 }
 
 AudioPlugin::~AudioPlugin() {

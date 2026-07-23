@@ -3,6 +3,7 @@ import FlutterMacOS
 import AVFoundation
 import ScreenCaptureKit
 import AudioToolbox
+import Darwin
 
 @main
 class AppDelegate: FlutterAppDelegate {
@@ -32,6 +33,43 @@ class AppDelegate: FlutterAppDelegate {
     setupCaptureChannel(messenger: controller.engine.binaryMessenger)
     setupPlaybackChannel(messenger: controller.engine.binaryMessenger)
     setupAudioOutputChannel(messenger: controller.engine.binaryMessenger)
+    setupDeviceInfoChannel(messenger: controller.engine.binaryMessenger)
+  }
+
+  private func setupDeviceInfoChannel(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "sync_audio/device_info",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "getDeviceName":
+        result(Host.current().localizedName ?? "Mac")
+      case "getDeviceInfo":
+        result([
+          "platform": "macOS",
+          "manufacturer": "Apple",
+          "model": Self.macModelIdentifier(),
+          "deviceName": Host.current().localizedName ?? "Mac",
+          "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
+          "build": ProcessInfo.processInfo.operatingSystemVersionString,
+        ])
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private static func macModelIdentifier() -> String {
+    var size = 0
+    guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else {
+      return "Mac"
+    }
+    var value = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("hw.model", &value, &size, nil, 0) == 0 else {
+      return "Mac"
+    }
+    return String(cString: value)
   }
 
   private func setupAudioOutputChannel(messenger: FlutterBinaryMessenger) {

@@ -17,6 +17,7 @@ class AudioPlugin {
  private:
   void SetupCaptureChannel();
   void SetupPlaybackChannel();
+  void SetupDeviceInfoChannel();
 
   // Capture
   pa_simple* capture_handle_ = nullptr;

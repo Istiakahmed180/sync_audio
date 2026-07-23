@@ -183,8 +183,11 @@ class MainActivity : FlutterActivity() {
                     "getDeviceName" -> result.success("${Build.MANUFACTURER} ${Build.MODEL}".trim())
                     "getDeviceInfo" -> result.success(
                         mapOf(
+                            "platform" to "Android",
                             "manufacturer" to Build.MANUFACTURER,
                             "model" to Build.MODEL,
+                            "deviceName" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+                            "osVersion" to Build.VERSION.RELEASE,
                             "androidVersion" to Build.VERSION.RELEASE,
                             "sdk" to Build.VERSION.SDK_INT,
                         ),
