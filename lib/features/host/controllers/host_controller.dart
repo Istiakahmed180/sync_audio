@@ -313,6 +313,7 @@ class HostController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _service.setLocalDeviceName('Host Device');
     // Host connections are app-scoped; opening this screen is only a view of
     // the current session and must not reset an existing background stream.
     connectionStatus.value = _service.status;

@@ -57,7 +57,7 @@ class ControlCommand {
   static bool _hasValidArgumentCount(ControlCommandType type, int count) =>
       switch (type) {
         ControlCommandType.helloAck => count == 1 || count == 2,
-        ControlCommandType.hello => count == 1 || count == 2,
+        ControlCommandType.hello => count >= 1 && count <= 3,
         ControlCommandType.ping => count == 2,
         ControlCommandType.pong => count == 3,
         ControlCommandType.streamPrepare ||

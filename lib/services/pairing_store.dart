@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,12 +18,17 @@ abstract class PairingStore {
   Future<void> addTrustedDevice(String deviceAddress);
 
   Future<void> revokeTrustedDevice(String deviceAddress);
+
+  Future<Map<String, String>> readTrustedDeviceNames();
+
+  Future<void> addTrustedDeviceName(String deviceAddress, String deviceName);
 }
 
 class SharedPrefsPairingStore implements PairingStore {
   static const _key = 'sync_audio_pairing_token';
   static const _issuedAtKey = 'sync_audio_pairing_token_issued_at';
   static const _trustedDevicesKey = 'sync_audio_trusted_devices';
+  static const _trustedDeviceNamesKey = 'sync_audio_trusted_device_names';
   String? _inMemoryToken;
 
   @override
@@ -98,6 +104,34 @@ class SharedPrefsPairingStore implements PairingStore {
     } catch (_) {}
   }
 
+  @override
+  Future<Map<String, String>> readTrustedDeviceNames() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_trustedDeviceNamesKey);
+      if (raw == null) return const {};
+      return Map<String, String>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  @override
+  Future<void> addTrustedDeviceName(
+    String deviceAddress,
+    String deviceName,
+  ) async {
+    final address = deviceAddress.trim();
+    final name = deviceName.trim();
+    if (address.isEmpty || name.isEmpty) return;
+    try {
+      final names = await readTrustedDeviceNames();
+      names[address] = name;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_trustedDeviceNamesKey, jsonEncode(names));
+    } catch (_) {}
+  }
+
   static String generateToken() {
     final random = Random.secure();
     return List<String>.generate(
@@ -147,6 +181,14 @@ class AndroidPairingStore implements PairingStore {
   @override
   Future<void> revokeTrustedDevice(String deviceAddress) =>
       _fallback.revokeTrustedDevice(deviceAddress);
+
+  @override
+  Future<Map<String, String>> readTrustedDeviceNames() =>
+      _fallback.readTrustedDeviceNames();
+
+  @override
+  Future<void> addTrustedDeviceName(String deviceAddress, String deviceName) =>
+      _fallback.addTrustedDeviceName(deviceAddress, deviceName);
 
   static String generateToken() => SharedPrefsPairingStore.generateToken();
 }

@@ -98,7 +98,7 @@ class TcpConnectionService implements ConnectionService {
       'sync-${DateTime.now().microsecondsSinceEpoch}';
   int _pingSequence = 0;
   String? _pairingToken;
-  String _localDeviceName = 'Receiver';
+  String _localDeviceName = '';
   final Map<String, String> _pairingTokens = <String, String>{};
   final Set<String> _trustedDeviceAddresses = <String>{};
 
@@ -469,9 +469,12 @@ class TcpConnectionService implements ConnectionService {
       case ControlCommandType.hello:
         final peerAddress = _normalizePeerAddress(sourceId);
         final trusted = _trustedDeviceAddresses.contains(peerAddress);
-        final suppliedToken = command.arguments.length == 2
+        final suppliedToken = command.arguments.length >= 2
             ? command.arguments[1]
             : null;
+        final suppliedDeviceName = command.arguments.length >= 3
+            ? command.arguments[2].trim()
+            : '';
         final pairingAccepted =
             _pairingToken == null ||
             (trusted && suppliedToken != null) ||
@@ -492,6 +495,14 @@ class TcpConnectionService implements ConnectionService {
         if (suppliedToken != null) {
           _trustedDeviceAddresses.add(peerAddress);
           unawaited(_pairingStore.addTrustedDevice(peerAddress));
+          if (suppliedDeviceName.isNotEmpty) {
+            unawaited(
+              _pairingStore.addTrustedDeviceName(
+                peerAddress,
+                suppliedDeviceName,
+              ),
+            );
+          }
         }
         await sendMessageTo(
           receiverId: sourceId,
@@ -556,7 +567,11 @@ class TcpConnectionService implements ConnectionService {
       receiverId: receiverId,
       message: ControlCommand(
         type: ControlCommandType.hello,
-        arguments: [_localSessionId, ?token],
+        arguments: [
+          _localSessionId,
+          ?token,
+          if (_localDeviceName.isNotEmpty) _localDeviceName,
+        ],
       ).line,
     );
     if (token != null) {

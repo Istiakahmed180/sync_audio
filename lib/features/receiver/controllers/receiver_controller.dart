@@ -63,6 +63,7 @@ class ReceiverController extends GetxController {
   final pairingToken = 'Loading…'.obs;
   final pairingTokenExpiresAt = Rxn<DateTime>();
   final trustedDevices = <String>[].obs;
+  final trustedDeviceNames = <String, String>{}.obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
   final deviceName = 'My Speaker'.obs;
@@ -246,7 +247,11 @@ class ReceiverController extends GetxController {
 
   Future<void> _loadTrustedDevices() async {
     final devices = await _pairingStore.readTrustedDevices();
+    final names = await _pairingStore.readTrustedDeviceNames();
     trustedDevices.assignAll(devices);
+    trustedDeviceNames
+      ..assignAll(names)
+      ..removeWhere((address, _) => !devices.contains(address));
     _service.setTrustedDeviceAddresses(devices);
   }
 

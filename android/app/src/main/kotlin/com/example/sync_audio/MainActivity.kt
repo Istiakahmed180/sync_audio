@@ -796,7 +796,8 @@ class MainActivity : FlutterActivity() {
     private fun currentBluetoothOutput(audioManager: AudioManager): AudioDeviceInfo? {
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         preferredOutputDeviceId?.let { id ->
-            outputs.firstOrNull { it.id == id && isBluetoothOutput(it) }?.let { return it }
+            val preferred = outputs.firstOrNull { it.id == id }
+            if (preferred != null) return preferred.takeIf(::isBluetoothOutput)
         }
         return outputs.firstOrNull(::isBluetoothOutput)
     }

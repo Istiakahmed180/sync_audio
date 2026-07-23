@@ -183,6 +183,9 @@ class ReceiverView extends GetView<ReceiverController> {
               Obx(
                 () => _TrustedDevicesCard(
                   devices: controller.trustedDevices.toList(growable: false),
+                  names: Map<String, String>.from(
+                    controller.trustedDeviceNames,
+                  ),
                   onRevoke: controller.revokeTrustedDevice,
                 ),
               ),
@@ -323,9 +326,14 @@ class _ConnectionInfoCard extends StatelessWidget {
 }
 
 class _TrustedDevicesCard extends StatelessWidget {
-  const _TrustedDevicesCard({required this.devices, required this.onRevoke});
+  const _TrustedDevicesCard({
+    required this.devices,
+    required this.names,
+    required this.onRevoke,
+  });
 
   final List<String> devices;
+  final Map<String, String> names;
   final Future<void> Function(String address) onRevoke;
 
   @override
@@ -364,7 +372,8 @@ class _TrustedDevicesCard extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   leading: const Icon(Icons.computer_rounded),
-                  title: Text(address),
+                  title: Text(names[address] ?? 'Host device'),
+                  subtitle: Text(address),
                   trailing: TextButton(
                     onPressed: () => onRevoke(address),
                     child: const Text('Revoke'),

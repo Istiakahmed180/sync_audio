@@ -105,6 +105,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
       rttMs: rttMs,
       packetLoss: loss ?? 0,
       underruns: underruns ?? 0,
+      overruns: overruns ?? 0,
       hasReceiverMetrics: hasReceiverMetrics,
       jitterMs: jitterMs ?? 0,
     );
@@ -189,6 +190,7 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
     required num rttMs,
     required double packetLoss,
     required int underruns,
+    required int overruns,
     required bool hasReceiverMetrics,
     required num jitterMs,
   }) {
@@ -206,7 +208,11 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
         color: Colors.blueGrey,
       );
     }
-    if (packetLoss >= 2 || underruns >= 5 || rttMs >= 120 || jitterMs >= 50) {
+    if (packetLoss >= 2 ||
+        underruns >= 5 ||
+        overruns >= 5 ||
+        rttMs >= 120 ||
+        jitterMs >= 50) {
       return const _NetworkQuality(
         label: 'Poor',
         message:
@@ -214,7 +220,11 @@ class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {
         color: Colors.red,
       );
     }
-    if (packetLoss > 0 || underruns > 0 || rttMs >= 60 || jitterMs >= 20) {
+    if (packetLoss > 0 ||
+        underruns > 0 ||
+        overruns > 0 ||
+        rttMs >= 60 ||
+        jitterMs >= 20) {
       return const _NetworkQuality(
         label: 'Fair',
         message:
@@ -310,12 +320,21 @@ class _ReceiverNetworkQualityBadgeState
     final totalOverruns = _number('packetOverrunCount', 'overruns').toInt();
     final underruns = _recent(totalUnderruns, (sample) => sample.underruns);
     final overruns = _recent(totalOverruns, (sample) => sample.overruns);
+    final jitterMs = _number('networkJitterMicros') / 1000;
     final label =
         !widget.isActive || widget.diagnostics['metricsScope'] != 'receiver'
         ? 'Waiting'
-        : loss >= 2 || underruns >= 5 || overruns >= 5 || rttMs >= 120
+        : loss >= 2 ||
+              underruns >= 5 ||
+              overruns >= 5 ||
+              rttMs >= 120 ||
+              jitterMs >= 50
         ? 'Poor'
-        : loss > 0 || underruns > 0 || rttMs >= 60
+        : loss > 0 ||
+              underruns > 0 ||
+              overruns > 0 ||
+              rttMs >= 60 ||
+              jitterMs >= 20
         ? 'Fair'
         : 'Excellent';
     final color = switch (label) {
