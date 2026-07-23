@@ -54,7 +54,7 @@ void AudioPlugin::SetupDeviceInfoChannel(
   channel->SetMethodCallHandler(
       [](const flutter::MethodCall<>& call,
          std::unique_ptr<flutter::MethodResult<>> result) {
-        std::wstring computer_name(MAX_COMPUTERNAME_LENGTH + 1, L'\\0');
+        std::wstring computer_name(MAX_COMPUTERNAME_LENGTH + 1, L'\0');
         DWORD name_size = static_cast<DWORD>(computer_name.size());
         if (!GetComputerNameW(computer_name.data(), &name_size)) {
           computer_name = L"Windows PC";
@@ -62,7 +62,7 @@ void AudioPlugin::SetupDeviceInfoChannel(
           computer_name.resize(name_size);
         }
 
-        const std::string device_name = Utf8FromUtf16(computer_name);
+        const std::string device_name = Utf8FromUtf16(computer_name.c_str());
         if (call.method_name() == "getDeviceName") {
           result->Success(flutter::EncodableValue(device_name));
           return;
