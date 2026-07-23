@@ -140,6 +140,12 @@ class HostView extends GetView<HostController> {
                           onConnect: () => controller.connectReceiver(address),
                           onDisconnect: () =>
                               controller.disconnectReceiver(address),
+                          onAdjustCalibration: session == null
+                              ? null
+                              : (delta) => controller.adjustReceiverCalibration(
+                                  session,
+                                  delta,
+                                ),
                         ),
                       );
                     }),
@@ -470,6 +476,7 @@ class _ReceiverTargetCard extends StatelessWidget {
     required this.session,
     required this.onConnect,
     required this.onDisconnect,
+    this.onAdjustCalibration,
     this.deviceName,
     this.latencyMs,
     this.diagnostics = const <String, Object>{},
@@ -485,6 +492,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   final ReceiverSession? session;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
+  final Future<void> Function(int deltaMilliseconds)? onAdjustCalibration;
 
   String get _displayName =>
       (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
@@ -613,9 +621,85 @@ class _ReceiverTargetCard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            _CalibrationControls(
+              calibrationMicros: session?.playbackCalibrationMicros ?? 0,
+              onAdjust: onAdjustCalibration,
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CalibrationControls extends StatelessWidget {
+  const _CalibrationControls({
+    required this.calibrationMicros,
+    required this.onAdjust,
+  });
+
+  final int calibrationMicros;
+  final Future<void> Function(int deltaMilliseconds)? onAdjust;
+
+  String get _valueLabel {
+    final milliseconds = calibrationMicros / 1000;
+    final formatted = milliseconds == milliseconds.roundToDouble()
+        ? milliseconds.toStringAsFixed(0)
+        : milliseconds.toStringAsFixed(1);
+    return '${milliseconds > 0 ? '+' : ''}$formatted ms';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onAdjust != null;
+    return Row(
+      children: [
+        Icon(
+          Icons.tune_rounded,
+          size: 18,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            enabled ? 'Delay adjustment: $_valueLabel' : 'Delay adjustment',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Reduce delay by 10 ms',
+          visualDensity: VisualDensity.compact,
+          onPressed: enabled ? () => onAdjust!(-10) : null,
+          icon: const Icon(Icons.fast_rewind_rounded, size: 18),
+        ),
+        IconButton(
+          tooltip: 'Reduce delay by 1 ms',
+          visualDensity: VisualDensity.compact,
+          onPressed: enabled ? () => onAdjust!(-1) : null,
+          icon: const Icon(Icons.remove_rounded, size: 18),
+        ),
+        IconButton(
+          tooltip: 'Reset delay adjustment',
+          visualDensity: VisualDensity.compact,
+          onPressed: enabled && calibrationMicros != 0
+              ? () => onAdjust!(-(calibrationMicros / 1000).round())
+              : null,
+          icon: const Icon(Icons.restart_alt_rounded, size: 18),
+        ),
+        IconButton(
+          tooltip: 'Increase delay by 1 ms',
+          visualDensity: VisualDensity.compact,
+          onPressed: enabled ? () => onAdjust!(1) : null,
+          icon: const Icon(Icons.add_rounded, size: 18),
+        ),
+        IconButton(
+          tooltip: 'Increase delay by 10 ms',
+          visualDensity: VisualDensity.compact,
+          onPressed: enabled ? () => onAdjust!(10) : null,
+          icon: const Icon(Icons.fast_forward_rounded, size: 18),
+        ),
+      ],
     );
   }
 }
