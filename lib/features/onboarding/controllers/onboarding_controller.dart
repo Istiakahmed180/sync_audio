@@ -1,13 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
+
+enum SetupRole { host, receiver }
 
 class OnboardingController extends GetxController {
   static const _keyOnboardingComplete = 'onboarding_complete';
 
   final RxInt currentPage = 0.obs;
-  int get totalPages => 4;
+  int get totalPages => 5;
   final pageController = PageController();
+  final selectedRole = Rxn<SetupRole>();
+  final wifiCheckMessage = RxnString();
+  final isCheckingWifi = false.obs;
+
+  Future<void> checkWifi() async {
+    if (isCheckingWifi.value) return;
+    isCheckingWifi.value = true;
+    wifiCheckMessage.value = null;
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      final addresses = interfaces
+          .expand((interface) => interface.addresses)
+          .map((address) => address.address)
+          .toList(growable: false);
+      wifiCheckMessage.value = addresses.isEmpty
+          ? 'No active network found. Connect to Wi‑Fi and try again.'
+          : 'Network ready — ${addresses.join(', ')}';
+    } catch (_) {
+      wifiCheckMessage.value =
+          'Could not check the network. Continue with QR or manual setup.';
+    } finally {
+      isCheckingWifi.value = false;
+    }
+  }
 
   static Future<bool> isOnboardingComplete() async {
     final prefs = await SharedPreferences.getInstance();

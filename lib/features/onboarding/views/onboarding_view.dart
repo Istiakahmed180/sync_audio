@@ -26,6 +26,7 @@ class OnboardingView extends GetView<OnboardingController> {
                   _HostPage(scheme: scheme),
                   _ReceiverPage(scheme: scheme),
                   _ReadyPage(scheme: scheme),
+                  _SetupPage(controller: controller, scheme: scheme),
                 ],
               ),
             ),
@@ -71,9 +72,16 @@ class OnboardingView extends GetView<OnboardingController> {
           Obx(() {
             final isLast =
                 controller.currentPage.value == controller.totalPages - 1;
+            if (isLast && controller.selectedRole.value != null) {
+              return AppPrimaryButton(
+                label: 'Start setup',
+                icon: Icons.arrow_forward_rounded,
+                onPressed: () => _openSetup(),
+              );
+            }
             if (isLast) {
               return AppPrimaryButton(
-                label: 'Get Started',
+                label: 'Open app',
                 icon: Icons.check_rounded,
                 onPressed: () => _finishOnboarding(),
               );
@@ -91,6 +99,14 @@ class OnboardingView extends GetView<OnboardingController> {
   Future<void> _finishOnboarding() async {
     await controller.completeOnboarding();
     Get.offAllNamed(AppRoutes.home);
+  }
+
+  Future<void> _openSetup() async {
+    await controller.completeOnboarding();
+    final route = controller.selectedRole.value == SetupRole.receiver
+        ? AppRoutes.receiver
+        : AppRoutes.host;
+    Get.offAllNamed(route);
   }
 }
 
@@ -375,6 +391,119 @@ class _ReadyPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SetupPage extends StatelessWidget {
+  const _SetupPage({required this.controller, required this.scheme});
+
+  final OnboardingController controller;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+      child: Obx(
+        () => Column(
+          children: [
+            Icon(Icons.auto_awesome_rounded, size: 54, color: scheme.primary),
+            const SizedBox(height: 16),
+            Text(
+              'Set up Sync Audio',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose what this device will do, then follow the guided setup.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 20),
+            SegmentedButton<SetupRole>(
+              emptySelectionAllowed: true,
+              segments: const [
+                ButtonSegment(
+                  value: SetupRole.host,
+                  icon: Icon(Icons.wifi_tethering_rounded),
+                  label: Text('Host'),
+                ),
+                ButtonSegment(
+                  value: SetupRole.receiver,
+                  icon: Icon(Icons.speaker_group_rounded),
+                  label: Text('Receiver'),
+                ),
+              ],
+              selected: controller.selectedRole.value == null
+                  ? const <SetupRole>{}
+                  : {controller.selectedRole.value!},
+              onSelectionChanged: (selection) {
+                controller.selectedRole.value = selection.first;
+              },
+            ),
+            const SizedBox(height: 18),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.wifi_rounded),
+                    title: const Text('Use the same Wi‑Fi'),
+                    subtitle: Text(
+                      controller.wifiCheckMessage.value ??
+                          'Check before pairing devices.',
+                    ),
+                    trailing: controller.isCheckingWifi.value
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : IconButton(
+                            tooltip: 'Check Wi‑Fi',
+                            onPressed: controller.checkWifi,
+                            icon: const Icon(Icons.refresh_rounded),
+                          ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.qr_code_2_rounded),
+                    title: Text(
+                      controller.selectedRole.value == SetupRole.receiver
+                          ? 'Start Receiver and share the QR code'
+                          : 'Scan a Receiver QR code or add it manually',
+                    ),
+                    subtitle: const Text(
+                      'The pairing code verifies the device.',
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const ListTile(
+                    leading: Icon(Icons.graphic_eq_rounded),
+                    title: Text('Test before streaming'),
+                    subtitle: Text(
+                      'Run Test network, then start audio and verify sound at the Receiver.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              controller.selectedRole.value == null
+                  ? 'Select a role to continue.'
+                  : controller.selectedRole.value == SetupRole.receiver
+                  ? 'Next: start the Receiver server and keep the QR code visible for pairing.'
+                  : 'Next: add a Receiver, verify the pairing code, then run a network test.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
       ),
     );
   }
