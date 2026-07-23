@@ -407,6 +407,12 @@ class TcpConnectionService implements ConnectionService {
         ),
       );
       await _handleSocketClosed(receiverId, socket);
+    } on StateError {
+      // A Socket is also a stream. When its read side has already completed,
+      // a concurrent ping/control write can throw instead of returning a
+      // SocketException. Treat it as a stale connection and let the normal
+      // cleanup/reconnect path handle it without leaking an async exception.
+      await _handleSocketClosed(receiverId, socket);
     }
   }
 
