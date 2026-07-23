@@ -141,6 +141,12 @@ class HostView extends GetView<HostController> {
                               controller.audioStatus.value ==
                               AudioStreamStatus.streaming,
                           onRemove: () => controller.removeReceiverIp(address),
+                          onRename:
+                              session?.controlStatus ==
+                                  ControlConnectionStatus.connected
+                              ? (name) =>
+                                    controller.renameReceiver(address, name)
+                              : null,
                           session: session,
                           onConnect: () => controller.connectReceiver(address),
                           onDisconnect: () =>
@@ -549,6 +555,7 @@ class _ReceiverTargetCard extends StatelessWidget {
     required this.address,
     required this.calibrationMicros,
     required this.onRemove,
+    required this.onRename,
     required this.session,
     required this.onConnect,
     required this.onDisconnect,
@@ -566,6 +573,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   final Map<String, Object> diagnostics;
   final bool isStreaming;
   final VoidCallback onRemove;
+  final Future<void> Function(String name)? onRename;
   final ReceiverSession? session;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
@@ -573,6 +581,40 @@ class _ReceiverTargetCard extends StatelessWidget {
 
   String get _displayName =>
       (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
+
+  Future<void> _rename(BuildContext context) async {
+    final nameController = TextEditingController(text: _displayName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename receiver'),
+        content: TextField(
+          controller: nameController,
+          autofocus: true,
+          maxLength: 40,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Receiver name',
+            hintText: 'Living Room Speaker',
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(nameController.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    if (name == null || name.trim().isEmpty || onRename == null) return;
+    await onRename!(name);
+  }
 
   Widget _signalIndicator(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -654,6 +696,11 @@ class _ReceiverTargetCard extends StatelessWidget {
                         ),
                     ],
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Rename receiver',
+                  onPressed: onRename == null ? null : () => _rename(context),
+                  icon: const Icon(Icons.edit_outlined),
                 ),
                 IconButton(
                   tooltip: 'Remove receiver',

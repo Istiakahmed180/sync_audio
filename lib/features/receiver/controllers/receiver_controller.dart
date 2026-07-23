@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/constants/app_constants.dart';
 import '../../../models/connection_status.dart';
@@ -194,14 +195,19 @@ class ReceiverController extends GetxController {
 
   Future<void> _loadDeviceName() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('receiver_device_name')?.trim();
+      if (savedName != null && savedName.isNotEmpty) {
+        _applyLocalDeviceName(savedName, persist: false);
+        return;
+      }
       final name = await _deviceInfoChannel.invokeMethod<String>(
         'getDeviceName',
       );
       if (name != null &&
           name.trim().isNotEmpty &&
           deviceName.value == 'My Speaker') {
-        setDeviceName(name.trim());
-        deviceNameController.text = name.trim();
+        _applyLocalDeviceName(name.trim(), persist: false);
       }
     } on MissingPluginException {
       // Non-Android platforms keep the editable fallback name.
@@ -276,11 +282,11 @@ class ReceiverController extends GetxController {
   }
 
   void setDeviceName(String value) {
-    deviceName.value = value;
-    _service.setLocalDeviceName(value);
-    final hostId = _hostSessionId;
     final name = value.trim();
-    if (hostId != null && name.isNotEmpty) {
+    if (name.isEmpty) return;
+    _applyLocalDeviceName(name, updateController: false);
+    final hostId = _hostSessionId;
+    if (hostId != null) {
       unawaited(
         _service.sendControlCommand(
           receiverId: hostId,
@@ -288,6 +294,40 @@ class ReceiverController extends GetxController {
             type: ControlCommandType.setDeviceName,
             arguments: [name],
           ),
+        ),
+      );
+    }
+  }
+
+  void _applyLocalDeviceName(
+    String name, {
+    bool persist = true,
+    bool updateController = true,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    deviceName.value = trimmed;
+    if (updateController) {
+      deviceNameController.value = TextEditingValue(
+        text: trimmed,
+        selection: TextSelection.collapsed(offset: trimmed.length),
+      );
+    }
+    _service.setLocalDeviceName(trimmed);
+    if (persist) {
+      unawaited(
+        SharedPreferences.getInstance().then(
+          (prefs) => prefs.setString('receiver_device_name', trimmed),
+        ),
+      );
+    }
+    if (isServerRunning.value) {
+      unawaited(
+        _discoveryService.startResponder(
+          deviceId: localIpAddress.value,
+          deviceName: trimmed,
+          controlPort: defaultPort,
+          pairingCode: _pairingTokenValue ?? '',
         ),
       );
     }
@@ -519,6 +559,8 @@ class ReceiverController extends GetxController {
         if (volume != null && audioService != null) {
           unawaited(audioService.setPlaybackVolume(volume));
         }
+      case ControlCommandType.setDeviceName:
+        _applyLocalDeviceName(event.command.arguments.first);
       case ControlCommandType.bufferStatus:
         if (event.command.arguments.length >= 6) {
           final rtt = int.tryParse(event.command.arguments[5]);

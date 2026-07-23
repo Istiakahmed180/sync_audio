@@ -261,6 +261,42 @@ class HostController extends GetxController {
     );
   }
 
+  Future<void> renameReceiver(String address, String newName) async {
+    errorMessage.value = null;
+    final name = newName.trim();
+    if (name.isEmpty) {
+      return _showError('Enter a receiver name.');
+    }
+    if (name.length > 40) {
+      return _showError('Receiver name must be 40 characters or fewer.');
+    }
+    final session = receiverSessions.cast<ReceiverSession?>().firstWhere(
+      (candidate) => candidate?.ipAddress == address,
+      orElse: () => null,
+    );
+    if (session == null ||
+        session.controlStatus != ControlConnectionStatus.connected) {
+      return _showError('Connect to the receiver before renaming it.');
+    }
+    await _service.sendControlCommand(
+      receiverId: session.id,
+      command: ControlCommand(
+        type: ControlCommandType.setDeviceName,
+        arguments: [name],
+      ),
+    );
+    discoveredDeviceNames[address] = name;
+    final index = receiverSessions.indexWhere((item) => item.id == session.id);
+    if (index != -1) {
+      receiverSessions[index] = receiverSessions[index].copyWith(
+        deviceName: name,
+      );
+      receiverSessions.refresh();
+    }
+    await _pairedStore.savePair(ip: address, port: session.port, name: name);
+    await loadPairedDevices();
+  }
+
   void _startStats() {
     _statsActive = true;
     _statsStartTime = DateTime.now();
