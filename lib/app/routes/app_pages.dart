@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:get/get.dart';
 
 import '../../features/home/bindings/home_binding.dart';
@@ -28,8 +26,8 @@ abstract class AppPages {
     ),
     GetPage(
       name: AppRoutes.receiver,
-      page: () => Platform.isAndroid ? const ReceiverView() : const HostView(),
-      binding: Platform.isAndroid ? ReceiverBinding() : HostBinding(),
+      page: () => const ReceiverView(),
+      binding: ReceiverBinding(),
     ),
     GetPage(
       name: AppRoutes.settings,

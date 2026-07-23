@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -26,7 +24,7 @@ class OnboardingView extends GetView<OnboardingController> {
                 children: [
                   _WelcomePage(scheme: scheme),
                   _HostPage(scheme: scheme),
-                  if (Platform.isAndroid) _ReceiverPage(scheme: scheme),
+                  _ReceiverPage(scheme: scheme),
                   _ReadyPage(scheme: scheme),
                 ],
               ),
@@ -358,20 +356,15 @@ class _ReadyPage extends StatelessWidget {
                 const SizedBox(height: 12),
                 _ReadyTip(
                   icon: Icons.wifi_tethering_rounded,
-                  text: Platform.isAndroid
-                      ? 'Tap "Host Device" to start sharing audio'
-                      : 'This computer runs as the Host and sends audio to Android Receivers',
+                  text: 'Tap "Host Device" to start sharing audio',
                   scheme: scheme,
                 ),
-                if (Platform.isAndroid) ...[
-                  const SizedBox(height: 12),
-                  _ReadyTip(
-                    icon: Icons.speaker_group_rounded,
-                    text:
-                        'On another Android device, tap "Receiver Device" to join',
-                    scheme: scheme,
-                  ),
-                ],
+                const SizedBox(height: 12),
+                _ReadyTip(
+                  icon: Icons.speaker_group_rounded,
+                  text: 'On another device, tap "Receiver Device" to join',
+                  scheme: scheme,
+                ),
                 const SizedBox(height: 12),
                 _ReadyTip(
                   icon: Icons.qr_code_rounded,

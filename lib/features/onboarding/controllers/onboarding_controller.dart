@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +6,7 @@ class OnboardingController extends GetxController {
   static const _keyOnboardingComplete = 'onboarding_complete';
 
   final RxInt currentPage = 0.obs;
-  int get totalPages => Platform.isAndroid ? 4 : 3;
+  int get totalPages => 4;
   final pageController = PageController();
 
   static Future<bool> isOnboardingComplete() async {

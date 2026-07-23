@@ -57,16 +57,14 @@ class HomeView extends GetView<HomeController> {
               icon: Icons.wifi_tethering_rounded,
               onTap: () => Get.toNamed(AppRoutes.host),
             ),
-            if (Platform.isAndroid) ...[
-              const SizedBox(height: 12),
-              ModeSelectionCard(
-                title: 'Receiver Device',
-                description:
-                    'Join as a speaker — play the Host\'s audio in sync.',
-                icon: Icons.speaker_group_rounded,
-                onTap: () => Get.toNamed(AppRoutes.receiver),
-              ),
-            ],
+            const SizedBox(height: 12),
+            ModeSelectionCard(
+              title: 'Receiver Device',
+              description:
+                  'Join as a speaker — play the Host\'s audio in sync.',
+              icon: Icons.speaker_group_rounded,
+              onTap: () => Get.toNamed(AppRoutes.receiver),
+            ),
           ],
         ),
       ),
