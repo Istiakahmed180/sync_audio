@@ -176,6 +176,14 @@ class ReceiverView extends GetView<ReceiverController> {
                   deviceName: controller.deviceName.value,
                   ipAddress: controller.localIpAddress.value,
                   pairingCode: controller.pairingToken.value,
+                  expiresAt: controller.pairingTokenExpiresAt.value,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Obx(
+                () => _TrustedDevicesCard(
+                  devices: controller.trustedDevices.toList(growable: false),
+                  onRevoke: controller.revokeTrustedDevice,
                 ),
               ),
             ],
@@ -191,11 +199,13 @@ class _ConnectionInfoCard extends StatelessWidget {
     required this.deviceName,
     required this.ipAddress,
     required this.pairingCode,
+    required this.expiresAt,
   });
 
   final String deviceName;
   final String ipAddress;
   final String pairingCode;
+  final DateTime? expiresAt;
 
   String get _connectionInfo =>
       '$ipAddress:5050:$pairingCode:${Uri.encodeComponent(deviceName)}';
@@ -277,6 +287,13 @@ class _ConnectionInfoCard extends StatelessWidget {
               'The Host needs this pairing code to connect.',
               style: theme.textTheme.bodySmall,
             ),
+            if (expiresAt != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Code refreshes automatically every 10 minutes.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -298,6 +315,63 @@ class _ConnectionInfoCard extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrustedDevicesCard extends StatelessWidget {
+  const _TrustedDevicesCard({required this.devices, required this.onRevoke});
+
+  final List<String> devices;
+  final Future<void> Function(String address) onRevoke;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.verified_user_outlined),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Trusted Hosts',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              devices.isEmpty
+                  ? 'No trusted Host yet. A successful pairing will add its local address.'
+                  : 'These Hosts can reconnect without entering a new pairing code.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (devices.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...devices.map(
+                (address) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.computer_rounded),
+                  title: Text(address),
+                  trailing: TextButton(
+                    onPressed: () => onRevoke(address),
+                    child: const Text('Revoke'),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

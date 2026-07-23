@@ -7,6 +7,7 @@ import '../models/control_command.dart';
 import '../models/receiver_session.dart';
 import 'ip_address_service.dart';
 import 'secure_transport.dart';
+import 'pairing_store.dart';
 
 abstract class ConnectionService {
   Stream<String> get receivedMessages;
@@ -65,10 +66,14 @@ extension ConnectionServiceDeviceName on ConnectionService {
 }
 
 class TcpConnectionService implements ConnectionService {
-  TcpConnectionService({IpAddressService? ipAddressService})
-    : _ipAddressService = ipAddressService ?? IpAddressService();
+  TcpConnectionService({
+    IpAddressService? ipAddressService,
+    PairingStore? pairingStore,
+  }) : _ipAddressService = ipAddressService ?? IpAddressService(),
+       _pairingStore = pairingStore ?? SharedPrefsPairingStore();
 
   final IpAddressService _ipAddressService;
+  final PairingStore _pairingStore;
   final _receivedMessagesController = StreamController<String>.broadcast();
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
@@ -95,6 +100,7 @@ class TcpConnectionService implements ConnectionService {
   String? _pairingToken;
   String _localDeviceName = 'Receiver';
   final Map<String, String> _pairingTokens = <String, String>{};
+  final Set<String> _trustedDeviceAddresses = <String>{};
 
   ServerSocket? _server;
   ConnectionStatus _status = ConnectionStatus.disconnected;
@@ -461,9 +467,16 @@ class TcpConnectionService implements ConnectionService {
     }
     switch (command.type) {
       case ControlCommandType.hello:
-        if (_pairingToken != null &&
-            (command.arguments.length != 2 ||
-                command.arguments[1] != _pairingToken)) {
+        final peerAddress = _normalizePeerAddress(sourceId);
+        final trusted = _trustedDeviceAddresses.contains(peerAddress);
+        final suppliedToken = command.arguments.length == 2
+            ? command.arguments[1]
+            : null;
+        final pairingAccepted =
+            _pairingToken == null ||
+            (trusted && suppliedToken != null) ||
+            suppliedToken == _pairingToken;
+        if (!pairingAccepted) {
           unawaited(
             sendMessageTo(
               receiverId: sourceId,
@@ -476,6 +489,10 @@ class TcpConnectionService implements ConnectionService {
           unawaited(disconnectFrom(sourceId));
           return;
         }
+        if (suppliedToken != null) {
+          _trustedDeviceAddresses.add(peerAddress);
+          unawaited(_pairingStore.addTrustedDevice(peerAddress));
+        }
         await sendMessageTo(
           receiverId: sourceId,
           message: ControlCommand(
@@ -483,10 +500,10 @@ class TcpConnectionService implements ConnectionService {
             arguments: [command.arguments.first, _localDeviceName],
           ).line,
         );
-        if (command.arguments.length == 2 && _pairingToken != null) {
+        if (suppliedToken != null) {
           await _establishSecureChannel(
             sourceId,
-            _pairingToken!,
+            suppliedToken,
             command.arguments.first,
             'receiver',
           );
@@ -579,6 +596,22 @@ class TcpConnectionService implements ConnectionService {
   void setLocalDeviceName(String name) {
     final trimmed = name.trim();
     if (trimmed.isNotEmpty) _localDeviceName = trimmed;
+  }
+
+  void setTrustedDeviceAddresses(Iterable<String> addresses) {
+    _trustedDeviceAddresses
+      ..clear()
+      ..addAll(addresses.map(_normalizePeerAddress));
+  }
+
+  void revokeTrustedDeviceAddress(String address) {
+    final normalized = _normalizePeerAddress(address);
+    _trustedDeviceAddresses.remove(normalized);
+    for (final id in _sockets.keys.toList()) {
+      if (_normalizePeerAddress(id) == normalized) {
+        unawaited(disconnectFrom(id));
+      }
+    }
   }
 
   void _evictStalePings() {
@@ -732,6 +765,15 @@ class TcpConnectionService implements ConnectionService {
     if (!_errorsController.isClosed) _errorsController.add(message);
   }
 
+  String _normalizePeerAddress(String value) {
+    final separator = value.lastIndexOf(':');
+    if (separator <= 0) return value.trim();
+    final possiblePort = int.tryParse(value.substring(separator + 1));
+    return possiblePort == null
+        ? value.trim()
+        : value.substring(0, separator).trim();
+  }
+
   String _sessionId(String ipAddress, int port) => '$ipAddress:$port';
 
   String _friendlySocketError(
@@ -757,6 +799,20 @@ class TcpConnectionService implements ConnectionService {
     await _sessionController.close();
     await _controlEventController.close();
     await _errorsController.close();
+  }
+}
+
+extension ConnectionServiceSecurity on ConnectionService {
+  void setTrustedDeviceAddresses(Iterable<String> addresses) {
+    if (this is TcpConnectionService) {
+      (this as TcpConnectionService).setTrustedDeviceAddresses(addresses);
+    }
+  }
+
+  void revokeTrustedDeviceAddress(String address) {
+    if (this is TcpConnectionService) {
+      (this as TcpConnectionService).revokeTrustedDeviceAddress(address);
+    }
   }
 }
 

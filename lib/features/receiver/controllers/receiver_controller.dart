@@ -61,6 +61,8 @@ class ReceiverController extends GetxController {
   final audioOutputs = <AudioOutputDevice>[].obs;
   final isLoadingAudioOutputs = false.obs;
   final pairingToken = 'Loading…'.obs;
+  final pairingTokenExpiresAt = Rxn<DateTime>();
+  final trustedDevices = <String>[].obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
   final deviceName = 'My Speaker'.obs;
@@ -85,6 +87,7 @@ class ReceiverController extends GetxController {
   late final StreamSubscription<ControlEvent> _controlEventSubscription;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
+  Timer? _pairingExpiryTimer;
   bool _nativeReceiverActive = false;
   int? _hostRoundTripTimeMicros;
   String? _hostSessionId;
@@ -111,6 +114,7 @@ class ReceiverController extends GetxController {
     isServerRunning.value = _service.isServerRunning;
     isConnectedToHost.value = _service.isConnected;
     _pairingReady = _loadPairingToken();
+    unawaited(_loadTrustedDevices());
     _messageSubscription = _service.receivedMessages.listen((message) {
       lastReceivedMessage.value = message;
     });
@@ -208,20 +212,61 @@ class ReceiverController extends GetxController {
   Future<void> _loadPairingToken() async {
     try {
       final existing = await _pairingStore.readToken();
+      final issuedAt = await _pairingStore.readTokenIssuedAt();
+      final now = DateTime.now();
       final needsRegeneration =
-          existing == null || !RegExp(r'^\d{8}$').hasMatch(existing);
+          existing == null ||
+          !RegExp(r'^\d{8}$').hasMatch(existing) ||
+          issuedAt == null ||
+          now.difference(issuedAt) >= const Duration(minutes: 10);
       final token = needsRegeneration
           ? SharedPrefsPairingStore.generateToken()
           : existing;
       pairingToken.value = token;
       _pairingTokenValue = token;
-      if (needsRegeneration) await _pairingStore.writeToken(token);
+      final tokenIssuedAt = needsRegeneration ? now : issuedAt;
+      pairingTokenExpiresAt.value = tokenIssuedAt.add(
+        const Duration(minutes: 10),
+      );
+      if (needsRegeneration) {
+        await _pairingStore.writeToken(token);
+        await _pairingStore.writeTokenIssuedAt(now);
+      }
       _service.setPairingToken(token);
     } catch (_) {
       final token = SharedPrefsPairingStore.generateToken();
       pairingToken.value = token;
       _pairingTokenValue = token;
+      pairingTokenExpiresAt.value = DateTime.now().add(
+        const Duration(minutes: 10),
+      );
       _service.setPairingToken(token);
+    }
+  }
+
+  Future<void> _loadTrustedDevices() async {
+    final devices = await _pairingStore.readTrustedDevices();
+    trustedDevices.assignAll(devices);
+    _service.setTrustedDeviceAddresses(devices);
+  }
+
+  Future<void> revokeTrustedDevice(String address) async {
+    await _pairingStore.revokeTrustedDevice(address);
+    _service.revokeTrustedDeviceAddress(address);
+    await _loadTrustedDevices();
+  }
+
+  Future<void> _refreshPairingExpiry() async {
+    final expiresAt = pairingTokenExpiresAt.value;
+    if (expiresAt == null || DateTime.now().isBefore(expiresAt)) return;
+    await _loadPairingToken();
+    if (isServerRunning.value) {
+      await _discoveryService.startResponder(
+        deviceId: localIpAddress.value,
+        deviceName: deviceName.value,
+        controlPort: defaultPort,
+        pairingCode: _pairingTokenValue ?? '',
+      );
     }
   }
 
@@ -250,11 +295,13 @@ class ReceiverController extends GetxController {
     }
     errorMessage.value = null;
     await _pairingReady;
+    await _loadTrustedDevices();
     _service.setLocalDeviceName(deviceName.value);
     final address = await _service.startServer(port: defaultPort);
     localIpAddress.value = address ?? 'Not available';
     isServerRunning.value = _service.isServerRunning;
     if (isServerRunning.value) {
+      _startPairingExpiryTimer();
       await _discoveryService.startResponder(
         deviceId: address ?? 'receiver',
         deviceName: deviceName.value,
@@ -283,6 +330,8 @@ class ReceiverController extends GetxController {
     errorMessage.value = null;
     await _service.stopServer();
     await _discoveryService.stopResponder();
+    _pairingExpiryTimer?.cancel();
+    _pairingExpiryTimer = null;
     if (_audioService?.isReceiving ?? false) {
       await stopAudioReceiver();
     }
@@ -290,6 +339,14 @@ class ReceiverController extends GetxController {
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;
     await BackgroundConnectionService.stop();
+  }
+
+  void _startPairingExpiryTimer() {
+    _pairingExpiryTimer?.cancel();
+    _pairingExpiryTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_refreshPairingExpiry()),
+    );
   }
 
   Future<void> startAudioReceiver() => _ensureAudioReceiverStarted();
@@ -526,6 +583,9 @@ class ReceiverController extends GetxController {
     connectionStatus.value = status;
     isServerRunning.value = _service.isServerRunning;
     isConnectedToHost.value = status == ConnectionStatus.connected;
+    if (status == ConnectionStatus.connected) {
+      unawaited(_loadTrustedDevices());
+    }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
   }
@@ -544,6 +604,7 @@ class ReceiverController extends GetxController {
     _controlSessionSubscription.cancel();
     _diagnosticTimer?.cancel();
     _bufferStatusTimer?.cancel();
+    _pairingExpiryTimer?.cancel();
     messageController.dispose();
     super.onClose();
   }
