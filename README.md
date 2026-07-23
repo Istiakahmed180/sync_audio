@@ -190,6 +190,7 @@ Host screen:
 | **AES‑GCM encryption** | Audio packets and control channel encrypted after pairing |
 | **Jitter buffer** | Adaptive bounded jitter buffer with drift correction |
 | **Light/Dark theme** | System, light, and dark mode support |
+| **Desktop tray mode** | Closing the Windows, macOS, or Linux window hides it to the system tray while active connections and streams continue; use the tray menu to show or quit |
 
 ---
 
