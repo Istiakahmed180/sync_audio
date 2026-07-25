@@ -140,6 +140,8 @@ class ReceiverController extends GetxController {
       session,
     ) {
       if (session.controlStatus == ControlConnectionStatus.disconnected) {
+        final hostId = _hostSessionId;
+        if (hostId != null && session.id != hostId) return;
         isConnectedToHost.value = false;
         _hostSessionId = null;
         _hostRoundTripTimeMicros = null;

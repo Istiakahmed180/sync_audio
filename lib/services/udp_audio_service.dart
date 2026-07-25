@@ -382,6 +382,8 @@ class UdpAudioService implements AudioStreamService {
           'Microphone access was not allowed. Tap "Start" again and accept the permission to share audio.',
         'SYSTEM_AUDIO_UNSUPPORTED' =>
           'This Android version is too old. Audio sharing needs Android 10 or higher.',
+        'EMULATOR_UNSUPPORTED' =>
+          'Audio sharing is not supported on emulators. Use a real Android device as the host.',
         'SYSTEM_AUDIO_START_FAILED' =>
           'Could not start audio sharing. ${error.message}. Please try again.',
         _ =>

@@ -76,7 +76,7 @@ class NetworkPreflightService {
       ),
     );
 
-    checks.add(await _checkTcp(parsed, controlPort, timeout));
+    checks.add(await _checkTcp(parsed, controlPort, timeout, isControlConnected));
     checks.add(
       PreflightCheck(
         label: 'Pairing',
@@ -101,7 +101,15 @@ class NetworkPreflightService {
     InternetAddress address,
     int port,
     Duration timeout,
+    bool skipIfConnected,
   ) async {
+    if (skipIfConnected) {
+      return const PreflightCheck(
+        label: 'TCP control port',
+        state: PreflightCheckState.passed,
+        detail: 'TCP is already connected.',
+      );
+    }
     final stopwatch = Stopwatch()..start();
     Socket? socket;
     try {

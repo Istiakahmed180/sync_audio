@@ -779,13 +779,20 @@ class HostController extends GetxController {
     if (addresses.isEmpty) {
       return _showError('Add at least one receiver first.');
     }
+    final wasStreaming = isAudioStreaming;
     isBulkReceiverActionRunning.value = true;
     try {
+      if (wasStreaming) {
+        await stopSystemAudioStream();
+      }
       for (final address in addresses) {
-        await disconnectReceiver(address);
+        await _service.disconnectFrom(address);
       }
       for (final address in addresses) {
         await connectReceiver(address);
+      }
+      if (wasStreaming) {
+        await startSystemAudioStream();
       }
     } finally {
       isBulkReceiverActionRunning.value = false;

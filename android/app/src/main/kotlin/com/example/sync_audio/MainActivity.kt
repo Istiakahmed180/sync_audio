@@ -200,6 +200,14 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startNativeHostStream" -> {
+                        if (isEmulator()) {
+                            result.error(
+                                "EMULATOR_UNSUPPORTED",
+                                "System audio capture is not available on emulators",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
                         val codec = call.argument<String>("codec") ?: "pcm16"
                         val encrypted = call.argument<Boolean>("encrypted") ?: false
                         val destinations = call.argument<List<String>>("destinations")
@@ -363,7 +371,17 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, systemAudioChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "start" -> requestSystemAudioCapture(result)
+                    "start" -> {
+                        if (isEmulator()) {
+                            result.error(
+                                "EMULATOR_UNSUPPORTED",
+                                "System audio capture is not available on emulators",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
+                        requestSystemAudioCapture(result)
+                    }
                     "stop" -> {
                         stopService(Intent(this, SystemAudioCaptureService::class.java))
                         nativeSender?.stop()
@@ -904,6 +922,14 @@ class MainActivity : FlutterActivity() {
         audioExecutor.shutdownNow()
         super.onDestroy()
     }
+
+    private fun isEmulator(): Boolean =
+        (Build.FINGERPRINT.startsWith("generic") ||
+         Build.FINGERPRINT.startsWith("unknown") ||
+         Build.MODEL.contains("google_sdk") ||
+         Build.MODEL.contains("Emulator") ||
+         Build.MODEL.contains("Android SDK built for x86") ||
+         Build.MANUFACTURER.contains("Genymotion"))
 
     companion object {
         var notificationActionSink: EventChannel.EventSink? = null
