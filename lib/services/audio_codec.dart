@@ -42,6 +42,7 @@ abstract class AudioEncoder {
   AudioCodecConfig get config;
   Future<Uint8List> encode(Uint8List pcm);
   Future<void> reset();
+  Future<void> dispose();
 }
 
 abstract class AudioDecoder {
@@ -49,6 +50,7 @@ abstract class AudioDecoder {
   AudioCodecConfig get config;
   Future<Uint8List> decode(Uint8List encoded);
   Future<void> reset();
+  Future<void> dispose();
 }
 
 class Pcm16AudioEncoder implements AudioEncoder {
@@ -65,6 +67,9 @@ class Pcm16AudioEncoder implements AudioEncoder {
 
   @override
   Future<void> reset() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class Pcm16AudioDecoder implements AudioDecoder {
@@ -81,6 +86,9 @@ class Pcm16AudioDecoder implements AudioDecoder {
 
   @override
   Future<void> reset() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class UnsupportedOpusEncoder implements AudioEncoder {
@@ -101,6 +109,9 @@ class UnsupportedOpusEncoder implements AudioEncoder {
 
   @override
   Future<void> reset() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class UnsupportedOpusDecoder implements AudioDecoder {
@@ -121,6 +132,9 @@ class UnsupportedOpusDecoder implements AudioDecoder {
 
   @override
   Future<void> reset() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class NativeOpusAudioEncoder implements AudioEncoder {
@@ -175,6 +189,12 @@ class NativeOpusAudioEncoder implements AudioEncoder {
     _encoder?.destroy();
     _create();
   }
+
+  @override
+  Future<void> dispose() async {
+    _encoder?.destroy();
+    _encoder = null;
+  }
 }
 
 class NativeOpusAudioDecoder implements AudioDecoder {
@@ -215,5 +235,11 @@ class NativeOpusAudioDecoder implements AudioDecoder {
   Future<void> reset() async {
     _decoder?.destroy();
     _create();
+  }
+
+  @override
+  Future<void> dispose() async {
+    _decoder?.destroy();
+    _decoder = null;
   }
 }

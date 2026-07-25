@@ -288,6 +288,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
 
   bool _isMdnsServiceQuery(List<int> bytes) {
     if (bytes.length < 13) return false;
+    // Check QR bit (index 2, bit 7). 0 = Query, 1 = Response.
+    if ((bytes[2] & 0x80) != 0) return false;
+
     final data = ByteData.sublistView(Uint8List.fromList(bytes));
     final questionCount = data.getUint16(4);
     var offset = 12;
@@ -301,13 +304,35 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     return false;
   }
 
-  _MdnsName? _readMdnsName(List<int> bytes, int offset) {
+  _MdnsName? _readMdnsName(List<int> bytes, int offset, {int depth = 0}) {
+    if (depth > 8) {
+      return null; // Prevent infinite recursion on malformed packets.
+    }
     final labels = <String>[];
+    var jumped = false;
+    var nextOffset = -1;
+
     while (offset < bytes.length) {
       final length = bytes[offset++];
       if (length == 0) {
-        return _MdnsName('${labels.join('.')}.', offset);
+        if (!jumped) nextOffset = offset;
+        return _MdnsName('${labels.join('.')}.', nextOffset);
       }
+
+      if ((length & 0xC0) == 0xC0) {
+        // DNS Name Compression (Pointer)
+        if (offset >= bytes.length) return null;
+        final pointer = ((length & 0x3F) << 8) | bytes[offset++];
+        if (!jumped) nextOffset = offset;
+        jumped = true;
+        final remainder = _readMdnsName(bytes, pointer, depth: depth + 1);
+        if (remainder == null) return null;
+        return _MdnsName(
+          '${labels.join('.')}${labels.isEmpty ? '' : '.'}${remainder.value}',
+          nextOffset,
+        );
+      }
+
       if (length > 63 || offset + length > bytes.length) return null;
       labels.add(utf8.decode(bytes.sublist(offset, offset + length)));
       offset += length;

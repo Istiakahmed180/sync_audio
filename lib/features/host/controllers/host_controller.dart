@@ -4,8 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../models/audio_stream_status.dart';
+import '../../../features/settings/controllers/settings_controller.dart';
 import '../../../models/audio_device.dart';
+import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
@@ -21,7 +22,6 @@ import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
 import '../../../services/udp_audio_service.dart';
-import '../../../features/settings/controllers/settings_controller.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 
 class HostController extends GetxController {
@@ -1668,11 +1668,14 @@ class HostController extends GetxController {
     _notificationActionSubscription?.cancel();
     _diagnosticsSubscription.cancel();
     _diagnosticTimer?.cancel();
+    _diagnosticTimer = null;
     stopDiscoveryPolling();
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().stop();
     }
     _controlSessionSubscription.cancel();
+    _streamingReceiverAddresses.clear();
+    _readyReceiverStreamAddresses.clear();
     receiverIpController.dispose();
     receiverIpInputController.dispose();
     portController.dispose();
@@ -1682,6 +1685,7 @@ class HostController extends GetxController {
     for (final controller in receiverPairingControllers.values) {
       controller.dispose();
     }
+    receiverPairingControllers.clear();
     super.onClose();
   }
 }

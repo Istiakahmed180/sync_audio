@@ -7,12 +7,12 @@ import 'package:flutter/services.dart';
 
 import '../models/audio_stream_status.dart';
 import '../models/receiver_session.dart';
+import 'adaptive_jitter_buffer.dart';
 import 'audio_capture_service.dart';
 import 'audio_codec.dart';
-import 'audio_packet_codec.dart';
 import 'audio_fec_codec.dart';
+import 'audio_packet_codec.dart';
 import 'audio_playback_service.dart';
-import 'adaptive_jitter_buffer.dart';
 import 'latency_metrics.dart';
 import 'secure_transport.dart';
 import 'synchronization_service.dart';
@@ -126,8 +126,10 @@ class UdpAudioService implements AudioStreamService {
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
-  RawDatagramSocket? _socket;
-  StreamSubscription<RawSocketEvent>? _udpSubscription;
+  RawDatagramSocket? _hostSocket;
+  RawDatagramSocket? _receiverSocket;
+  StreamSubscription<RawSocketEvent>? _hostListener;
+  StreamSubscription<RawSocketEvent>? _receiverListener;
   StreamSubscription<Uint8List>? _captureSubscription;
   Timer? _playbackTimer;
   Timer? _receiverWatchdogTimer;
@@ -163,6 +165,7 @@ class UdpAudioService implements AudioStreamService {
   SecretKey? _sessionKey;
   String? _securitySessionId;
   final _sessionKeyService = SessionKeyService();
+  int _lastDecryptionErrorMicros = 0;
   // Audio sequence numbers restart for every stream. Keep replay protection
   // scoped to the active stream instead of the lifetime of this service.
   ReplayGuard _replayGuard = ReplayGuard();
@@ -265,8 +268,12 @@ class UdpAudioService implements AudioStreamService {
     final useOpus = preference == AudioCodecPreference.opus;
     if (useOpus && OpusRuntime.isAvailable) {
       try {
-        encoder = NativeOpusAudioEncoder();
-        decoder = NativeOpusAudioDecoder();
+        final newEncoder = NativeOpusAudioEncoder();
+        final newDecoder = NativeOpusAudioDecoder();
+        await encoder.dispose();
+        await decoder.dispose();
+        encoder = newEncoder;
+        decoder = newDecoder;
         return;
       } catch (_) {
         if (preference == AudioCodecPreference.opus) {
@@ -274,6 +281,8 @@ class UdpAudioService implements AudioStreamService {
         }
       }
     }
+    await encoder.dispose();
+    await decoder.dispose();
     encoder = Pcm16AudioEncoder();
     decoder = Pcm16AudioDecoder();
   }
@@ -351,9 +360,10 @@ class UdpAudioService implements AudioStreamService {
         _updateSession(session);
       }
       _sessions.removeWhere((id, _) => !activeIds.contains(id));
-      _socket?.close();
-      _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      _udpSubscription = _socket!.listen(_handleHostSocketEvent);
+      _hostListener?.cancel();
+      _hostSocket?.close();
+      _hostSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      _hostListener = _hostSocket!.listen(_handleHostSocketEvent);
       _streaming = true;
       final streamGeneration = ++_streamGeneration;
       _clockSyncTimer = Timer.periodic(
@@ -446,7 +456,7 @@ class UdpAudioService implements AudioStreamService {
   }
 
   void _synchronizeReceivers() {
-    final socket = _socket;
+    final socket = _hostSocket;
     final clock = _streamClock;
     if (!_streaming || socket == null || clock == null) return;
     final now = clock.elapsedMicroseconds;
@@ -487,7 +497,7 @@ class UdpAudioService implements AudioStreamService {
   void _handleHostSocketEvent(RawSocketEvent event) {
     if (event != RawSocketEvent.read) return;
     Datagram? datagram;
-    while ((datagram = _socket?.receive()) != null) {
+    while ((datagram = _hostSocket?.receive()) != null) {
       final packet = AudioPacketCodec.decode(datagram!.data);
       if (packet?.type != AudioPacketType.clockSyncResponse) continue;
       final request = _clockRequests.remove(packet!.sequence);
@@ -634,7 +644,7 @@ class UdpAudioService implements AudioStreamService {
     int generation,
     int timestampMicros,
   ) async {
-    final socket = _socket;
+    final socket = _hostSocket;
     if (!_streaming ||
         generation != _streamGeneration ||
         socket == null ||
@@ -736,8 +746,10 @@ class UdpAudioService implements AudioStreamService {
       );
     }
     _sessions.clear();
-    _socket?.close();
-    _socket = null;
+    _hostListener?.cancel();
+    _hostListener = null;
+    _hostSocket?.close();
+    _hostSocket = null;
     _setStatus(AudioStreamStatus.stopped);
   }
 
@@ -772,7 +784,7 @@ class UdpAudioService implements AudioStreamService {
   }
 
   void _sendClockOffset(ReceiverSession session, int sequence) {
-    final socket = _socket;
+    final socket = _hostSocket;
     if (socket == null) return;
     socket.send(
       AudioPacketCodec.encode(
@@ -791,7 +803,7 @@ class UdpAudioService implements AudioStreamService {
     int sequence,
     int appliedDriftPpm,
   ) {
-    final socket = _socket;
+    final socket = _hostSocket;
     if (socket == null) return;
     socket.send(
       AudioPacketCodec.encode(
@@ -813,8 +825,12 @@ class UdpAudioService implements AudioStreamService {
     _setStatus(AudioStreamStatus.starting);
     try {
       await playbackService.start();
-      _socket?.close();
-      _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
+      _receiverListener?.cancel();
+      _receiverSocket?.close();
+      _receiverSocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        port,
+      );
       _receiving = true;
       _playbackQueue = Future<void>.value();
       _totalBytesReceived = 0;
@@ -839,7 +855,7 @@ class UdpAudioService implements AudioStreamService {
         (_) => _checkReceiverHealth(),
       );
       _setStatus(AudioStreamStatus.receiving);
-      _udpSubscription = _socket!.listen(_handleReceiverSocketEvent);
+      _receiverListener = _receiverSocket!.listen(_handleReceiverSocketEvent);
     } on SocketException {
       await stopReceiver();
       _emitError('Could not open the audio port. Try restarting the app.');
@@ -854,7 +870,7 @@ class UdpAudioService implements AudioStreamService {
   void _handleReceiverSocketEvent(RawSocketEvent event) {
     if (event != RawSocketEvent.read || !_receiving) return;
     Datagram? datagram;
-    while ((datagram = _socket?.receive()) != null) {
+    while ((datagram = _receiverSocket?.receive()) != null) {
       final source = datagram!;
       unawaited(_handleReceiverDatagram(source));
     }
@@ -877,7 +893,11 @@ class UdpAudioService implements AudioStreamService {
         );
         _metrics.decrypted(decryptClock.elapsed);
       } catch (_) {
-        _emitError('Encrypted audio packet rejected.');
+        final now = _receiverClock.elapsedMicroseconds;
+        if (now - _lastDecryptionErrorMicros > 2000000) {
+          _lastDecryptionErrorMicros = now;
+          _emitError('Encrypted audio packet rejected.');
+        }
         return;
       }
     }
@@ -885,7 +905,7 @@ class UdpAudioService implements AudioStreamService {
     if (packet == null) return;
     switch (packet.type) {
       case AudioPacketType.clockSyncRequest:
-        final socket = _socket;
+        final socket = _receiverSocket;
         if (socket == null || !_receiving) return;
         final now = _receiverClock.elapsedMicroseconds;
         socket.send(
@@ -1143,10 +1163,10 @@ class UdpAudioService implements AudioStreamService {
     _clockSynchronized = false;
     _receiverClock.stop();
     _replayGuard = ReplayGuard();
-    await _udpSubscription?.cancel();
-    _udpSubscription = null;
-    _socket?.close();
-    _socket = null;
+    await _receiverListener?.cancel();
+    _receiverListener = null;
+    _receiverSocket?.close();
+    _receiverSocket = null;
     await playbackService.stop();
     _setStatus(AudioStreamStatus.stopped);
   }
@@ -1174,6 +1194,8 @@ class UdpAudioService implements AudioStreamService {
   Future<void> dispose() async {
     await stopStreaming();
     await stopReceiver();
+    await encoder.dispose();
+    await decoder.dispose();
     await _statusController.close();
     await _errorsController.close();
     await _sessionController.close();
