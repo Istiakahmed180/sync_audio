@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -11,6 +12,7 @@ import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
+import '../../../services/audio_calibration_service.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/background_connection_service.dart';
 import '../../../services/battery_optimization_service.dart';
@@ -95,6 +97,10 @@ class HostController extends GetxController {
 
   bool get isAudioStreaming =>
       _nativeHostActive || (_audioService?.isStreaming ?? false);
+
+  Stream<Uint8List> get visualizerPcm =>
+      _audioService?.visualizerPcm ?? const Stream.empty();
+
   final diagnostics = <String, Object>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
@@ -1100,6 +1106,13 @@ class HostController extends GetxController {
       _renameAcks.remove(event.sourceId)?.complete(event.command);
       return;
     }
+    if (event.command.type == ControlCommandType.calibrationResult) {
+      final latencyMicros = int.tryParse(event.command.arguments[1]);
+      if (latencyMicros != null) {
+        unawaited(_updateCalibration(event.sourceId, latencyMicros));
+      }
+      return;
+    }
     if (event.command.type != ControlCommandType.bufferStatus ||
         event.command.arguments.length < 7) {
       return;
@@ -1439,6 +1452,64 @@ class HostController extends GetxController {
     } catch (_) {
       return const <String>{};
     }
+  }
+
+  Future<void> startAutoCalibration(String address) async {
+    final sessionId = _findControlSession(address);
+    if (sessionId == null) return;
+
+    errorMessage.value =
+        'Calibrating ${discoveredDeviceNames[address] ?? address}...';
+
+    await _service.sendControlCommand(
+      receiverId: sessionId,
+      command: const ControlCommand(
+        type: ControlCommandType.startCalibration,
+        arguments: ['0'],
+      ),
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    final chirp = AudioCalibrationService.generateChirp();
+    await _audioService?.sendRawPcm(chirp);
+  }
+
+  Future<void> _updateCalibration(String sessionId, int latencyMicros) async {
+    final address =
+        sessionId; // In this app, sessionId for control is often just the IP
+    final session = receiverSessionFor(address);
+    if (session == null) return;
+
+    // Use a reasonable heuristic: Bluetooth latency is usually between 50ms and 500ms.
+    // If the detected latency is very low, it might be a false positive.
+    // We adjust for the expected network delay which is half the RTT.
+    final networkDelay = session.roundTripTimeMicros ~/ 2;
+    final speakerLatency = latencyMicros - networkDelay;
+
+    if (speakerLatency < 0) return;
+
+    errorMessage.value = 'Auto-calibrated: ${speakerLatency ~/ 1000}ms';
+
+    // Update calibration
+    await _calibrationStore.write(address, speakerLatency);
+    receiverCalibrationMicros[address] = speakerLatency;
+    receiverCalibrationMicros.refresh();
+
+    if (_audioService != null) {
+      await _audioService.setReceiverCalibration(
+        receiverId: session.id,
+        calibrationMicros: speakerLatency,
+      );
+    }
+
+    await _service.sendControlCommand(
+      receiverId: session.id,
+      command: ControlCommand(
+        type: ControlCommandType.setPlaybackOffset,
+        arguments: ['${session.clockOffsetMicros + speakerLatency}'],
+      ),
+    );
   }
 
   Future<void> adjustReceiverCalibration(

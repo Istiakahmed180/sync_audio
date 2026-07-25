@@ -6,6 +6,7 @@ import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/network_preflight_service.dart';
+import '../../../shared/widgets/audio_visualizer.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -210,6 +211,9 @@ class HostView extends GetView<HostController> {
                                   session,
                                   delta,
                                 ),
+                          onAutoCalibrate: session == null
+                              ? null
+                              : () => controller.startAutoCalibration(address),
                           preflightResult: controller.preflightResults[address],
                           isPreflightRunning: controller.preflightRunning
                               .contains(address),
@@ -245,6 +249,13 @@ class HostView extends GetView<HostController> {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        if (controller.isAudioStreaming) ...[
+                          AudioVisualizer(
+                            stream: controller.visualizerPcm,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Text(
                           controller.isAudioStreaming
                               ? 'Audio is being sent to the connected Receiver(s).'
@@ -601,6 +612,7 @@ class _ReceiverTargetCard extends StatelessWidget {
     this.onVolumeChanged,
     this.onToggleMute,
     this.onAdjustCalibration,
+    this.onAutoCalibrate,
     required this.onRunPreflight,
     required this.isPreflightRunning,
     this.preflightResult,
@@ -626,6 +638,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
   final Future<void> Function(int deltaMilliseconds)? onAdjustCalibration;
+  final VoidCallback? onAutoCalibrate;
   final Future<void> Function() onRunPreflight;
   final bool isPreflightRunning;
   final NetworkPreflightResult? preflightResult;
@@ -801,6 +814,7 @@ class _ReceiverTargetCard extends StatelessWidget {
             _CalibrationControls(
               calibrationMicros: calibrationMicros,
               onAdjust: onAdjustCalibration,
+              onAutoCalibrate: onAutoCalibrate,
             ),
             Align(
               alignment: Alignment.centerLeft,
@@ -942,10 +956,12 @@ class _CalibrationControls extends StatelessWidget {
   const _CalibrationControls({
     required this.calibrationMicros,
     required this.onAdjust,
+    this.onAutoCalibrate,
   });
 
   final int calibrationMicros;
   final Future<void> Function(int deltaMilliseconds)? onAdjust;
+  final VoidCallback? onAutoCalibrate;
 
   String get _valueLabel {
     final milliseconds = calibrationMicros / 1000;
@@ -1004,6 +1020,14 @@ class _CalibrationControls extends StatelessWidget {
           onPressed: enabled ? () => onAdjust!(10) : null,
           icon: const Icon(Icons.fast_forward_rounded, size: 18),
         ),
+        if (onAutoCalibrate != null)
+          IconButton(
+            tooltip: 'Auto-calibrate using microphone',
+            visualDensity: VisualDensity.compact,
+            onPressed: onAutoCalibrate,
+            icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+            color: Theme.of(context).colorScheme.primary,
+          ),
       ],
     );
   }

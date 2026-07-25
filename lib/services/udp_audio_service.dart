@@ -91,10 +91,14 @@ abstract class AudioStreamService {
 
   bool get encryptionEnabled;
 
+  Stream<Uint8List> get visualizerPcm;
+
   Future<void> setSessionSecurity({
     required String pairingToken,
     required String sessionId,
   });
+
+  Future<void> sendRawPcm(Uint8List pcm);
 
   Future<void> dispose();
 }
@@ -129,6 +133,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
+  final _visualizerController = StreamController<Uint8List>.broadcast();
   RawDatagramSocket? _hostSocket;
   RawDatagramSocket? _receiverSocket;
   StreamSubscription<RawSocketEvent>? _hostListener;
@@ -189,6 +194,9 @@ class UdpAudioService extends GetxService implements AudioStreamService {
 
   @override
   Stream<ReceiverSession> get sessionChanges => _sessionController.stream;
+
+  @override
+  Stream<Uint8List> get visualizerPcm => _visualizerController.stream;
 
   @override
   AudioStreamStatus get status => _status;
@@ -374,10 +382,10 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         (_) => _synchronizeReceivers(),
       );
       _synchronizeReceivers();
-      _captureSubscription = captureService.pcmChunks.listen(
-        (pcm) => _sendPcmPacket(pcm, streamGeneration),
-        onError: (Object error) => unawaited(_handleCaptureError(error)),
-      );
+      _captureSubscription = captureService.pcmChunks.listen((pcm) {
+        if (!_visualizerController.isClosed) _visualizerController.add(pcm);
+        _sendPcmPacket(pcm, streamGeneration);
+      }, onError: (Object error) => unawaited(_handleCaptureError(error)));
       await captureService.start();
       _setStatus(AudioStreamStatus.streaming);
     } on SocketException {
@@ -1110,6 +1118,9 @@ class UdpAudioService extends GetxService implements AudioStreamService {
           final pcm = await decoder.decode(packet.payload);
           _metrics.decoded(decodeClock.elapsed);
           if (_receiving && generation == _receiverGeneration) {
+            if (!_visualizerController.isClosed) {
+              _visualizerController.add(pcm);
+            }
             await playbackService.writePcm(_applyPlaybackVolume(pcm));
           }
         })
@@ -1192,6 +1203,12 @@ class UdpAudioService extends GetxService implements AudioStreamService {
 
   void _emitError(String message) {
     if (!_errorsController.isClosed) _errorsController.add(message);
+  }
+
+  @override
+  Future<void> sendRawPcm(Uint8List pcm) async {
+    if (!_streaming) return;
+    _sendPcmPacket(pcm, _streamGeneration);
   }
 
   @override

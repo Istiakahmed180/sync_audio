@@ -10,6 +10,7 @@ import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
+import '../../../services/audio_calibration_service.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/audio_output_route_service.dart';
 import '../../../services/background_connection_service.dart';
@@ -65,6 +66,7 @@ class ReceiverController extends GetxController {
   final _deviceIdentityStore = DeviceIdentityStore();
   final _sessionRestoreStore = SessionRestoreStore();
   final _batteryOptimizationService = BatteryOptimizationService();
+  final _calibrationService = AudioCalibrationService();
   final isIgnoringBatteryOptimizations = true.obs;
   final audioOutputs = <AudioOutputDevice>[].obs;
   final isLoadingAudioOutputs = false.obs;
@@ -86,6 +88,10 @@ class ReceiverController extends GetxController {
   final lastSentMessage = ''.obs;
   final audioStatus = AudioStreamStatus.idle.obs;
   final isAudioReceiverRunning = false.obs;
+
+  Stream<Uint8List> get visualizerPcm =>
+      _audioService?.visualizerPcm ?? const Stream.empty();
+
   final diagnostics = <String, Object>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
@@ -566,6 +572,8 @@ class ReceiverController extends GetxController {
             !_nativeReceiverActive) {
           await _ensureAudioReceiverStarted();
         }
+      case ControlCommandType.startCalibration:
+        unawaited(_runAutoCalibration(event.sourceId));
       case ControlCommandType.streamStop:
         if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {
           // Complete the teardown before accepting a new STREAM_PREPARE.
@@ -634,6 +642,38 @@ class ReceiverController extends GetxController {
       default:
         break;
     }
+  }
+
+  Future<void> _runAutoCalibration(String hostId) async {
+    errorMessage.value = 'Auto-calibration started. Please stay quiet...';
+
+    final detectedOffset = await _calibrationService.listenForChirp();
+
+    if (detectedOffset == null) {
+      errorMessage.value = 'Calibration failed: No signal detected.';
+      return;
+    }
+
+    // Now we need to find out when the chirp was supposed to be played.
+    // The UdpAudioService keeps track of playback timings.
+    // For simplicity, let's assume the Receiver heard it offset from the
+    // time we started listening.
+
+    // Total Latency = (Time Mic Heard) - (Time Speaker Should Have Played)
+    // We need more integration with UdpAudioService to get the exact scheduled time.
+
+    // For now, let's report the detected offset as a raw value.
+    // The Host can then compare it with when it sent the chirp.
+
+    await _service.sendControlCommand(
+      receiverId: hostId,
+      command: ControlCommand(
+        type: ControlCommandType.calibrationResult,
+        arguments: [deviceId.value, detectedOffset.toString()],
+      ),
+    );
+
+    errorMessage.value = 'Calibration complete!';
   }
 
   LatencyMode _nativeLatencyMode(List<String> arguments) {
