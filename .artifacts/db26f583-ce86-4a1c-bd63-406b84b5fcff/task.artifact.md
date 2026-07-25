@@ -1,5 +1,6 @@
-- [x] Implement `dispose()` in `AudioEncoder` and `AudioDecoder` (`audio_codec.dart`)
-- [x] Split sockets and improve resource management in `UdpAudioService` (`udp_audio_service.dart`)
-- [x] Fix mDNS name compression parsing in `UdpDeviceDiscoveryService` (`device_discovery_service.dart`)
-- [x] Robust cleanup and lifecycle management in `HostController` (`host_controller.dart`)
-- [ ] Verify changes (Simultaneous Host/Receiver, Memory switch)
+- [ ] Fix session lookup in `HostController`
+- [ ] Add `_findControlSession` helper to `HostController`
+- [ ] Update volume/rename/command logic to use the helper
+- [ ] Add individual volume slider to `_ReceiverTargetCard` in `host_view.dart`
+- [ ] Add mute button to `_ReceiverTargetCard` in `host_view.dart`
+- [ ] Verify fix with `flutter test`

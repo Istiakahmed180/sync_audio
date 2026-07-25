@@ -145,6 +145,12 @@ class HostView extends GetView<HostController> {
                           isStreaming:
                               controller.audioStatus.value ==
                               AudioStreamStatus.streaming,
+                          volume: controller.volumeForReceiver(address),
+                          isMuted: controller.receiverMuted[address] ?? false,
+                          onVolumeChanged: (v) =>
+                              controller.setReceiverVolume(address, v),
+                          onToggleMute: () =>
+                              controller.toggleReceiverMute(address),
                           onRemove: () => controller.removeReceiverIp(address),
                           onRename:
                               session?.controlStatus ==
@@ -548,6 +554,10 @@ class _ReceiverTargetCard extends StatelessWidget {
     required this.session,
     required this.onConnect,
     required this.onDisconnect,
+    required this.volume,
+    required this.isMuted,
+    this.onVolumeChanged,
+    this.onToggleMute,
     this.onAdjustCalibration,
     required this.onRunPreflight,
     required this.isPreflightRunning,
@@ -564,6 +574,10 @@ class _ReceiverTargetCard extends StatelessWidget {
   final int? latencyMs;
   final Map<String, Object> diagnostics;
   final bool isStreaming;
+  final double volume;
+  final bool isMuted;
+  final ValueChanged<double>? onVolumeChanged;
+  final VoidCallback? onToggleMute;
   final VoidCallback onRemove;
   final Future<void> Function(String name)? onRename;
   final ReceiverSession? session;
@@ -611,7 +625,6 @@ class _ReceiverTargetCard extends StatelessWidget {
       return Icon(Icons.wifi_find_rounded, size: 14, color: Colors.red);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -710,6 +723,38 @@ class _ReceiverTargetCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (session?.controlStatus ==
+                ControlConnectionStatus.connected) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: onToggleMute,
+                    icon: Icon(
+                      isMuted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
+                      size: 20,
+                      color: isMuted ? scheme.error : scheme.primary,
+                    ),
+                  ),
+                  Expanded(
+                    child: Slider(
+                      value: volume,
+                      min: 0,
+                      max: 1.5,
+                      divisions: 150,
+                      onChanged: onVolumeChanged,
+                    ),
+                  ),
+                  Text(
+                    '${(volume * 100).round()}%',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ],
             const SizedBox(height: 6),
             _CalibrationControls(
               calibrationMicros: calibrationMicros,

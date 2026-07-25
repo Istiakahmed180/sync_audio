@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../app/constants/app_constants.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
 import '../../../models/audio_device.dart';
 import '../../../models/audio_stream_status.dart';
@@ -360,14 +361,20 @@ class HostController extends GetxController {
     receiverMuted.refresh();
   }
 
-  Future<void> _sendReceiverVolume(String address, double volume) async {
-    final session = receiverSessions.cast<ReceiverSession?>().firstWhere(
-      (candidate) => candidate?.ipAddress == address,
-      orElse: () => null,
+  void toggleReceiverMute(String address) {
+    final muted = !(receiverMuted[address] ?? false);
+    receiverMuted[address] = muted;
+    unawaited(
+      _sendReceiverVolume(address, muted ? 0 : volumeForReceiver(address)),
     );
-    if (session == null) return;
+    receiverMuted.refresh();
+  }
+
+  Future<void> _sendReceiverVolume(String address, double volume) async {
+    final sessionId = _findControlSession(address);
+    if (sessionId == null) return;
     await _service.sendControlCommand(
-      receiverId: session.id,
+      receiverId: sessionId,
       command: ControlCommand(
         type: ControlCommandType.setPlaybackVolume,
         arguments: [volume.toStringAsFixed(4)],
@@ -384,22 +391,22 @@ class HostController extends GetxController {
     if (name.length > 40) {
       return _showError('Receiver name must be 40 characters or fewer.');
     }
+    final sessionId = _findControlSession(address);
     final session = receiverSessions.cast<ReceiverSession?>().firstWhere(
-      (candidate) => candidate?.ipAddress == address,
+      (s) => s?.id == sessionId,
       orElse: () => null,
     );
-    if (session == null ||
-        session.controlStatus != ControlConnectionStatus.connected) {
+    if (sessionId == null || session == null) {
       return _showError('Connect to the receiver before renaming it.');
     }
     final ack = Completer<ControlCommand>();
-    _renameAcks[session.id]?.completeError(
+    _renameAcks[sessionId]?.completeError(
       StateError('A newer rename request replaced this request.'),
     );
-    _renameAcks[session.id] = ack;
+    _renameAcks[sessionId] = ack;
     try {
       await _service.sendControlCommand(
-        receiverId: session.id,
+        receiverId: sessionId,
         command: ControlCommand(
           type: ControlCommandType.setDeviceName,
           arguments: [name],
@@ -425,14 +432,14 @@ class HostController extends GetxController {
     } catch (_) {
       return _showError('Could not rename the Receiver.');
     } finally {
-      if (identical(_renameAcks[session.id], ack)) {
-        _renameAcks.remove(session.id);
+      if (identical(_renameAcks[sessionId], ack)) {
+        _renameAcks.remove(sessionId);
       }
     }
     // Update the cached session only after the Receiver confirms persistence.
-    _service.setRemoteDeviceName(receiverId: session.id, name: name);
+    _service.setRemoteDeviceName(receiverId: sessionId, name: name);
     discoveredDeviceNames[address] = name;
-    final index = receiverSessions.indexWhere((item) => item.id == session.id);
+    final index = receiverSessions.indexWhere((item) => item.id == sessionId);
     if (index != -1) {
       receiverSessions[index] = receiverSessions[index].copyWith(
         deviceName: name,
@@ -491,10 +498,13 @@ class HostController extends GetxController {
   }
 
   ReceiverSession? receiverSessionFor(String address) {
-    final index = receiverSessions.indexWhere(
-      (session) => session.id == address,
-    );
-    return index == -1 ? null : receiverSessions[index];
+    // Control sessions in TcpConnectionService use 'ip:port' as the ID.
+    // Audio sessions in UdpAudioService use 'ip:5051' as the ID.
+    // We want the Control session here.
+    return receiverSessions.firstWhereOrNull(
+          (s) => s.ipAddress == address && s.port != AppConstants.audioPort,
+        ) ??
+        receiverSessions.firstWhereOrNull((s) => s.ipAddress == address);
   }
 
   @override
@@ -1183,8 +1193,10 @@ class HostController extends GetxController {
     List<String> arguments,
   ) async {
     for (final address in addresses) {
+      final sessionId = _findControlSession(address);
+      if (sessionId == null) continue;
       await _service.sendControlCommand(
-        receiverId: address,
+        receiverId: sessionId,
         command: ControlCommand(type: type, arguments: arguments),
       );
     }
@@ -1518,10 +1530,10 @@ class HostController extends GetxController {
       );
       receiverSessions.refresh();
     }
-    if (session.id == session.ipAddress &&
+    if (session.port != AppConstants.audioPort &&
         session.controlStatus == ControlConnectionStatus.connected) {
       unawaited(_autoStartForConnectedReceivers());
-    } else if (session.id == session.ipAddress) {
+    } else if (session.port != AppConstants.audioPort) {
       _readyReceiverStreamAddresses.remove(session.ipAddress);
     }
   }
@@ -1687,5 +1699,18 @@ class HostController extends GetxController {
     }
     receiverPairingControllers.clear();
     super.onClose();
+  }
+
+  /// Reliable lookup for the TCP control channel session for a given IP.
+  /// This ignores any UDP audio sessions (port 5051) that might be
+  /// present in the same session list.
+  String? _findControlSession(String address) {
+    // Prefer the session that isn't on the audio port.
+    final session =
+        receiverSessions.firstWhereOrNull(
+          (s) => s.ipAddress == address && s.port != AppConstants.audioPort,
+        ) ??
+        receiverSessions.firstWhereOrNull((s) => s.ipAddress == address);
+    return session?.id;
   }
 }
