@@ -299,7 +299,11 @@ class MainActivity : FlutterActivity() {
                     }
 
                     "getNativeDiagnostics" -> result.success(
-                        nativeReceiver?.diagnostics() ?: mapOf("path" to "dart_fallback"),
+                        when {
+                            nativeSender != null -> nativeSender?.diagnostics() ?: mapOf("path" to "native_sender_null")
+                            nativeReceiver != null -> nativeReceiver?.diagnostics() ?: mapOf("path" to "native_receiver_null")
+                            else -> mapOf("path" to "dart_fallback")
+                        },
                     )
 
                     else -> result.notImplemented()

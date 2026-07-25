@@ -1,5 +1,6 @@
 package com.example.sync_audio
 
+import android.util.Log
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -30,6 +31,10 @@ internal class NativeUdpAudioSender(
     private val clockRequests = HashMap<Long, Long>()
     private val syncStates = HashMap<String, SyncState>()
     @Volatile var droppedFrames: Long = 0
+        private set
+    @Volatile var totalBytesSent: Long = 0
+        private set
+    @Volatile var totalPacketsSent: Long = 0
         private set
 
     fun start() {
@@ -92,6 +97,8 @@ internal class NativeUdpAudioSender(
                         NativeSecureAudioPacket.encrypt(clear, sessionId, pairingToken, audioSequence)
                     synchronized(destinations) { destinations.toList() }.forEach { destination ->
                         socket?.send(DatagramPacket(wire, wire.size, destination, port))
+                        totalBytesSent += wire.size
+                        totalPacketsSent++
                     }
                 }
                 val now = elapsedMicros()
@@ -118,6 +125,7 @@ internal class NativeUdpAudioSender(
                 timestampMicros = nowMicros,
             )
             socket?.send(DatagramPacket(request, request.size, destination, port))
+            totalBytesSent += request.size
         }
     }
 
@@ -135,6 +143,7 @@ internal class NativeUdpAudioSender(
         if (response.type != NativeAudioPacket.TYPE_CLOCK_RESPONSE) return
         val sentAt = clockRequests.remove(response.sequence) ?: return
         val receivedAt = elapsedMicros()
+        val rtt = receivedAt - sentAt
         val sampleOffset = response.timestampMicros - (sentAt + receivedAt) / 2
         val id = datagram.address.hostAddress ?: return
         val previous = syncStates[id]
@@ -144,6 +153,7 @@ internal class NativeUdpAudioSender(
             if (elapsed <= 0) 0 else ((filtered - previous.offsetMicros) * 1_000_000 / elapsed).coerceIn(-300, 300)
         }
         syncStates[id] = SyncState(filtered, receivedAt)
+        Log.d("SyncAudioSender", "Clock sync from $id rtt=${rtt}us offset=${filtered}us drift=${drift}ppm")
         val offsetPacket = NativeAudioPacket.encode(
             type = NativeAudioPacket.TYPE_CLOCK_OFFSET,
             sequence = response.sequence,
@@ -155,10 +165,20 @@ internal class NativeUdpAudioSender(
             timestampMicros = drift,
         )
         socket?.send(DatagramPacket(offsetPacket, offsetPacket.size, datagram.address, datagram.port))
+        totalBytesSent += offsetPacket.size
         socket?.send(DatagramPacket(driftPacket, driftPacket.size, datagram.address, datagram.port))
+        totalBytesSent += driftPacket.size
     }
 
     fun elapsedMicros(): Long = (System.nanoTime() - startNanos) / 1_000
+
+    fun diagnostics(): Map<String, Any> = mapOf(
+        "path" to if (codec == NativeAudioPacket.CODEC_OPUS) "native_opus_sender" else "native_pcm_sender",
+        "totalBytesSent" to totalBytesSent,
+        "totalPacketsSent" to totalPacketsSent,
+        "droppedFrames" to droppedFrames,
+        "destinations" to synchronized(destinations) { destinations.map { it.hostAddress } },
+    )
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return

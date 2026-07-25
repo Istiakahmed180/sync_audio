@@ -32,6 +32,8 @@ internal class NativeUdpAudioReceiver(
     @Volatile private var clockOffsetInitialized = false
     @Volatile private var driftPpm = 0L
     @Volatile private var driftUpdateMicros = 0L
+    @Volatile private var lastRttMicros = 0L
+    private val clockRequestReceivedAt = HashMap<Long, Long>()
     @Volatile var lastError: String? = null
         private set
 
@@ -45,8 +47,10 @@ internal class NativeUdpAudioReceiver(
         }
         receiverStartNanos = System.nanoTime()
         audioTrack = createAudioTrack()
+        Log.i(TAG, "AudioTrack created state=${audioTrack?.state} playState=${audioTrack?.playState}")
         socket = DatagramSocket(port)
         audioTrack?.play()
+        Log.i(TAG, "AudioTrack play() called playState=${audioTrack?.playState}")
         audioTrack?.let { track ->
             preferredOutputDeviceId?.let { id ->
                 audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -81,9 +85,18 @@ internal class NativeUdpAudioReceiver(
                 }
                 val packet = NativeAudioPacket.decode(bytes) ?: continue
                 when (packet.type) {
-                    NativeAudioPacket.TYPE_CLOCK_REQUEST -> sendClockResponse(packet.sequence, datagram.address, datagram.port)
+                    NativeAudioPacket.TYPE_CLOCK_REQUEST -> {
+                        clockRequestReceivedAt[packet.sequence] = nowMicros()
+                        sendClockResponse(packet.sequence, datagram.address, datagram.port)
+                    }
                     NativeAudioPacket.TYPE_CLOCK_OFFSET -> {
-                        hostToLocalOffsetMicros = packet.timestampMicros
+                        val offset = packet.timestampMicros
+                        clockRequestReceivedAt.remove(packet.sequence)?.let { requestAt ->
+                            val elapsed = nowMicros() - requestAt
+                            lastRttMicros = elapsed * 2
+                            Log.d(TAG, "Clock offset received offset=${offset}us rtt=${lastRttMicros}us")
+                        }
+                        hostToLocalOffsetMicros = offset
                         driftUpdateMicros = nowMicros()
                         clockOffsetInitialized = true
                     }
@@ -103,6 +116,7 @@ internal class NativeUdpAudioReceiver(
                             hostToLocalOffsetMicros = now - packet.timestampMicros + jitter.targetMicros
                             driftUpdateMicros = now
                             clockOffsetInitialized = true
+                            Log.i(TAG, "Bootstrapped audio offset=${hostToLocalOffsetMicros}us target=${jitter.targetMicros}us now=$now packetTs=${packet.timestampMicros}")
                         }
                         val correction = ((now - driftUpdateMicros) * driftPpm) / 1_000_000
                         jitter.add(
@@ -123,13 +137,36 @@ internal class NativeUdpAudioReceiver(
 
     private fun playbackLoop() {
         try {
+            var writtenSinceLog = 0
+            var logAt = System.nanoTime()
             while (running.get()) {
-                val packet = jitter.takeReady(nowMicros())
+                val now = nowMicros()
+                val packet = jitter.takeReady(now)
                 if (packet == null) {
                     Thread.sleep(2)
                     continue
                 }
-                audioTrack?.write(packet.payload, 0, packet.payload.size, AudioTrack.WRITE_BLOCKING)
+                val track = audioTrack
+                if (track == null) {
+                    Log.w(TAG, "AudioTrack is null while playback loop is running")
+                    Thread.sleep(2)
+                    continue
+                }
+                if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                    Log.w(TAG, "AudioTrack not playing (state=${track.playState}), calling play()")
+                    track.play()
+                }
+                val written = track.write(packet.payload, 0, packet.payload.size, AudioTrack.WRITE_BLOCKING)
+                if (written < 0) {
+                    Log.e(TAG, "AudioTrack.write failed written=$written")
+                } else {
+                    writtenSinceLog += written
+                }
+                if (System.nanoTime() - logAt >= 1_000_000_000L) {
+                    Log.i(TAG, "playback buffer=${jitter.size} target=${jitter.targetMicros}us written=${writtenSinceLog}B")
+                    writtenSinceLog = 0
+                    logAt = System.nanoTime()
+                }
             }
         } catch (error: Exception) {
             if (running.get()) fail(error.message ?: "AudioTrack playback failed")
@@ -211,15 +248,21 @@ internal class NativeUdpAudioReceiver(
     fun diagnostics(): Map<String, Any> = mapOf(
         "path" to if (codec == NativeAudioPacket.CODEC_OPUS) "native_opus" else "native_pcm",
         "bufferPackets" to jitter.size,
+        "currentJitterBufferPackets" to jitter.size,
         "targetBufferMicros" to jitter.targetMicros,
+        "targetJitterBufferMicros" to jitter.targetMicros,
         "underruns" to jitter.underruns,
+        "packetUnderrunCount" to jitter.underruns,
         "overruns" to jitter.overruns,
+        "packetOverrunCount" to jitter.overruns,
         "packetLossPercent" to jitter.packetLossPercent,
         "receivedPackets" to jitter.receivedPackets,
         "lostPackets" to jitter.lostPackets,
         "latePackets" to jitter.latePackets,
         "reorders" to jitter.reorders,
         "driftPpm" to driftPpm,
+        "networkJitterMicros" to jitter.jitterMicros,
+        "roundTripTimeMicros" to lastRttMicros,
     )
 
     fun stop() {
@@ -240,5 +283,7 @@ internal class NativeUdpAudioReceiver(
         OpusCodecNative.destroyDecoder(opusDecoder)
         opusDecoder = 0L
         clockOffsetInitialized = false
+        lastRttMicros = 0L
+        clockRequestReceivedAt.clear()
     }
 }

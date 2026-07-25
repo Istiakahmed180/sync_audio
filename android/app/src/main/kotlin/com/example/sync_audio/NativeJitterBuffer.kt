@@ -19,7 +19,8 @@ internal class NativeJitterBuffer(
     private val packets = TreeMap<Long, NativeJitterPacket>()
     private var nextSequence: Long? = null
     private var lastArrivalMicros: Long? = null
-    private var jitterMicros = 0L
+    var jitterMicros = 0L
+        private set
     private var missingSinceMicros = 0L
     var underruns = 0L
         private set
