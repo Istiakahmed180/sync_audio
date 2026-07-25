@@ -676,8 +676,10 @@ class _ReceiverTargetCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                StatusBadge(
-                  label: session?.controlStatus.label ?? 'TCP offline',
+                Flexible(
+                  child: StatusBadge(
+                    label: session?.controlStatus.label ?? 'TCP offline',
+                  ),
                 ),
                 FilledButton.tonalIcon(
                   onPressed:
