@@ -1,0 +1,6 @@
+- [x] Update `_ReceiverTargetCard` in `host_view.dart` to prevent overflow
+    - [x] Add ellipsis to receiver name
+    - [x] Remove redundant signal label text
+    - [x] Adjust badge spacing
+- [x] Verify syntax and basic logic
+- [x] Final walkthrough

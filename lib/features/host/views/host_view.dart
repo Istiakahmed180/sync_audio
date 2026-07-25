@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../models/connection_status.dart';
-import '../../../models/audio_stream_status.dart';
-import '../../../models/receiver_session.dart';
 import '../../../app/constants/platform_capabilities.dart';
+import '../../../models/audio_stream_status.dart';
+import '../../../models/connection_status.dart';
+import '../../../models/receiver_session.dart';
+import '../../../services/network_preflight_service.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../../../shared/widgets/status_badge.dart';
-import '../../../services/network_preflight_service.dart';
 import '../controllers/host_controller.dart';
 import 'qr_scanner_view.dart';
 
@@ -71,12 +71,11 @@ class HostView extends GetView<HostController> {
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: () async {
-                          final data = await Navigator.of(context)
-                              .push<String>(
-                                MaterialPageRoute(
-                                  builder: (_) => const QrScannerView(),
-                                ),
-                              );
+                          final data = await Navigator.of(context).push<String>(
+                            MaterialPageRoute(
+                              builder: (_) => const QrScannerView(),
+                            ),
+                          );
                           if (data != null && context.mounted) {
                             controller.addReceiverFromQrData(data);
                           }
@@ -653,16 +652,6 @@ class _ReceiverTargetCard extends StatelessWidget {
     }
   }
 
-  String _signalLabel() {
-    if (session?.controlStatus == ControlConnectionStatus.connected) {
-      return 'Connected';
-    }
-    if (latencyMs == null) return 'Unknown';
-    final ms = latencyMs!;
-    if (ms <= 20) return 'Excellent';
-    if (ms <= 50) return 'Good';
-    return 'Weak';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -686,6 +675,8 @@ class _ReceiverTargetCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               _displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.titleSmall
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
@@ -698,13 +689,6 @@ class _ReceiverTargetCard extends StatelessWidget {
                             diagnostics: diagnostics,
                             isActive: isStreaming,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _signalLabel(),
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: scheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(width: 4),
                         ],
                       ),
                       if (deviceName != null && deviceName!.isNotEmpty)
