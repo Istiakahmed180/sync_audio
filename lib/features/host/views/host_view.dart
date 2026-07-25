@@ -265,35 +265,14 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
   final HostController controller;
 
   Future<void> _saveGroup(BuildContext context) async {
-    final nameController = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save speaker group'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Group name',
-            hintText: 'Living Room',
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(nameController.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (_) => const _NameInputDialog(
+        title: 'Save speaker group',
+        labelText: 'Group name',
+        hintText: 'Living Room',
       ),
     );
-    nameController.dispose();
     if (name == null || name.isEmpty) return;
     await controller.saveCurrentAsGroup(name);
   }
@@ -599,35 +578,16 @@ class _ReceiverTargetCard extends StatelessWidget {
       (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
 
   Future<void> _rename(BuildContext context) async {
-    final nameController = TextEditingController(text: _displayName);
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rename receiver'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          maxLength: 40,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Receiver name',
-            hintText: 'Living Room Speaker',
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(nameController.text),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (_) => _NameInputDialog(
+        title: 'Rename receiver',
+        labelText: 'Receiver name',
+        hintText: 'Living Room Speaker',
+        initialValue: _displayName,
+        maxLength: 40,
       ),
     );
-    nameController.dispose();
     if (name == null || name.trim().isEmpty || onRename == null) return;
     await onRename!(name);
   }
@@ -984,6 +944,69 @@ class _EmptyReceiverState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _NameInputDialog extends StatefulWidget {
+  const _NameInputDialog({
+    required this.title,
+    required this.labelText,
+    required this.hintText,
+    this.initialValue = '',
+    this.maxLength,
+  });
+
+  final String title;
+  final String labelText;
+  final String hintText;
+  final String initialValue;
+  final int? maxLength;
+
+  @override
+  State<_NameInputDialog> createState() => _NameInputDialogState();
+}
+
+class _NameInputDialogState extends State<_NameInputDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: widget.maxLength,
+        textCapitalization: TextCapitalization.words,
+        decoration: InputDecoration(
+          labelText: widget.labelText,
+          hintText: widget.hintText,
+        ),
+        onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
