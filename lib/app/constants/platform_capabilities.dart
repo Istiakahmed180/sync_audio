@@ -15,6 +15,14 @@ abstract final class PlatformCapabilities {
 
   static bool get supportsReceiver => !kIsWeb;
 
+  static bool get supportsQrScanning {
+    if (kIsWeb) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android || TargetPlatform.iOS => true,
+      _ => false,
+    };
+  }
+
   static String get hostSupportMessage =>
       'Host is supported on Android, macOS, and Windows. '
       'iPhone and iPad can join as Receivers.';

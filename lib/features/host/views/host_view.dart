@@ -67,23 +67,26 @@ class HostView extends GetView<HostController> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        final data = await Navigator.of(context).push<String>(
-                          MaterialPageRoute(
-                            builder: (_) => const QrScannerView(),
-                          ),
-                        );
-                        if (data != null && context.mounted) {
-                          controller.addReceiverFromQrData(data);
-                        }
-                      },
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Scan QR'),
+                  if (PlatformCapabilities.supportsQrScanning) ...[
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          final data = await Navigator.of(context)
+                              .push<String>(
+                                MaterialPageRoute(
+                                  builder: (_) => const QrScannerView(),
+                                ),
+                              );
+                          if (data != null && context.mounted) {
+                            controller.addReceiverFromQrData(data);
+                          }
+                        },
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text('Scan QR'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(child: _ManualSetupSection(controller: controller)),
                 ],
               ),
