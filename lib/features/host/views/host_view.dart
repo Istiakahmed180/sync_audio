@@ -58,6 +58,48 @@ class HostView extends GetView<HostController> {
                 ),
               ),
               const SizedBox(height: 20),
+              Obx(() {
+                if (controller.isIgnoringBatteryOptimizations.value) {
+                  return const SizedBox.shrink();
+                }
+                return Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.battery_alert_rounded,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Battery optimization is active',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Background audio may stutter or disconnect. Disabling battery optimization is recommended for this app.',
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed:
+                                controller.requestIgnoreBatteryOptimizations,
+                            child: const Text('Disable optimization'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
               Text(
                 'Connect a receiver',
                 style: Theme.of(

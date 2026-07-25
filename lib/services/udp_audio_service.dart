@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 
 import '../models/audio_stream_status.dart';
 import '../models/receiver_session.dart';
@@ -94,9 +95,11 @@ abstract class AudioStreamService {
     required String pairingToken,
     required String sessionId,
   });
+
+  Future<void> dispose();
 }
 
-class UdpAudioService implements AudioStreamService {
+class UdpAudioService extends GetxService implements AudioStreamService {
   UdpAudioService({
     required this.playbackService,
     required this.captureService,
@@ -1191,14 +1194,21 @@ class UdpAudioService implements AudioStreamService {
     if (!_errorsController.isClosed) _errorsController.add(message);
   }
 
+  @override
+  void onClose() {
+    unawaited(dispose());
+    super.onClose();
+  }
+
+  @override
   Future<void> dispose() async {
     await stopStreaming();
     await stopReceiver();
     await encoder.dispose();
     await decoder.dispose();
-    await _statusController.close();
-    await _errorsController.close();
-    await _sessionController.close();
+    if (!_statusController.isClosed) await _statusController.close();
+    if (!_errorsController.isClosed) await _errorsController.close();
+    if (!_sessionController.isClosed) await _sessionController.close();
   }
 }
 

@@ -13,6 +13,7 @@ import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/audio_codec.dart';
 import '../../../services/background_connection_service.dart';
+import '../../../services/battery_optimization_service.dart';
 import '../../../services/calibration_store.dart';
 import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
@@ -99,8 +100,21 @@ class HostController extends GetxController {
       Map<String, Object>.from(diagnostics);
 
   Map<String, Object> receiverDiagnosticsFor(String address) {
-    final values = _receiverDiagnostics[address];
+    final sessionId = _findControlSession(address);
+    final values = _receiverDiagnostics[sessionId ?? address];
     return values == null ? const <String, Object>{} : Map.from(values);
+  }
+
+  Future<void> _checkBatteryOptimization() async {
+    isIgnoringBatteryOptimizations.value = await _batteryOptimizationService
+        .isIgnoringBatteryOptimizations();
+  }
+
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    await _batteryOptimizationService.requestIgnoreBatteryOptimizations();
+    // Re-check after a delay to allow the user to return from settings
+    await Future<void>.delayed(const Duration(seconds: 2));
+    await _checkBatteryOptimization();
   }
 
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
@@ -120,6 +134,8 @@ class HostController extends GetxController {
   bool _autoStreamInProgress = false;
   final _receiverDiagnostics = <String, Map<String, Object>>{};
   final _receiverDiagnosticsUpdatedAt = <String, DateTime>{};
+  final _batteryOptimizationService = BatteryOptimizationService();
+  final isIgnoringBatteryOptimizations = true.obs;
   final _renameAcks = <String, Completer<ControlCommand>>{};
   final _streamingReceiverAddresses = <String>{};
   final _readyReceiverStreamAddresses = <String>{};
@@ -511,6 +527,7 @@ class HostController extends GetxController {
   void onInit() {
     super.onInit();
     _service.setLocalDeviceName('Host Device');
+    unawaited(_checkBatteryOptimization());
     // Host connections are app-scoped; opening this screen is only a view of
     // the current session and must not reset an existing background stream.
     connectionStatus.value = _service.status;

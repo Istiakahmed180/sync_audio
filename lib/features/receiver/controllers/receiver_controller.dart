@@ -1,27 +1,28 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/constants/app_constants.dart';
+import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
-import '../../../models/audio_stream_status.dart';
-import '../../../services/connection_service.dart';
-import '../../../services/udp_audio_service.dart';
-import '../../../services/device_discovery_service.dart';
 import '../../../services/audio_codec.dart';
+import '../../../services/audio_output_route_service.dart';
 import '../../../services/background_connection_service.dart';
-import '../../../services/pairing_store.dart';
+import '../../../services/battery_optimization_service.dart';
+import '../../../services/connection_service.dart';
+import '../../../services/device_discovery_service.dart';
+import '../../../services/device_identity_store.dart';
+import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
+import '../../../services/pairing_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
-import '../../../services/latency_metrics.dart';
-import '../../../services/audio_output_route_service.dart';
-import '../../../services/device_identity_store.dart';
+import '../../../services/udp_audio_service.dart';
 
 class ReceiverController extends GetxController {
   static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
@@ -63,6 +64,8 @@ class ReceiverController extends GetxController {
       AudioOutputRouteService();
   final _deviceIdentityStore = DeviceIdentityStore();
   final _sessionRestoreStore = SessionRestoreStore();
+  final _batteryOptimizationService = BatteryOptimizationService();
+  final isIgnoringBatteryOptimizations = true.obs;
   final audioOutputs = <AudioOutputDevice>[].obs;
   final isLoadingAudioOutputs = false.obs;
   final pairingToken = 'Loading…'.obs;
@@ -113,6 +116,7 @@ class ReceiverController extends GetxController {
     unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
     unawaited(_loadDeviceIdentity());
+    unawaited(_checkBatteryOptimization());
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().start();
     }
@@ -690,6 +694,17 @@ class ReceiverController extends GetxController {
     }
     if (previous == status) return;
     _lastNotifiedConnectionStatus = status;
+  }
+
+  Future<void> _checkBatteryOptimization() async {
+    isIgnoringBatteryOptimizations.value = await _batteryOptimizationService
+        .isIgnoringBatteryOptimizations();
+  }
+
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    await _batteryOptimizationService.requestIgnoreBatteryOptimizations();
+    await Future<void>.delayed(const Duration(seconds: 2));
+    await _checkBatteryOptimization();
   }
 
   @override
