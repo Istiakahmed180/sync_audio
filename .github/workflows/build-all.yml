@@ -47,6 +47,11 @@ jobs:
     needs: quality
     if: ${{ inputs.build_target == 'all' || inputs.build_target == 'android' }}
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -64,13 +69,8 @@ jobs:
           cache: true
 
       - name: Configure Android release signing when secrets are available
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > sync-audio-release.jks
           cat > android/key.properties <<EOF
@@ -84,7 +84,7 @@ jobs:
         shell: bash
         env:
           CI_OUTPUT_DIR: dist
-          CI_ANDROID_BUILD_MODE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'release' || 'debug' }}
+          CI_ANDROID_BUILD_MODE: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && 'release' || 'debug' }}
         run: ./tool/build_github.sh android
 
       - name: Upload Android APK
