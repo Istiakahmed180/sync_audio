@@ -1,4 +1,4 @@
-# Sync Audio
+# SyncMesh Audio
 
 Turn multiple devices into a synchronized speaker system. Stream audio from an
 Android device, macOS computer, or Windows computer and play it in sync across your other devices
@@ -8,7 +8,7 @@ over a local Wi‑Fi network.
 
 ## How it works
 
-Sync Audio uses a **Host‑and‑Receiver** model over your local network.
+SyncMesh Audio uses a **Host‑and‑Receiver** model over your local network.
 
 - **Host** (Android, macOS, or Windows) — captures system audio and sends it to all
   connected Receivers as timestamped packets.
@@ -44,7 +44,7 @@ Sound settings as a fallback.
 
 ## macOS Host setup with BlackHole 2ch
 
-BlackHole is the recommended macOS capture route for Sync Audio. It creates a
+BlackHole is the recommended macOS capture route for SyncMesh Audio. It creates a
 virtual audio device so browser audio can be captured without depending on the
 Mac speaker volume or mute state. The project prefers a device whose name
 contains `BlackHole` when it is installed.
@@ -74,7 +74,7 @@ If the meters do not move, the browser is not routed to BlackHole yet.
 ### C. Create a Multi-Output Device
 
 Use this when you want to hear the audio locally on the Mac while also sending
-it to Sync Audio:
+it to SyncMesh Audio:
 
 1. Open **Applications → Utilities → Audio MIDI Setup**.
 2. Click the `+` button at the bottom-left.
@@ -94,21 +94,21 @@ Multi-Output Device
    ↙             ↘
 Mac speakers   BlackHole 2ch
                     ↓
-             Sync Audio capture
+             SyncMesh Audio capture
                     ↓
               Wi‑Fi Receivers
 ```
 
 ### D. Grant macOS permissions
 
-Open **System Settings → Privacy & Security** and allow Sync Audio in:
+Open **System Settings → Privacy & Security** and allow SyncMesh Audio in:
 
 - **Screen & System Audio Recording** — required for the macOS fallback
   capture path.
 - **Microphone** — required when the audio input engine is used.
 - **Local Network**, if macOS shows a request for it.
 
-Quit and relaunch Sync Audio after changing permissions.
+Quit and relaunch SyncMesh Audio after changing permissions.
 
 ### E. Start a macOS Host stream
 
@@ -142,7 +142,7 @@ Quit and relaunch Sync Audio after changing permissions.
 
 - Check that **BlackHole 2ch** input meters are moving.
 - Confirm the Multi-Output Device includes both the Mac speakers and BlackHole.
-- Restart the browser and Sync Audio after changing the output device.
+- Restart the browser and SyncMesh Audio after changing the output device.
 - Confirm the Receiver is still showing **Start Receiver** as active.
 
 **`Message too long` in the Mac terminal**
@@ -220,7 +220,7 @@ loopback. No BlackHole or other virtual audio driver is required.
 1. Set the Windows default output to the speakers/headphones to capture.
 2. For predictable results, set that device to **48,000 Hz** in Windows Sound
    settings.
-3. Allow Sync Audio through Windows Defender Firewall for **Private networks**
+3. Allow SyncMesh Audio through Windows Defender Firewall for **Private networks**
    if Windows asks. All devices must be on the same Wi‑Fi/LAN.
 4. Start the Receiver, pair it from the Windows Host, press **Start System
    Audio**, and then play a browser video.
@@ -230,7 +230,7 @@ Windows does not need microphone permission for this system-audio path.
 ### Bluetooth Receiver output
 
 - **Android:** pair the Bluetooth speaker/headphone in Android Bluetooth
-  settings and select it as the media output. Then start Sync Audio Receiver.
+settings and select it as the media output. Then start SyncMesh Audio Receiver.
 - **macOS:** pair the device and select it under **System Settings → Sound →
   Output** before starting the Receiver.
 - **Windows:** pair the device and select it under **Settings → System → Sound

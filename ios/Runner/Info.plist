@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Sync Audio</string>
+	<string>SyncMesh Audio</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,9 +29,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Scan Receiver QR codes to connect audio devices.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sync Audio discovers and connects to devices on your local network.</string>
+	<string>SyncMesh Audio discovers and connects to devices on your local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Sync Audio uses the microphone to capture audio for streaming to connected devices.</string>
+	<string>SyncMesh Audio uses the microphone to capture audio for streaming to connected devices.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

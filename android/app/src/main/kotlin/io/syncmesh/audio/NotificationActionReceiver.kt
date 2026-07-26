@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import android.content.BroadcastReceiver
 import android.content.Context

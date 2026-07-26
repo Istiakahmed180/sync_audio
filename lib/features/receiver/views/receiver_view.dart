@@ -382,7 +382,7 @@ class _ConnectionInfoCard extends StatelessWidget {
                         // ignore: deprecated_member_use
                         Share.share(
                           shareText,
-                          subject: 'Sync Audio — $deviceName',
+                          subject: 'SyncMesh Audio — $deviceName',
                         );
                       }
                     : null,

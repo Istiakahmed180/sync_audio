@@ -1,9 +1,9 @@
 ; Build after: flutter build windows --release
 ; Compile this file with Inno Setup on a Windows development machine.
 
-#define AppName "Sync Audio"
+#define AppName "SyncMesh Audio"
 #define AppVersion "1.0.0"
-#define AppPublisher "Sync Audio"
+#define AppPublisher "SyncMesh Audio"
 #define AppExeName "sync_audio.exe"
 #define ReleaseDir "..\build\windows\x64\runner\Release"
 
@@ -12,7 +12,7 @@ AppId={{B7F7F8E1-2D7A-4FCE-9A78-7C1AA0E9B1B4}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-DefaultDirName={autopf}\Sync Audio
+DefaultDirName={autopf}\SyncMesh Audio
 DefaultGroupName={#AppName}
 OutputDir=..\dist
 OutputBaseFilename=SyncAudioSetup

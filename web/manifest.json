@@ -1,6 +1,6 @@
 {
-    "name": "sync_audio",
-    "short_name": "sync_audio",
+    "name": "SyncMesh Audio",
+    "short_name": "SyncMesh",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

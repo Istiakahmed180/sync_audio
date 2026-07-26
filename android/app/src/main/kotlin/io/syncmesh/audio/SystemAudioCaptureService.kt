@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -223,7 +223,7 @@ class SystemAudioCaptureService : Service() {
     private fun buildNotification(): Notification {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Sync Audio")
+                .setContentTitle("SyncMesh Audio")
                 .setContentText("Capturing system audio")
                 .setSmallIcon(R.drawable.ic_stat_sync_audio)
                 .setOngoing(true)
@@ -231,7 +231,7 @@ class SystemAudioCaptureService : Service() {
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("Sync Audio")
+                .setContentTitle("SyncMesh Audio")
                 .setContentText("Capturing system audio")
                 .setSmallIcon(R.drawable.ic_stat_sync_audio)
                 .setOngoing(true)

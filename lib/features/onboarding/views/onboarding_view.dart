@@ -158,7 +158,7 @@ class _WelcomePage extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           Text(
-            'Welcome to\nSync Audio',
+            'Welcome to\nSyncMesh Audio',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -412,7 +412,7 @@ class _SetupPage extends StatelessWidget {
             Icon(Icons.auto_awesome_rounded, size: 54, color: scheme.primary),
             const SizedBox(height: 16),
             Text(
-              'Set up Sync Audio',
+              'Set up SyncMesh Audio',
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,

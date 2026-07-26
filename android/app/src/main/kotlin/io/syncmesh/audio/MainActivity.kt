@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import android.Manifest
 import android.app.Activity
@@ -177,7 +177,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "show" -> {
-                        val title = call.argument<String>("title") ?: "Sync Audio"
+                        val title = call.argument<String>("title") ?: "SyncMesh Audio"
                         val message = call.argument<String>("message")
                         val id = call.argument<Int>("id") ?: 1001
                         if (message == null) {
@@ -195,8 +195,8 @@ class MainActivity : FlutterActivity() {
                     "showMedia" -> {
                         showMediaNotification(
                             id = call.argument<Int>("id") ?: 1001,
-                            title = call.argument<String>("title") ?: "Sync Audio",
-                            message = call.argument<String>("message") ?: "Sync Audio",
+                            title = call.argument<String>("title") ?: "SyncMesh Audio",
+                            message = call.argument<String>("message") ?: "SyncMesh Audio",
                             isPlaying = call.argument<Boolean>("isPlaying") ?: false,
                             isMuted = call.argument<Boolean>("isMuted") ?: false,
                         )
@@ -765,7 +765,7 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 notificationChannelId,
-                "Sync Audio status",
+                "SyncMesh Audio status",
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = "Connection and audio status updates"
@@ -811,10 +811,10 @@ class MainActivity : FlutterActivity() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(
                     notificationChannelId,
-                    "Sync Audio controls",
+                    "SyncMesh Audio controls",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Start, stop, mute and volume controls for Sync Audio"
+                    description = "Start, stop, mute and volume controls for SyncMesh Audio"
                 },
             )
         }
@@ -846,7 +846,7 @@ class MainActivity : FlutterActivity() {
 
     private fun notificationAction(action: String, label: String): Notification.Action {
         val intent = Intent(this, NotificationActionReceiver::class.java)
-            .setAction("com.tdevs.sync_audio.NOTIFICATION_$action")
+                .setAction("io.syncmesh.audio.NOTIFICATION_$action")
         val pending = PendingIntent.getBroadcast(
             this,
             action.hashCode(),

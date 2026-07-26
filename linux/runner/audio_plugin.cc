@@ -102,7 +102,7 @@ void AudioPlugin::CaptureControlCallback(FlMethodChannel*,
 
     int error;
     self->capture_handle_ = pa_simple_new(
-        nullptr, "Sync Audio", PA_STREAM_RECORD, nullptr,
+        nullptr, "SyncMesh Audio", PA_STREAM_RECORD, nullptr,
         "capture", &kSampleSpec, nullptr, nullptr, &error);
     if (!self->capture_handle_) {
       g_autofree gchar* msg = g_strdup_printf("pa_simple_new: %s",
@@ -172,7 +172,7 @@ void AudioPlugin::PlaybackControlCallback(FlMethodChannel*,
 
     int error;
     self->playback_handle_ = pa_simple_new(
-        nullptr, "Sync Audio", PA_STREAM_PLAYBACK, nullptr,
+        nullptr, "SyncMesh Audio", PA_STREAM_PLAYBACK, nullptr,
         "playback", &kSampleSpec, nullptr, nullptr, &error);
     if (!self->playback_handle_) {
       g_autofree gchar* msg = g_strdup_printf("pa_simple_new: %s",

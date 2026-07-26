@@ -1176,7 +1176,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _updateMediaNotification() => AppNotificationService.showMedia(
-    title: 'Sync Audio',
+    title: 'SyncMesh Audio',
     message: isAudioStreaming ? 'Streaming to Receiver(s)' : 'Ready to stream',
     isPlaying: isAudioStreaming,
     isMuted:

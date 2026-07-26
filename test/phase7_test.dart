@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:typed_data';
-import 'package:sync_audio/models/control_command.dart';
-import 'package:sync_audio/services/audio_codec.dart';
-import 'package:sync_audio/services/audio_packet_codec.dart';
-import 'package:sync_audio/services/audio_fec_codec.dart';
-import 'package:sync_audio/services/adaptive_jitter_buffer.dart';
-import 'package:sync_audio/services/connection_service.dart';
-import 'package:sync_audio/services/latency_metrics.dart';
-import 'package:sync_audio/services/secure_transport.dart';
-import 'package:sync_audio/services/synchronization_service.dart';
+import 'package:syncmesh_audio/models/control_command.dart';
+import 'package:syncmesh_audio/services/audio_codec.dart';
+import 'package:syncmesh_audio/services/audio_packet_codec.dart';
+import 'package:syncmesh_audio/services/audio_fec_codec.dart';
+import 'package:syncmesh_audio/services/adaptive_jitter_buffer.dart';
+import 'package:syncmesh_audio/services/connection_service.dart';
+import 'package:syncmesh_audio/services/latency_metrics.dart';
+import 'package:syncmesh_audio/services/secure_transport.dart';
+import 'package:syncmesh_audio/services/synchronization_service.dart';
 
 void main() {
   test('FEC parity recovers one missing PCM payload', () {

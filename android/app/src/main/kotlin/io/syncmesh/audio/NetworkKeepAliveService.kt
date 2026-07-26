@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -32,10 +32,10 @@ class NetworkKeepAliveService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "Sync Audio connection",
+            "SyncMesh Audio connection",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Keeps active Sync Audio connections available in the background"
+                    description = "Keeps active SyncMesh Audio connections available in the background"
                 },
             )
         }
@@ -49,7 +49,7 @@ class NetworkKeepAliveService : Service() {
             Notification.Builder(this)
         }
             .setSmallIcon(R.drawable.ic_stat_sync_audio)
-            .setContentTitle("Sync Audio")
+            .setContentTitle("SyncMesh Audio")
             .setContentText("Connection is active in the background")
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)

@@ -35,13 +35,13 @@ class DesktopTrayService with WindowListener, TrayListener {
       if (iconPath != null) {
         await trayManager.setIcon(iconPath);
       }
-      await trayManager.setToolTip('Sync Audio');
+      await trayManager.setToolTip('SyncMesh Audio');
       await trayManager.setContextMenu(
         Menu(
           items: [
-            MenuItem(key: 'show_window', label: 'Show Sync Audio'),
+            MenuItem(key: 'show_window', label: 'Show SyncMesh Audio'),
             MenuItem.separator(),
-            MenuItem(key: 'exit_app', label: 'Quit Sync Audio'),
+            MenuItem(key: 'exit_app', label: 'Quit SyncMesh Audio'),
           ],
         ),
       );

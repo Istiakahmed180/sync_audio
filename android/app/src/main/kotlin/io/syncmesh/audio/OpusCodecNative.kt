@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 internal object OpusCodecNative {
     private var loaded = false

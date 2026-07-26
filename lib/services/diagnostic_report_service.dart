@@ -16,7 +16,7 @@ class DiagnosticReportService {
   }) async {
     final crashReports = await CrashReporter.recentReports();
     final report = <String, Object>{
-      'app': 'Sync Audio',
+      'app': 'SyncMesh Audio',
       'scope': scope,
       'generatedAt': DateTime.now().toUtc().toIso8601String(),
       'diagnostics': _sanitize(diagnostics),
@@ -32,7 +32,7 @@ class DiagnosticReportService {
         : _toText(report);
     await Share.share(
       content,
-      subject: 'Sync Audio diagnostic report ($scope)',
+      subject: 'SyncMesh Audio diagnostic report ($scope)',
     );
   }
 
@@ -52,7 +52,7 @@ class DiagnosticReportService {
 
   static String _toText(Map<String, Object> report) {
     final buffer = StringBuffer()
-      ..writeln('Sync Audio diagnostic report')
+      ..writeln('SyncMesh Audio diagnostic report')
       ..writeln('Scope: ${report['scope']}')
       ..writeln('Generated: ${report['generatedAt']}')
       ..writeln();

@@ -43,7 +43,7 @@ class SyncAudioApp extends StatelessWidget {
             : AppRoutes.onboarding;
 
         return GetMaterialApp(
-          title: 'Sync Audio',
+          title: 'SyncMesh Audio',
           debugShowCheckedModeBanner: false,
           initialRoute: initialRoute,
           initialBinding: InitialBinding(),

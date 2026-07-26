@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sync_audio/services/audio_capture_service.dart';
-import 'package:sync_audio/services/audio_playback_service.dart';
-import 'package:sync_audio/services/udp_audio_service.dart';
+import 'package:syncmesh_audio/services/audio_capture_service.dart';
+import 'package:syncmesh_audio/services/audio_playback_service.dart';
+import 'package:syncmesh_audio/services/udp_audio_service.dart';
 
 class FakeAudioPlaybackService implements AudioPlaybackService {
   final packets = StreamController<Uint8List>.broadcast();

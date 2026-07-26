@@ -46,11 +46,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "sync_audio");
+  gtk_header_bar_set_title(header_bar, "SyncMesh Audio");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "sync_audio");
+  gtk_window_set_title(window, "SyncMesh Audio");
   }
 
   gtk_window_set_default_size(window, 1280, 720);

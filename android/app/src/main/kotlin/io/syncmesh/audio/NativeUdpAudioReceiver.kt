@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo

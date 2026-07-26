@@ -453,7 +453,7 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
                         ? null
                         : () => Share.share(
                             controller.exportGroupsJson(),
-                            subject: 'Sync Audio speaker groups',
+                            subject: 'SyncMesh Audio speaker groups',
                           ),
                     icon: const Icon(Icons.upload_file_outlined),
                   ),

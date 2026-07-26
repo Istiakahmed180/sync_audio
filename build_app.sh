@@ -2,8 +2,8 @@
 set -e
 
 # ========= CONFIG =========
-APP_NAME="Sync Audio"
-PACKAGE_NAME="com.tdevs.syncaudio"
+APP_NAME="SyncMesh Audio"
+PACKAGE_NAME="io.syncmesh.audio"
 BUILD_TYPE="apk"   # apk | appbundle
 BUILD_TARGET="${1:-android}" # android | macos
 CREATE_MACOS_DMG=true
@@ -86,7 +86,7 @@ if [ "$BUILD_APP" = true ]; then
 
     flutter build macos --release
 
-    MACOS_APP_PATH="build/macos/Build/Products/Release/sync_audio.app"
+    MACOS_APP_PATH="build/macos/Build/Products/Release/SyncMesh Audio.app"
     MACOS_DMG_PATH="$PWD/${APP_NAME}.dmg"
     if [ ! -d "$MACOS_APP_PATH" ]; then
       echo "❌ macOS app not found: $MACOS_APP_PATH"

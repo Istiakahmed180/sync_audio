@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sync_audio/models/receiver_session.dart';
-import 'package:sync_audio/models/connection_status.dart';
-import 'package:sync_audio/services/audio_codec.dart';
-import 'package:sync_audio/services/audio_packet_codec.dart';
-import 'package:sync_audio/services/connection_service.dart';
+import 'package:syncmesh_audio/models/receiver_session.dart';
+import 'package:syncmesh_audio/models/connection_status.dart';
+import 'package:syncmesh_audio/services/audio_codec.dart';
+import 'package:syncmesh_audio/services/audio_packet_codec.dart';
+import 'package:syncmesh_audio/services/connection_service.dart';
 
 void main() {
   test('audio packet codec preserves packet type, timestamp, and payload', () {

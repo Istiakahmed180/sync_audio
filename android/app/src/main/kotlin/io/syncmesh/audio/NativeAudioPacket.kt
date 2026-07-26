@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

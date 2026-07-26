@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sync_audio/features/host/controllers/host_controller.dart';
-import 'package:sync_audio/features/receiver/controllers/receiver_controller.dart';
-import 'package:sync_audio/models/connection_status.dart';
-import 'package:sync_audio/models/control_command.dart';
-import 'package:sync_audio/models/receiver_session.dart';
-import 'package:sync_audio/services/connection_service.dart';
+import 'package:syncmesh_audio/features/host/controllers/host_controller.dart';
+import 'package:syncmesh_audio/features/receiver/controllers/receiver_controller.dart';
+import 'package:syncmesh_audio/models/connection_status.dart';
+import 'package:syncmesh_audio/models/control_command.dart';
+import 'package:syncmesh_audio/models/receiver_session.dart';
+import 'package:syncmesh_audio/services/connection_service.dart';
 
 class FakeConnectionService implements ConnectionService {
   final _messages = StreamController<String>.broadcast();

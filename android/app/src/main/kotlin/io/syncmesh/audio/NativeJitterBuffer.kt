@@ -1,4 +1,4 @@
-package com.example.sync_audio
+package io.syncmesh.audio
 
 import java.util.TreeMap
 import kotlin.math.abs

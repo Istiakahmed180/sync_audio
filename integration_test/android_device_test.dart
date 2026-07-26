@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sync_audio/app/app.dart';
-import 'package:sync_audio/models/connection_status.dart';
-import 'package:sync_audio/models/control_command.dart';
-import 'package:sync_audio/services/connection_service.dart';
+import 'package:syncmesh_audio/app/app.dart';
+import 'package:syncmesh_audio/models/connection_status.dart';
+import 'package:syncmesh_audio/models/control_command.dart';
+import 'package:syncmesh_audio/services/connection_service.dart';
 
 /// Device-safe smoke test intended to run on every connected Android phone.
 /// The matrix runner executes this on 2–3 devices; the TCP part verifies the

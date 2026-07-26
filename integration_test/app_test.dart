@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sync_audio/app/app.dart';
+import 'package:syncmesh_audio/app/app.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -13,7 +13,7 @@ void main() {
     await tester.pumpWidget(const SyncAudioApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Sync Audio'), findsOneWidget);
+    expect(find.text('SyncMesh Audio'), findsOneWidget);
     expect(find.text('Host Device'), findsOneWidget);
     expect(find.text('Receiver Device'), findsOneWidget);
   });

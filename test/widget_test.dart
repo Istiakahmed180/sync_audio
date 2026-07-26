@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sync_audio/app/app.dart';
-import 'package:sync_audio/features/host/controllers/host_controller.dart';
-import 'package:sync_audio/features/host/views/host_view.dart';
-import 'package:sync_audio/features/receiver/controllers/receiver_controller.dart';
-import 'package:sync_audio/features/receiver/views/receiver_view.dart';
-import 'package:sync_audio/features/settings/controllers/settings_controller.dart';
-import 'package:sync_audio/features/settings/views/settings_view.dart';
+import 'package:syncmesh_audio/app/app.dart';
+import 'package:syncmesh_audio/features/host/controllers/host_controller.dart';
+import 'package:syncmesh_audio/features/host/views/host_view.dart';
+import 'package:syncmesh_audio/features/receiver/controllers/receiver_controller.dart';
+import 'package:syncmesh_audio/features/receiver/views/receiver_view.dart';
+import 'package:syncmesh_audio/features/settings/controllers/settings_controller.dart';
+import 'package:syncmesh_audio/features/settings/views/settings_view.dart';
 
 import 'phase2_test.dart';
 
@@ -24,7 +24,7 @@ void main() {
     });
     await tester.pumpWidget(const SyncAudioApp());
     await tester.pumpAndSettle();
-    expect(find.text('Sync Audio'), findsOneWidget);
+    expect(find.text('SyncMesh Audio'), findsOneWidget);
     expect(find.text('Host Device'), findsOneWidget);
   });
 

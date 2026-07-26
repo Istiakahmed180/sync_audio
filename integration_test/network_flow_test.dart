@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:sync_audio/models/connection_status.dart';
-import 'package:sync_audio/models/control_command.dart';
-import 'package:sync_audio/services/connection_service.dart';
+import 'package:syncmesh_audio/models/connection_status.dart';
+import 'package:syncmesh_audio/models/control_command.dart';
+import 'package:syncmesh_audio/services/connection_service.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();

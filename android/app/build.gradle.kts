@@ -27,7 +27,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.sync_audio"
+    namespace = "io.syncmesh.audio"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -43,7 +43,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.tdevs.syncaudio"
+        applicationId = "io.syncmesh.audio"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
