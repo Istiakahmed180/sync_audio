@@ -1162,6 +1162,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
       'roundTripTimeMicros': audioSession?.roundTripTimeMicros ?? values[5]!,
       'targetJitterBufferMicros': values[6]!,
       if (values.length >= 8) 'networkJitterMicros': values[7]!,
+      'clockOffsetMicros':
+          audioSession?.clockOffsetMicros ??
+          (values.length >= 9 ? values[8]! : 0),
+      'estimatedTotalLatencyMicros': values.length >= 10 && values[9]! > 0
+          ? values[9]!
+          : ((audioSession?.roundTripTimeMicros ?? values[5]!) ~/ 2) +
+                values[6]!,
     };
     _receiverDiagnosticsUpdatedAt[event.sourceId] = DateTime.now();
     unawaited(
@@ -1214,6 +1221,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
       'roundTripTimeMicros': maximum('roundTripTimeMicros').round(),
       'targetJitterBufferMicros': maximum('targetJitterBufferMicros').round(),
       'networkJitterMicros': average('networkJitterMicros').round(),
+      'clockOffsetMicros': average('clockOffsetMicros').round(),
+      'estimatedTotalLatencyMicros': average(
+        'estimatedTotalLatencyMicros',
+      ).round(),
     };
   }
 

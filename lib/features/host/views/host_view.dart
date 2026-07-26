@@ -798,6 +798,11 @@ class _ReceiverTargetCard extends StatelessWidget {
             ),
             if (session?.controlStatus ==
                 ControlConnectionStatus.connected) ...[
+              ReceiverHealthMetrics(
+                diagnostics: diagnostics,
+                isActive: isStreaming,
+              ),
+              const SizedBox(height: 4),
               const SizedBox(height: 8),
               Row(
                 children: [

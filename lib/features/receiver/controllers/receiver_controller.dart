@@ -757,6 +757,8 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
           '${number('roundTripTimeMicros')}',
           '${number('targetJitterBufferMicros', 'targetBufferMicros')}',
           '${number('networkJitterMicros')}',
+          '${number('clockOffsetMicros')}',
+          '${number('estimatedTotalLatencyMicros')}',
         ],
       ),
     );

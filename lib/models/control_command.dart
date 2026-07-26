@@ -78,7 +78,7 @@ class ControlCommand {
         // Versioned receiver diagnostics. The first two fields remain the
         // legacy buffered duration/packet count so older peers can still
         // parse and use this command.
-        ControlCommandType.bufferStatus => count >= 2 && count <= 9,
+        ControlCommandType.bufferStatus => count >= 2 && count <= 10,
         ControlCommandType.startCalibration => count == 1, // session id
         ControlCommandType.calibrationReady => count == 1,
         ControlCommandType.calibrationResult =>

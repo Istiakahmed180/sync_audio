@@ -421,6 +421,141 @@ class _MetricTile extends StatelessWidget {
   );
 }
 
+class ReceiverHealthMetrics extends StatelessWidget {
+  const ReceiverHealthMetrics({
+    required this.diagnostics,
+    required this.isActive,
+    super.key,
+  });
+
+  final Map<String, Object> diagnostics;
+  final bool isActive;
+
+  num? _number(String key, [String? fallback]) {
+    final value =
+        diagnostics[key] ?? (fallback == null ? null : diagnostics[fallback]);
+    return value is num ? value : null;
+  }
+
+  String _formatMs(num? micros, {bool signed = false}) {
+    if (micros == null || micros == 0) return '—';
+    final value = micros / 1000;
+    final prefix = signed && value > 0 ? '+' : '';
+    return '$prefix${value.round()} ms';
+  }
+
+  String _formatCount(num? value) => value == null ? '—' : '${value.round()}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasMetrics = isActive && diagnostics['metricsScope'] == 'receiver';
+    final currentPackets = _number(
+      'currentJitterBufferPackets',
+      'bufferPackets',
+    );
+    final targetMicros = _number(
+      'targetJitterBufferMicros',
+      'targetBufferMicros',
+    );
+    final loss = _number('packetLossPercent');
+    final jitter = _number('networkJitterMicros');
+    final offset = _number('clockOffsetMicros');
+    final latency = _number('estimatedTotalLatencyMicros');
+
+    String value(String content) => hasMetrics ? content : 'Waiting';
+
+    return Card(
+      margin: const EdgeInsets.only(top: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.monitor_heart_outlined, size: 19),
+                const SizedBox(width: 8),
+                Text(
+                  'Connection health',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _HealthMetric(
+                  label: 'RTT',
+                  value: value(_formatMs(_number('roundTripTimeMicros'))),
+                ),
+                _HealthMetric(
+                  label: 'Packet loss',
+                  value: value(
+                    loss == null ? '—' : '${loss.toStringAsFixed(1)}%',
+                  ),
+                ),
+                _HealthMetric(label: 'Jitter', value: value(_formatMs(jitter))),
+                _HealthMetric(
+                  label: 'Buffer',
+                  value: value(
+                    currentPackets == null
+                        ? '—'
+                        : '${currentPackets.round()} / ${_formatMs(targetMicros)}',
+                  ),
+                ),
+                _HealthMetric(
+                  label: 'Sync offset',
+                  value: value(_formatMs(offset, signed: true)),
+                ),
+                _HealthMetric(
+                  label: 'Underruns',
+                  value: value(
+                    _formatCount(_number('packetUnderrunCount', 'underruns')),
+                  ),
+                ),
+                _HealthMetric(
+                  label: 'Audio latency',
+                  value: value(_formatMs(latency)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthMetric extends StatelessWidget {
+  const _HealthMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: const BoxConstraints(minWidth: 98),
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(height: 2),
+        Text(value, style: Theme.of(context).textTheme.labelLarge),
+      ],
+    ),
+  );
+}
+
 class _NetworkQuality {
   const _NetworkQuality({
     required this.label,
