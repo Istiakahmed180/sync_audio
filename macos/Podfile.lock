@@ -216,7 +216,7 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/window_manager/macos
 
 SPEC CHECKSUMS:
-  cryptography_flutter: be2b3e0e31603521b6a1c2bea232a88a2488a91c
+  cryptography_flutter: fea4fc20ef626b41b3d3a86c0cb15c9ac14a98c4
   Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
   firebase_analytics: 1383420e89f6889446bf5431bbe3d6a10eabe478
   firebase_core: 1c188a8384be0315478a22c1a3165871d75a95ba
@@ -246,6 +246,6 @@ SPEC CHECKSUMS:
   tray_manager: 19c369010e59c073f13b82354d78a35f7972d609
   window_manager: b729e31d38fb04905235df9ea896128991cad99e
 
-PODFILE CHECKSUM: c184e8dd81fd7e7e1b3defc4153aeca933bbf828
+PODFILE CHECKSUM: 822e2cfa93b235171f27b62becbd3bc8c283f158
 
 COCOAPODS: 1.16.2

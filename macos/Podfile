@@ -1,5 +1,7 @@
 platform :osx, '10.15'
 
+require 'shellwords'
+
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -32,6 +34,22 @@ flutter_macos_podfile_setup
 # optional binary in the macOS app. Android and other platform Opus builds are
 # unaffected.
 pre_install do |_installer|
+  cryptography_podspec = File.expand_path(
+    File.join('Flutter', 'ephemeral', '.symlinks', 'plugins',
+              'cryptography_flutter', 'macos',
+              'cryptography_flutter.podspec'),
+    File.dirname(__FILE__),
+  )
+  if File.file?(cryptography_podspec)
+    contents = File.read(cryptography_podspec)
+    contents = contents.sub(
+      "  s.source_files = 'cryptography_flutter/Sources/cryptography_flutter/**/*'",
+      "  s.source_files = ['cryptography_flutter/Sources/cryptography_flutter/**/*.swift', 'cryptography_flutter/Sources/cryptography_flutter/**/*.h', 'cryptography_flutter/Sources/cryptography_flutter/**/*.m', 'cryptography_flutter/Sources/cryptography_flutter/**/*.mm']\n" \
+      "  s.resource_bundles = { 'cryptography_flutter_privacy' => ['cryptography_flutter/Sources/cryptography_flutter/PrivacyInfo.xcprivacy'] }",
+    )
+    File.write(cryptography_podspec, contents)
+  end
+
   opus_podspec = File.expand_path(
     File.join('Flutter', 'ephemeral', '.symlinks', 'plugins',
               'opus_codec_macos', 'macos', 'opus_codec_macos.podspec'),
@@ -59,6 +77,46 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+
+    target.build_configurations.each do |config|
+      # Firebase's current pod graph includes Promises targets that default
+      # to 10.11, which is below the deployment range supported by Xcode 26.
+      config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
+
+      # Keep third-party warnings from obscuring warnings produced by this
+      # app. These packages currently emit warnings from their own sources.
+      if target.name.start_with?('mobile_scanner') ||
+          target.name.start_with?('firebase_analytics')
+        config.build_settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
+      end
+      if target.name.start_with?('firebase_core')
+        config.build_settings['CLANG_WARN_INCOMPATIBLE_POINTER_TYPES'] = 'NO'
+      end
+
+      # Some Firebase pod targets add libc++ more than once. Deduplicate the
+      # linker flags without changing any other flags.
+      flags = config.build_settings['OTHER_LDFLAGS']
+      if flags
+        values = flags.is_a?(Array) ? flags : Shellwords.split(flags.to_s)
+        if target.name == 'FirebaseCrashlytics'
+          values = values.reject { |flag| flag == '-l"c++"' || flag == '-lc++' }
+        end
+        config.build_settings['OTHER_LDFLAGS'] = values.uniq
+      end
+    end
+  end
+
+  # FirebaseCrashlytics currently declares libc++ in its generated xcconfig
+  # even though the aggregate Runner target inherits the same library. Remove
+  # only that redundant declaration after CocoaPods regenerates the files.
+  crashlytics_configs = Dir[
+    File.join(installer.sandbox.target_support_files_dir('FirebaseCrashlytics'),
+              'FirebaseCrashlytics.*.xcconfig'),
+  ]
+  crashlytics_configs.each do |path|
+    contents = File.read(path)
+    updated = contents.gsub(/\s-l"c\+\+"/, '')
+    File.write(path, updated) unless updated == contents
   end
 
   # Xcode 26 rejects the flat opus.framework shipped by opus_codec_macos 3.0.5.
