@@ -68,23 +68,31 @@ jobs:
           flutter-version: '3.44.8'
           cache: true
 
-      - name: Configure Android release signing when secrets are available
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Configure Android signing
+        id: signing
         shell: bash
         run: |
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > sync-audio-release.jks
-          cat > android/key.properties <<EOF
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && \
+             [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && \
+             [ -n "$ANDROID_KEY_PASSWORD" ] && \
+             [ -n "$ANDROID_KEY_ALIAS" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > sync-audio-release.jks
+            cat > android/key.properties <<EOF
           storePassword=$ANDROID_KEYSTORE_PASSWORD
           keyPassword=$ANDROID_KEY_PASSWORD
           keyAlias=$ANDROID_KEY_ALIAS
           storeFile=../sync-audio-release.jks
           EOF
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=debug" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build APK into dist
         shell: bash
         env:
           CI_OUTPUT_DIR: dist
-          CI_ANDROID_BUILD_MODE: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && 'release' || 'debug' }}
+          CI_ANDROID_BUILD_MODE: ${{ steps.signing.outputs.mode }}
         run: ./tool/build_github.sh android
 
       - name: Upload Android APK
