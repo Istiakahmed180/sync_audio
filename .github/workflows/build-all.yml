@@ -1,0 +1,157 @@
+name: Build all platforms
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run analyzer
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  android:
+    name: Build Android APK
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Configure Android release signing when secrets are available
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > sync-audio-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=../sync-audio-release.jks
+          EOF
+
+      - name: Build APK into dist
+        shell: bash
+        env:
+          CI_OUTPUT_DIR: dist
+          CI_ANDROID_BUILD_MODE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'release' || 'debug' }}
+        run: ./tool/build_github.sh android
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncMesh-Audio-Android-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+  macos:
+    name: Build macOS DMG
+    needs: quality
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Build DMG into dist
+        shell: bash
+        env:
+          CI_OUTPUT_DIR: dist
+          CI_CREATE_MACOS_DMG: true
+        run: ./tool/build_github.sh macos
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncMesh-Audio-macOS-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Build Windows installer
+    needs: quality
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Enable Windows desktop target
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build Windows release and installer into dist
+        shell: bash
+        env:
+          CI_OUTPUT_DIR: dist
+          CI_CREATE_WINDOWS_INSTALLER: true
+          CI_ISCC_PATH: '/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
+        run: ./tool/build_github.sh windows
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncMesh-Audio-Windows-installer
+          path: dist/SyncAudioSetup.exe
+          if-no-files-found: error
+
+      - name: Upload Windows portable release
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncMesh-Audio-Windows-portable
+          path: dist/windows-portable
+          if-no-files-found: error

@@ -3,6 +3,32 @@
 `build_app.sh` can build Android, macOS, or Windows by changing variables. The
 default output directory is `dist`.
 
+## One-command multi-platform build
+
+Edit the platform toggles at the top of `build_app.sh`:
+
+```bash
+BUILD_ANDROID=true
+BUILD_MACOS=true
+BUILD_WINDOWS=false
+OUTPUT_DIR=dist
+```
+
+Then run only:
+
+```bash
+./build_app.sh
+```
+
+The script builds every platform set to `true`. On macOS, Windows desktop
+cannot be built locally; use the GitHub Actions Windows runner for that target.
+
+Output locations:
+
+- Android: `dist/SyncMesh Audio.apk` or `dist/SyncMesh Audio.aab`
+- macOS: `dist/SyncMesh Audio.dmg`
+- Windows: `dist/SyncAudioSetup.exe` and `dist/windows-portable/`
+
 ## Android APK
 
 ```bash
@@ -10,6 +36,14 @@ BUILD_TARGET=android BUILD_TYPE=apk OUTPUT_DIR=dist ./build_app.sh
 ```
 
 Output: `dist/SyncMesh Audio.apk`
+
+For an unsigned CI-friendly debug APK:
+
+```bash
+BUILD_TARGET=android ANDROID_BUILD_MODE=debug OUTPUT_DIR=dist ./build_app.sh
+```
+
+Output: `dist/SyncMesh Audio-debug.apk`
 
 ## Android App Bundle
 
