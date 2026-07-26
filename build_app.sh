@@ -6,8 +6,8 @@ APP_NAME="SyncMesh Audio"
 PACKAGE_NAME="io.syncmesh.audio"
 BUILD_TYPE="apk"   # apk | appbundle
 BUILD_TARGET="${1:-android}" # android | macos
-CREATE_MACOS_DMG=true
-UPLOAD_FIREBASE="${UPLOAD_FIREBASE:-true}"
+CREATE_MACOS_DMG=false
+UPLOAD_FIREBASE="${UPLOAD_FIREBASE:-false}"
 
 # ===== Feature Toggles =====
 CHANGE_PACKAGE=false
