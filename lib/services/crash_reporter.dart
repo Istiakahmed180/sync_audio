@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'firebase_telemetry.dart';
+
 /// Stores a small, privacy-filtered crash trail locally for support exports.
 ///
 /// Remote crash backends can be added later without changing the app-wide
@@ -38,6 +40,7 @@ class CrashReporter {
     StackTrace stack, {
     String source = 'uncaught',
   }) async {
+    await FirebaseTelemetry.recordError(error, stack, reason: source);
     try {
       final prefs = await SharedPreferences.getInstance();
       final existing = prefs.getStringList(_storageKey) ?? <String>[];

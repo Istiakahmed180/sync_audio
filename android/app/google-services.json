@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "553124643634",
+    "project_id": "syncmesh-audio",
+    "storage_bucket": "syncmesh-audio.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:553124643634:android:0c7ff23657db82a57c0d2b",
+        "android_client_info": {
+          "package_name": "io.syncmesh.audio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZVaISGdYAITzD2LPiRSnFP1wG89708H8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

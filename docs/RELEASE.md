@@ -29,10 +29,32 @@ Configure these repository secrets before publishing a release:
 The workflow decodes the keystore only inside the ephemeral runner and uploads
 the resulting AAB as an artifact.
 
+## Firebase App Distribution
+
+The Firebase project is `syncmesh-audio` and the Android App ID is configured
+in `tool/firebase_distribute.sh`. After building an APK, distribute it with:
+
+```sh
+./tool/firebase_distribute.sh build/app/outputs/flutter-apk/app-debug.apk
+```
+
+`build_app.sh` now uploads the generated release APK automatically after a
+successful Android APK build. Set `UPLOAD_FIREBASE=false` when an upload is
+not wanted:
+
+```sh
+UPLOAD_FIREBASE=false ./build_app.sh android
+```
+
+The upload is fail-fast: if Firebase CLI authentication or the upload fails,
+the build script exits non-zero instead of reporting a false successful build.
+
+Use `FIREBASE_ANDROID_APP_ID` to override the app ID in CI, and authenticate
+the Firebase CLI with a service account or Firebase token in CI.
+
 ## Crash logging
 
 Unhandled Flutter, platform, and zone errors are stored locally in a bounded,
-redacted crash trail. Diagnostic JSON/text export includes the recent crash
-entries, with pairing codes and IPv4 addresses removed. This is intentionally
-backend-neutral; a remote crash provider can be connected later without
-changing the app error hooks.
+redacted crash trail and forwarded to Firebase Crashlytics in Android, iOS,
+and macOS release builds. Diagnostic JSON/text export includes the recent
+local crash entries, with pairing codes and IPv4 addresses removed.

@@ -27,6 +27,7 @@ import '../../../services/network_preflight_service.dart';
 import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
+import '../../../services/firebase_telemetry.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 
@@ -1134,6 +1135,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
       commandArguments,
     );
     _ensureDiagnosticTimer();
+    unawaited(
+      FirebaseTelemetry.logEvent('host_stream_started', {
+        'receiver_count': addresses.length,
+        'codec': audioService.activeCodecType.name,
+        'latency_mode': latencyMode.value.name,
+      }),
+    );
     unawaited(_updateMediaNotification());
   }
 
