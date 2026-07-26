@@ -10,6 +10,7 @@ import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.provider.Settings
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -17,6 +18,8 @@ import android.media.AudioTrack
 import android.media.projection.MediaProjectionManager
 import android.media.projection.MediaProjectionConfig
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -56,9 +59,27 @@ class MainActivity : FlutterActivity() {
     private var pendingNotification: Triple<Int, String, String>? = null
     private var pendingMediaNotification: MediaNotificationArgs? = null
     private var preferredOutputDeviceId: Int? = null
+    private var preferredOutputName: String? = null
+    private var preferredOutputType: Int? = null
+    private var restoringOutputRoute = false
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+            restoreOutputAfterDeviceChange(addedDevices.toList())
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+            restoreOutputAfterDeviceChange(removedDevices.toList())
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getSystemService(AudioManager::class.java).registerAudioDeviceCallback(
+                audioDeviceCallback,
+                Handler(Looper.getMainLooper()),
+            )
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, audioOutputChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -85,6 +106,10 @@ class MainActivity : FlutterActivity() {
                             val device = getSystemService(AudioManager::class.java)
                                 .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                                 .firstOrNull { it.id == id }
+                            device?.let {
+                                preferredOutputName = it.productName?.toString()?.trim()
+                                preferredOutputType = it.type
+                            }
                             val selected = synchronized(audioLock) {
                                 val flutterSelected = if (device == null) {
                                     false
@@ -132,12 +157,7 @@ class MainActivity : FlutterActivity() {
                                     }
                                 }
                                 nativeReceiver?.let { receiver ->
-                                    preferredOutputDeviceId?.let { id ->
-                                        getSystemService(AudioManager::class.java)
-                                            .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                                            .firstOrNull { it.id == id }
-                                            ?.let { receiver.setPreferredOutputDevice(it) }
-                                    }
+                                    findPreferredOutput()?.let(receiver::setPreferredOutputDevice)
                                 }
                             }
                             result.success(null)
@@ -872,24 +892,18 @@ class MainActivity : FlutterActivity() {
                 "AudioTrack failed to initialize"
             }
             var preferredApplied = true
-            preferredOutputDeviceId?.let { id ->
-                getSystemService(AudioManager::class.java)
-                    .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                    .firstOrNull { it.id == id }
-                    ?.let { preferredApplied = audioTrack?.setPreferredDevice(it) == true }
+            if (preferredOutputDeviceId != null || preferredOutputName != null) {
+                findPreferredOutput()?.let {
+                    preferredApplied = audioTrack?.setPreferredDevice(it) == true
+                }
             }
             audioTrack?.play()
-            preferredOutputDeviceId?.let { id ->
-                getSystemService(AudioManager::class.java)
-                    .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                    .firstOrNull { it.id == id }
-                    ?.let { device ->
-                        val applied = audioTrack?.setPreferredDevice(device)
-                        Log.i(
-                            "SyncAudioOutput",
-                            "Preferred output ${device.productName} (${device.id}) applied=$applied"
-                        )
-                    }
+            findPreferredOutput()?.let { device ->
+                val applied = audioTrack?.setPreferredDevice(device)
+                Log.i(
+                    "SyncAudioOutput",
+                    "Preferred output ${device.productName} (${device.id}) applied=$applied"
+                )
             }
             return preferredApplied
         }
@@ -897,11 +911,61 @@ class MainActivity : FlutterActivity() {
 
     private fun currentBluetoothOutput(audioManager: AudioManager): AudioDeviceInfo? {
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        preferredOutputDeviceId?.let { id ->
-            val preferred = outputs.firstOrNull { it.id == id }
-            if (preferred != null) return preferred.takeIf(::isBluetoothOutput)
+        if (preferredOutputDeviceId != null || preferredOutputName != null) {
+            return findPreferredOutput(outputs)?.takeIf(::isBluetoothOutput)
         }
         return outputs.firstOrNull(::isBluetoothOutput)
+    }
+
+    private fun findPreferredOutput(
+        outputs: Array<AudioDeviceInfo> =
+            getSystemService(AudioManager::class.java)
+                .getDevices(AudioManager.GET_DEVICES_OUTPUTS),
+    ): AudioDeviceInfo? {
+        preferredOutputDeviceId?.let { id ->
+            outputs.firstOrNull { it.id == id }?.let { return it }
+        }
+        val name = preferredOutputName ?: return null
+        return outputs.firstOrNull {
+            it.productName?.toString()?.trim() == name &&
+                (preferredOutputType == null || it.type == preferredOutputType)
+        }
+    }
+
+    private fun isPreferredOutput(device: AudioDeviceInfo): Boolean =
+        findPreferredOutput()?.id == device.id
+
+    private fun restoreOutputAfterDeviceChange(changed: List<AudioDeviceInfo>) {
+        val preferredName = preferredOutputName
+        val preferredId = preferredOutputDeviceId
+        if (preferredName == null && preferredId == null) return
+        val affectsPreferred = changed.any {
+            it.id == preferredId ||
+                (preferredName != null &&
+                    it.productName?.toString()?.trim() == preferredName)
+        }
+        if (!affectsPreferred || restoringOutputRoute) return
+        synchronized(audioLock) {
+            if (restoringOutputRoute) return
+            restoringOutputRoute = true
+            try {
+                if (audioTrack != null) {
+                    stopAudioTrack()
+                    initializeAudioTrack()
+                }
+                findPreferredOutput()?.let { device ->
+                    nativeReceiver?.setPreferredOutputDevice(device)
+                }
+                Log.i(
+                    "SyncAudioOutput",
+                    "Output device change handled; preferred=${preferredName ?: preferredId}",
+                )
+            } catch (error: Exception) {
+                Log.w("SyncAudioOutput", "Could not restore output route", error)
+            } finally {
+                restoringOutputRoute = false
+            }
+        }
     }
 
     private fun isBluetoothOutput(device: AudioDeviceInfo): Boolean =
@@ -972,7 +1036,7 @@ class MainActivity : FlutterActivity() {
                     ?: "Audio output"),
                 "kind" to if (bluetooth) "bluetooth" else "system",
                 "isBluetooth" to bluetooth,
-                "isSelected" to (preferredOutputDeviceId == device.id),
+                "isSelected" to isPreferredOutput(device),
             )
         }
     }
@@ -997,6 +1061,10 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getSystemService(AudioManager::class.java)
+                .unregisterAudioDeviceCallback(audioDeviceCallback)
+        }
         nativeSender?.stop()
         pendingNativeSender?.stop()
         nativeReceiver?.stop()
