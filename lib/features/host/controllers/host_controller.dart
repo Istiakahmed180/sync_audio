@@ -28,7 +28,7 @@ import '../../../services/session_restore_store.dart';
 import '../../../services/udp_audio_service.dart';
 import '../../../shared/widgets/app_notification_service.dart';
 
-class HostController extends GetxController {
+class HostController extends GetxController with WidgetsBindingObserver {
   static const controlPort = 5050;
   HostController({
     ConnectionService? connectionService,
@@ -117,10 +117,26 @@ class HostController extends GetxController {
   }
 
   Future<void> requestIgnoreBatteryOptimizations() async {
+    if (_batteryOptimizationSettingsOpen) return;
+    _batteryOptimizationSettingsOpen = true;
+    isRequestingBatteryOptimization.value = true;
     await _batteryOptimizationService.requestIgnoreBatteryOptimizations();
-    // Re-check after a delay to allow the user to return from settings
-    await Future<void>.delayed(const Duration(seconds: 2));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed ||
+        !_batteryOptimizationSettingsOpen) {
+      return;
+    }
+    unawaited(_finishBatteryOptimizationRequest());
+  }
+
+  Future<void> _finishBatteryOptimizationRequest() async {
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     await _checkBatteryOptimization();
+    _batteryOptimizationSettingsOpen = false;
+    isRequestingBatteryOptimization.value = false;
   }
 
   final _streamSessionId = 'stream-${DateTime.now().microsecondsSinceEpoch}';
@@ -142,6 +158,8 @@ class HostController extends GetxController {
   final _receiverDiagnosticsUpdatedAt = <String, DateTime>{};
   final _batteryOptimizationService = BatteryOptimizationService();
   final isIgnoringBatteryOptimizations = true.obs;
+  final isRequestingBatteryOptimization = false.obs;
+  bool _batteryOptimizationSettingsOpen = false;
   final _renameAcks = <String, Completer<ControlCommand>>{};
   final _streamingReceiverAddresses = <String>{};
   final _readyReceiverStreamAddresses = <String>{};
@@ -532,6 +550,7 @@ class HostController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     _service.setLocalDeviceName('Host Device');
     unawaited(_checkBatteryOptimization());
     // Host connections are app-scoped; opening this screen is only a view of
@@ -1761,6 +1780,7 @@ class HostController extends GetxController {
 
   @override
   void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
     _statusSubscription.cancel();
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();

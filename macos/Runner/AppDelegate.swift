@@ -125,7 +125,7 @@ class AppDelegate: FlutterAppDelegate {
     ) == noErr else { return [] }
 
     let selected = defaultOutputDevice()
-    return devices.map { device in
+    return devices.filter(hasOutputChannels).map { device in
       let name = audioDeviceName(device)
       let transport = audioDeviceTransport(device)
       let bluetooth = transport == kAudioDeviceTransportTypeBluetooth ||
@@ -182,6 +182,7 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   private func selectAudioOutput(_ device: AudioDeviceID) -> Bool {
+    guard hasOutputChannels(device) else { return false }
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
       mScope: kAudioObjectPropertyScopeGlobal,
@@ -189,10 +190,45 @@ class AppDelegate: FlutterAppDelegate {
     )
     var selected = device
     let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-    return AudioObjectSetPropertyData(
+    let selectedDefault = AudioObjectSetPropertyData(
       AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
       size, &selected
     ) == noErr
+    guard selectedDefault else { return false }
+    // AVAudioEngine may keep the old output unit after the system default is
+    // changed. Explicitly move the active playback unit as well.
+    guard let outputUnit = audioEngine?.outputNode.audioUnit else { return true }
+    var mutableDevice = device
+    return AudioUnitSetProperty(
+      outputUnit,
+      kAudioOutputUnitProperty_CurrentDevice,
+      kAudioUnitScope_Global,
+      0,
+      &mutableDevice,
+      UInt32(MemoryLayout<AudioDeviceID>.size)
+    ) == noErr
+  }
+
+  private func hasOutputChannels(_ device: AudioDeviceID) -> Bool {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreamConfiguration,
+      mScope: kAudioDevicePropertyScopeOutput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr,
+          size >= UInt32(MemoryLayout<AudioBufferList>.size) else { return false }
+    let rawBufferList = UnsafeMutableRawPointer.allocate(
+      byteCount: Int(size),
+      alignment: MemoryLayout<AudioBufferList>.alignment
+    )
+    defer { rawBufferList.deallocate() }
+    let bufferList = rawBufferList.bindMemory(to: AudioBufferList.self, capacity: 1)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, bufferList) == noErr else {
+      return false
+    }
+    return UnsafeMutableAudioBufferListPointer(bufferList)
+      .contains { $0.mNumberChannels > 0 }
   }
 
   // MARK: - Audio Capture (Microphone / System Input)

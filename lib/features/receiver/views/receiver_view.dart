@@ -78,10 +78,28 @@ class ReceiverView extends GetView<ReceiverController> {
                         ),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed:
-                                controller.requestIgnoreBatteryOptimizations,
-                            child: const Text('Disable optimization'),
+                          child: Obx(
+                            () => TextButton(
+                              onPressed:
+                                  controller
+                                      .isRequestingBatteryOptimization
+                                      .value
+                                  ? null
+                                  : controller
+                                        .requestIgnoreBatteryOptimizations,
+                              child:
+                                  controller
+                                      .isRequestingBatteryOptimization
+                                      .value
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Disable optimization'),
+                            ),
                           ),
                         ),
                       ],
@@ -155,7 +173,10 @@ class ReceiverView extends GetView<ReceiverController> {
                         if (controller.isLoadingAudioOutputs.value)
                           const Padding(
                             padding: EdgeInsets.only(top: 12),
-                            child: LinearProgressIndicator(),
+                            child: SizedBox(
+                              height: 4,
+                              child: LinearProgressIndicator(),
+                            ),
                           )
                         else if (controller.audioOutputs.isEmpty)
                           const Padding(
@@ -549,10 +570,11 @@ class _AudioReceivingCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         audioStatus.label,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: color,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: color,
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
                       const SizedBox(height: 4),
                       const Text('Audio is playing in sync from the Host.'),

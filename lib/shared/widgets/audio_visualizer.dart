@@ -28,7 +28,10 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
   @override
   void initState() {
     super.initState();
-    _amplitudes = List.filled(widget.barCount, 0.0);
+    // This buffer is shifted on every decay tick, so it must be growable.
+    // List.filled() defaults to a fixed-length list.
+    final barCount = widget.barCount < 1 ? 1 : widget.barCount;
+    _amplitudes = List<double>.filled(barCount, 0.0, growable: true);
     _subscription = widget.stream.listen(_onData);
 
     // Smooth decay when no audio is playing
@@ -48,7 +51,7 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
   }
 
   void _onData(Uint8List data) {
-    if (data.isEmpty) return;
+    if (!mounted || data.isEmpty) return;
 
     double max = 0;
     final byteData = ByteData.sublistView(data);

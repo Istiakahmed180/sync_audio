@@ -90,10 +90,28 @@ class HostView extends GetView<HostController> {
                         ),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed:
-                                controller.requestIgnoreBatteryOptimizations,
-                            child: const Text('Disable optimization'),
+                          child: Obx(
+                            () => TextButton(
+                              onPressed:
+                                  controller
+                                      .isRequestingBatteryOptimization
+                                      .value
+                                  ? null
+                                  : controller
+                                        .requestIgnoreBatteryOptimizations,
+                              child:
+                                  controller
+                                      .isRequestingBatteryOptimization
+                                      .value
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Disable optimization'),
+                            ),
                           ),
                         ),
                       ],

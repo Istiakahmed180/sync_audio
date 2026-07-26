@@ -86,12 +86,25 @@ class MainActivity : FlutterActivity() {
                                 .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                                 .firstOrNull { it.id == id }
                             val selected = synchronized(audioLock) {
-                                val flutterSelected = audioTrack?.let {
-                                    device != null && it.setPreferredDevice(device)
-                                } ?: true
-                                val nativeSelected = nativeReceiver?.let {
-                                    device != null && it.setPreferredOutputDevice(device)
-                                } ?: true
+                                val flutterSelected = if (device == null) {
+                                    false
+                                } else {
+                                    // setPreferredDevice is ignored by some
+                                    // Android builds while AudioTrack is
+                                    // already playing. Recreate the track so
+                                    // Bluetooth <-> system changes use the
+                                    // correct route and buffer profile.
+                                    if (audioTrack != null) {
+                                        stopAudioTrack()
+                                        initializeAudioTrack()
+                                    }
+                                    true
+                                }
+                                val nativeSelected = if (device == null) {
+                                    false
+                                } else {
+                                    nativeReceiver?.setPreferredOutputDevice(device) ?: true
+                                }
                                 flutterSelected && nativeSelected
                             }
                             if (selected == false) {
@@ -103,6 +116,32 @@ class MainActivity : FlutterActivity() {
                             } else {
                                 result.success(null)
                             }
+                        }
+                    }
+
+                    "reapplyOutput" -> {
+                        try {
+                            synchronized(audioLock) {
+                                if (audioTrack != null) {
+                                    stopAudioTrack()
+                                    initializeAudioTrack()
+                                }
+                                nativeReceiver?.let { receiver ->
+                                    preferredOutputDeviceId?.let { id ->
+                                        getSystemService(AudioManager::class.java)
+                                            .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                                            .firstOrNull { it.id == id }
+                                            ?.let { receiver.setPreferredOutputDevice(it) }
+                                    }
+                                }
+                            }
+                            result.success(null)
+                        } catch (error: Exception) {
+                            result.error(
+                                "OUTPUT_RESTORE_FAILED",
+                                error.message,
+                                null,
+                            )
                         }
                     }
 
@@ -359,9 +398,17 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         audioExecutor.execute {
-                            val written = synchronized(audioLock) {
-                                audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
-                                    ?: -1
+                            val written = try {
+                                synchronized(audioLock) {
+                                    audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
+                                        ?: -1
+                                }
+                            } catch (_: IllegalStateException) {
+                                // stop() may race with a queued PCM write. The
+                                // receiver will restart the track on demand.
+                                -1
+                            } catch (_: IllegalArgumentException) {
+                                -1
                             }
                             runOnUiThread { result.success(written) }
                         }
@@ -919,9 +966,11 @@ class MainActivity : FlutterActivity() {
     private fun stopAudioTrack() {
         synchronized(audioLock) {
             audioTrack?.let { track ->
-                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop()
-                track.flush()
-                track.release()
+                try {
+                    if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop()
+                } catch (_: IllegalStateException) { }
+                try { track.flush() } catch (_: IllegalStateException) { }
+                try { track.release() } catch (_: IllegalStateException) { }
             }
             audioTrack = null
         }

@@ -143,6 +143,11 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   Timer? _receiverWatchdogTimer;
   Timer? _clockSyncTimer;
   Future<void> _playbackQueue = Future<void>.value();
+  // Receiver start/stop can be requested both by the control socket and by
+  // the receiver screen. Keep the native playback object lifecycle strictly
+  // serial so a stop cannot release an AudioTrack while the next start is
+  // initializing it.
+  Future<void> _receiverLifecycleQueue = Future<void>.value();
   int _playbackQueueDepth = 0;
   int _receiverGeneration = 0;
   int _streamGeneration = 0;
@@ -828,7 +833,11 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   }
 
   @override
-  Future<void> startReceiver({required int port}) async {
+  Future<void> startReceiver({required int port}) {
+    return _enqueueReceiverLifecycle(() => _startReceiver(port: port));
+  }
+
+  Future<void> _startReceiver({required int port}) async {
     if (_receiving) {
       _emitError('The audio receiver is already running.');
       return;
@@ -868,11 +877,11 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       _setStatus(AudioStreamStatus.receiving);
       _receiverListener = _receiverSocket!.listen(_handleReceiverSocketEvent);
     } on SocketException {
-      await stopReceiver();
+      await _stopReceiver();
       _emitError('Could not open the audio port. Try restarting the app.');
       _setStatus(AudioStreamStatus.error);
     } catch (error) {
-      await stopReceiver();
+      await _stopReceiver();
       _emitError('Could not start audio playback. Please try again.');
       _setStatus(AudioStreamStatus.error);
     }
@@ -1162,7 +1171,11 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   }
 
   @override
-  Future<void> stopReceiver() async {
+  Future<void> stopReceiver() {
+    return _enqueueReceiverLifecycle(_stopReceiver);
+  }
+
+  Future<void> _stopReceiver() async {
     _receiving = false;
     _receiverGeneration++;
     _playbackTimer?.cancel();
@@ -1183,6 +1196,13 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     _receiverSocket = null;
     await playbackService.stop();
     _setStatus(AudioStreamStatus.stopped);
+  }
+
+  Future<void> _enqueueReceiverLifecycle(Future<void> Function() operation) {
+    final next = _receiverLifecycleQueue.then((_) => operation());
+    // A failed lifecycle operation must not permanently poison the queue.
+    _receiverLifecycleQueue = next.catchError((_) {});
+    return next;
   }
 
   void _updateSession(ReceiverSession session) {

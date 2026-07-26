@@ -25,7 +25,7 @@ import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
 import '../../../services/udp_audio_service.dart';
 
-class ReceiverController extends GetxController {
+class ReceiverController extends GetxController with WidgetsBindingObserver {
   static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
   ReceiverController({
     ConnectionService? connectionService,
@@ -63,11 +63,13 @@ class ReceiverController extends GetxController {
   final NativeAudioRuntime _nativeAudioRuntime;
   final AudioOutputRouteService _audioOutputRouteService =
       AudioOutputRouteService();
+  Future<void> _audioOutputOperation = Future<void>.value();
   final _deviceIdentityStore = DeviceIdentityStore();
   final _sessionRestoreStore = SessionRestoreStore();
   final _batteryOptimizationService = BatteryOptimizationService();
   final _calibrationService = AudioCalibrationService();
   final isIgnoringBatteryOptimizations = true.obs;
+  final isRequestingBatteryOptimization = false.obs;
   final audioOutputs = <AudioOutputDevice>[].obs;
   final isLoadingAudioOutputs = false.obs;
   final pairingToken = 'Loading…'.obs;
@@ -111,6 +113,7 @@ class ReceiverController extends GetxController {
   late Future<void> _pairingReady;
   ConnectionStatus? _lastNotifiedConnectionStatus;
   Future<void>? _audioReceiverStartInFlight;
+  bool _batteryOptimizationSettingsOpen = false;
   // Control events arrive from a line-ordered socket, but Stream listeners
   // do not await an async callback. Serialize them so STREAM_START cannot
   // race STREAM_PREPARE and start the receiver before its session key exists.
@@ -119,6 +122,7 @@ class ReceiverController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
     unawaited(_loadDeviceIdentity());
@@ -199,23 +203,37 @@ class ReceiverController extends GetxController {
   }
 
   Future<void> refreshAudioOutputs() async {
-    isLoadingAudioOutputs.value = true;
-    try {
-      audioOutputs.value = await _audioOutputRouteService.listOutputs();
-    } catch (_) {
-      audioOutputs.clear();
-    } finally {
-      isLoadingAudioOutputs.value = false;
-    }
+    final operation = _audioOutputOperation.then((_) async {
+      isLoadingAudioOutputs.value = true;
+      try {
+        audioOutputs.value = await _audioOutputRouteService.listOutputs();
+      } catch (_) {
+        // Keep the last known list during a transient route/device change.
+      } finally {
+        isLoadingAudioOutputs.value = false;
+      }
+    });
+    _audioOutputOperation = operation.catchError((_) {});
+    await operation;
   }
 
   Future<void> selectAudioOutput(AudioOutputDevice output) async {
-    try {
-      await _audioOutputRouteService.selectOutput(output.id);
-      await refreshAudioOutputs();
-    } catch (_) {
-      await openAudioOutputSettings();
-    }
+    final operation = _audioOutputOperation.then((_) async {
+      try {
+        await _audioOutputRouteService.selectOutput(output.id);
+        isLoadingAudioOutputs.value = true;
+        try {
+          audioOutputs.value = await _audioOutputRouteService.listOutputs();
+        } finally {
+          isLoadingAudioOutputs.value = false;
+        }
+      } catch (_) {
+        errorMessage.value =
+            'Could not select ${output.name}. Check the device audio settings.';
+      }
+    });
+    _audioOutputOperation = operation.catchError((_) {});
+    await operation;
   }
 
   Future<void> _loadDeviceName() async {
@@ -647,7 +665,19 @@ class ReceiverController extends GetxController {
   Future<void> _runAutoCalibration(String hostId) async {
     errorMessage.value = 'Auto-calibration started. Please stay quiet...';
 
-    final detectedOffset = await _calibrationService.listenForChirp();
+    int? detectedOffset;
+    try {
+      detectedOffset = await _calibrationService.listenForChirp();
+    } finally {
+      // Android microphone capture can temporarily move the media stream to
+      // a communication/SCO route. Restore the selected speaker/headset
+      // before the receiver continues normal playback.
+      try {
+        await _audioOutputRouteService.reapplySelectedOutput();
+      } catch (_) {
+        // Calibration result is still useful if route recovery is unsupported.
+      }
+    }
 
     if (detectedOffset == null) {
       errorMessage.value = 'Calibration failed: No signal detected.';
@@ -742,13 +772,31 @@ class ReceiverController extends GetxController {
   }
 
   Future<void> requestIgnoreBatteryOptimizations() async {
+    if (_batteryOptimizationSettingsOpen) return;
+    _batteryOptimizationSettingsOpen = true;
+    isRequestingBatteryOptimization.value = true;
     await _batteryOptimizationService.requestIgnoreBatteryOptimizations();
-    await Future<void>.delayed(const Duration(seconds: 2));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed ||
+        !_batteryOptimizationSettingsOpen) {
+      return;
+    }
+    unawaited(_finishBatteryOptimizationRequest());
+  }
+
+  Future<void> _finishBatteryOptimizationRequest() async {
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     await _checkBatteryOptimization();
+    _batteryOptimizationSettingsOpen = false;
+    isRequestingBatteryOptimization.value = false;
   }
 
   @override
   void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().stop();
     }

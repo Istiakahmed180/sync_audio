@@ -51,10 +51,30 @@ class AudioOutputRouteService {
         unique[key] = output;
       }
     }
-    return unique.values.toList(growable: false);
+    final sorted = unique.values.toList(growable: false)
+      ..sort((a, b) {
+        final selectedOrder = (b.isSelected ? 1 : 0).compareTo(
+          a.isSelected ? 1 : 0,
+        );
+        if (selectedOrder != 0) return selectedOrder;
+        final kindOrder = a.kind.compareTo(b.kind);
+        if (kindOrder != 0) return kindOrder;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    return sorted;
   }
 
   Future<void> selectOutput(String id) async {
     await _channel.invokeMethod<void>('selectOutput', id);
+  }
+
+  /// Restores the selected media route after microphone capture. Some Android
+  /// devices switch to a communication/Bluetooth-SCO route while recording.
+  Future<void> reapplySelectedOutput() async {
+    try {
+      await _channel.invokeMethod<void>('reapplyOutput');
+    } on MissingPluginException {
+      // Only Android needs this recovery; other platforms follow system route.
+    }
   }
 }

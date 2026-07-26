@@ -6,7 +6,9 @@ import 'package:record/record.dart';
 
 class AudioCalibrationService {
   AudioRecorder? _record;
-  StreamSubscription? _subscription;
+  StreamSubscription<Uint8List>? _subscription;
+  Timer? _timeoutTimer;
+  Future<void> _lifecycle = Future<void>.value();
 
   // Chirp detection parameters
   static const int sampleRate = 44100;
@@ -35,28 +37,38 @@ class AudioCalibrationService {
   Future<int?> listenForChirp({
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    _record ??= AudioRecorder();
-    if (!await _record!.hasPermission()) {
-      return null;
-    }
+    final operation = _lifecycle.then((_) async {
+      await _stop();
+      final record = AudioRecorder();
+      _record = record;
+      if (!await record.hasPermission()) {
+        await _stop();
+        return null;
+      }
 
-    final completer = Completer<int?>();
-    final startTime = DateTime.now();
+      final completer = Completer<int?>();
+      final startTime = DateTime.now();
+      var finishing = false;
 
-    const threshold = 0.3; // Normalized amplitude threshold for detection
+      Future<void> finish(int? result) async {
+        if (finishing) return;
+        finishing = true;
+        await _stop();
+        if (!completer.isCompleted) completer.complete(result);
+      }
 
-    try {
-      final stream = await _record!.startStream(
-        const RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: sampleRate,
-          numChannels: 1,
-        ),
-      );
+      const threshold = 0.3;
+      try {
+        final stream = await record.startStream(
+          const RecordConfig(
+            encoder: AudioEncoder.pcm16bits,
+            sampleRate: sampleRate,
+            numChannels: 1,
+          ),
+        );
 
-      _subscription = stream.listen(
-        (data) {
-          if (completer.isCompleted) return;
+        _subscription = stream.listen((data) {
+          if (finishing || data.length < 2) return;
 
           final int16Data = Int16List.view(
             data.buffer,
@@ -68,36 +80,34 @@ class AudioCalibrationService {
             final sample = int16Data[i].abs() / 32768.0;
             if (sample > threshold) {
               final detectTime = DateTime.now();
-              final offset = detectTime.difference(startTime).inMicroseconds;
-              _stop();
-              if (!completer.isCompleted) completer.complete(offset);
+              unawaited(
+                finish(detectTime.difference(startTime).inMicroseconds),
+              );
               break;
             }
           }
-        },
-        onError: (e) {
-          if (!completer.isCompleted) completer.complete(null);
-          _stop();
-        },
-      );
+        }, onError: (_) => unawaited(finish(null)));
 
-      Timer(timeout, () {
-        if (!completer.isCompleted) {
-          _stop();
-          completer.complete(null);
-        }
-      });
-    } catch (e) {
-      if (!completer.isCompleted) completer.complete(null);
-      _stop();
-    }
-
-    return completer.future;
+        _timeoutTimer = Timer(timeout, () => unawaited(finish(null)));
+        return completer.future;
+      } catch (_) {
+        await finish(null);
+        return null;
+      }
+    });
+    _lifecycle = operation.then<void>((_) {}).catchError((_) {});
+    return operation;
   }
 
-  void _stop() {
-    _subscription?.cancel();
+  Future<void> _stop() async {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+    final subscription = _subscription;
     _subscription = null;
-    _record?.stop();
+    await subscription?.cancel();
+    final record = _record;
+    _record = null;
+    await record?.stop();
+    await record?.dispose();
   }
 }

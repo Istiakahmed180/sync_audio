@@ -275,8 +275,8 @@ internal class NativeUdpAudioReceiver(
         socket = null
         audioTrack?.let {
             try { it.stop() } catch (_: IllegalStateException) { }
-            it.flush()
-            it.release()
+            try { it.flush() } catch (_: IllegalStateException) { }
+            try { it.release() } catch (_: IllegalStateException) { }
         }
         audioTrack = null
         jitter.reset()
