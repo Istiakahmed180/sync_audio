@@ -1,0 +1,65 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Enable Windows desktop target
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run analyzer
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build Windows release and installer
+        shell: bash
+        env:
+          BUILD_TARGET: windows
+          OUTPUT_DIR: dist
+          CREATE_WINDOWS_INSTALLER: true
+          ISCC_PATH: '/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
+        run: ./build_app.sh
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncMesh-Audio-Windows-installer
+          path: dist/SyncAudioSetup.exe
+          if-no-files-found: error
+
+      - name: Upload portable Windows release
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncMesh-Audio-Windows-portable
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error
