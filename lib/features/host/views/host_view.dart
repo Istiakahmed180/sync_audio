@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/constants/platform_capabilities.dart';
 import '../../../models/audio_stream_status.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/network_preflight_service.dart';
+import '../../../services/paired_device_store.dart';
 import '../../../shared/widgets/audio_visualizer.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
@@ -153,6 +155,8 @@ class HostView extends GetView<HostController> {
               const SizedBox(height: 12),
               _SavedSpeakerGroupsSection(controller: controller),
               const SizedBox(height: 12),
+              _RecentlyUsedDevicesSection(controller: controller),
+              const SizedBox(height: 12),
               _AllReceiverVolumeControl(controller: controller),
               const SizedBox(height: 12),
 
@@ -204,6 +208,11 @@ class HostView extends GetView<HostController> {
                             address,
                           ),
                           warning: controller.receiverWarningFor(address),
+                          reconnectPriority:
+                              controller.receiverReconnectPriority[address] ??
+                              0,
+                          onReconnectPriorityChanged: (priority) => controller
+                              .setReceiverReconnectPriority(address, priority),
                           isStreaming:
                               controller.audioStatus.value ==
                               AudioStreamStatus.streaming,
@@ -233,6 +242,13 @@ class HostView extends GetView<HostController> {
                           onAutoCalibrate: session == null
                               ? null
                               : () => controller.startAutoCalibration(address),
+                          onSetDelayMilliseconds: session == null
+                              ? null
+                              : (value) => controller
+                                    .setReceiverCalibrationMilliseconds(
+                                      session,
+                                      value,
+                                    ),
                           preflightResult: controller.preflightResults[address],
                           isPreflightRunning: controller.preflightRunning
                               .contains(address),
@@ -268,6 +284,17 @@ class HostView extends GetView<HostController> {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Mix microphone into system audio'),
+                          subtitle: const Text(
+                            'Streams your microphone together with the system audio.',
+                          ),
+                          value: controller.microphoneMixEnabled.value,
+                          onChanged: controller.isAudioStreaming
+                              ? null
+                              : controller.setMicrophoneMixEnabled,
+                        ),
                         if (controller.isAudioStreaming) ...[
                           AudioVisualizer(
                             stream: controller.visualizerPcm,
@@ -280,6 +307,15 @@ class HostView extends GetView<HostController> {
                               ? 'Audio is being sent to the connected Receiver(s).'
                               : 'System audio will start automatically when the Receiver is connected.',
                         ),
+                        if (controller.isAudioStreaming)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.tonalIcon(
+                              onPressed: controller.stopSystemAudioStream,
+                              icon: const Icon(Icons.stop_circle_outlined),
+                              label: const Text('Emergency stop'),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -362,6 +398,27 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
     await controller.saveCurrentAsGroup(name);
   }
 
+  Future<void> _renameGroup(BuildContext context, DeviceGroup group) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _NameInputDialog(
+        title: 'Rename speaker group',
+        labelText: 'Group name',
+        hintText: 'Living Room',
+        initialValue: group.name,
+      ),
+    );
+    if (name != null) await controller.renameGroup(group.name, name);
+  }
+
+  Future<void> _importGroups(BuildContext context) async {
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (_) => const _TextImportDialog(),
+    );
+    if (raw != null) await controller.importGroupsJson(raw);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Obx(
@@ -377,7 +434,7 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Saved speaker groups',
+                      'Saved speaker groups / Host profiles',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -390,6 +447,21 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
                         : () => _saveGroup(context),
                     icon: const Icon(Icons.save_outlined),
                   ),
+                  IconButton(
+                    tooltip: 'Export groups',
+                    onPressed: controller.savedGroups.isEmpty
+                        ? null
+                        : () => Share.share(
+                            controller.exportGroupsJson(),
+                            subject: 'Sync Audio speaker groups',
+                          ),
+                    icon: const Icon(Icons.upload_file_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Import groups',
+                    onPressed: () => _importGroups(context),
+                    icon: const Icon(Icons.download_outlined),
+                  ),
                 ],
               ),
               if (controller.savedGroups.isEmpty)
@@ -401,7 +473,12 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
                 ...controller.savedGroups.map(
                   (group) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.speaker_group_rounded),
+                    leading: Icon(
+                      group.favorite
+                          ? Icons.star_rounded
+                          : Icons.speaker_group_rounded,
+                      color: group.favorite ? Colors.amber : null,
+                    ),
                     title: Text(group.name),
                     subtitle: Text(
                       '${group.deviceIps.length} receiver${group.deviceIps.length == 1 ? '' : 's'}',
@@ -410,6 +487,23 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
                     trailing: Wrap(
                       spacing: 0,
                       children: [
+                        IconButton(
+                          tooltip: group.favorite
+                              ? 'Remove favorite'
+                              : 'Favorite group',
+                          onPressed: () =>
+                              controller.toggleGroupFavorite(group),
+                          icon: Icon(
+                            group.favorite
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Rename group',
+                          onPressed: () => _renameGroup(context, group),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
                         IconButton(
                           tooltip: 'Apply group',
                           onPressed: () => controller.applyGroup(group),
@@ -430,6 +524,49 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RecentlyUsedDevicesSection extends StatelessWidget {
+  const _RecentlyUsedDevicesSection({required this.controller});
+
+  final HostController controller;
+
+  @override
+  Widget build(BuildContext context) => Obx(
+    () => Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.history_rounded),
+        title: const Text('Recently used devices'),
+        subtitle: Text('${controller.pairedDevices.length} saved device(s)'),
+        children: controller.pairedDevices.isEmpty
+            ? const [
+                Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Connected devices will appear here.'),
+                  ),
+                ),
+              ]
+            : controller.pairedDevices
+                  .take(5)
+                  .map(
+                    (device) => ListTile(
+                      leading: const Icon(Icons.speaker_outlined),
+                      title: Text(device.name),
+                      subtitle: Text('${device.ipAddress}:${device.port}'),
+                      trailing: IconButton(
+                        tooltip: 'Add receiver',
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: () =>
+                            controller.addRecentlyUsedDevice(device),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+      ),
+    ),
+  );
 }
 
 class _AllReceiverVolumeControl extends StatelessWidget {
@@ -493,6 +630,26 @@ class _AllReceiverVolumeControl extends StatelessWidget {
               Text(
                 'Adjusts every configured Receiver together. Individual Receiver controls remain available below.',
                 style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: controller.isAudioStreaming
+                        ? controller.calibrateAllReceivers
+                        : null,
+                    icon: const Icon(Icons.auto_fix_high_rounded),
+                    label: const Text('Calibrate all'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: controller.configuredReceiverIps.isEmpty
+                        ? null
+                        : controller.normalizeReceiverVolumes,
+                    icon: const Icon(Icons.equalizer_rounded),
+                    label: const Text('Normalize'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -639,6 +796,7 @@ class _ReceiverTargetCard extends StatelessWidget {
     this.onToggleMute,
     this.onAdjustCalibration,
     this.onAutoCalibrate,
+    this.onSetDelayMilliseconds,
     required this.onRunPreflight,
     required this.isPreflightRunning,
     this.preflightResult,
@@ -646,6 +804,8 @@ class _ReceiverTargetCard extends StatelessWidget {
     this.latencyMs,
     this.diagnostics = const <String, Object>{},
     this.warning,
+    this.reconnectPriority = 0,
+    this.onReconnectPriorityChanged,
     this.isStreaming = false,
   });
 
@@ -655,6 +815,8 @@ class _ReceiverTargetCard extends StatelessWidget {
   final int? latencyMs;
   final Map<String, Object> diagnostics;
   final String? warning;
+  final int reconnectPriority;
+  final ValueChanged<int>? onReconnectPriorityChanged;
   final bool isStreaming;
   final double volume;
   final bool isMuted;
@@ -667,6 +829,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   final VoidCallback onDisconnect;
   final Future<void> Function(int deltaMilliseconds)? onAdjustCalibration;
   final VoidCallback? onAutoCalibrate;
+  final ValueChanged<double>? onSetDelayMilliseconds;
   final Future<void> Function() onRunPreflight;
   final bool isPreflightRunning;
   final NetworkPreflightResult? preflightResult;
@@ -744,6 +907,29 @@ class _ReceiverTargetCard extends StatelessWidget {
                           ReceiverNetworkQualityBadge(
                             diagnostics: diagnostics,
                             isActive: isStreaming,
+                          ),
+                          PopupMenuButton<int>(
+                            tooltip: 'Reconnect priority',
+                            initialValue: reconnectPriority,
+                            onSelected: onReconnectPriorityChanged,
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 0,
+                                child: Text('Priority: Normal'),
+                              ),
+                              PopupMenuItem(
+                                value: 1,
+                                child: Text('Priority: High'),
+                              ),
+                              PopupMenuItem(
+                                value: 2,
+                                child: Text('Priority: Highest'),
+                              ),
+                            ],
+                            icon: const Icon(
+                              Icons.low_priority_rounded,
+                              size: 18,
+                            ),
                           ),
                         ],
                       ),
@@ -875,6 +1061,7 @@ class _ReceiverTargetCard extends StatelessWidget {
               calibrationMicros: calibrationMicros,
               onAdjust: onAdjustCalibration,
               onAutoCalibrate: onAutoCalibrate,
+              onSetDelayMilliseconds: onSetDelayMilliseconds,
             ),
             Align(
               alignment: Alignment.centerLeft,
@@ -1017,11 +1204,13 @@ class _CalibrationControls extends StatelessWidget {
     required this.calibrationMicros,
     required this.onAdjust,
     this.onAutoCalibrate,
+    this.onSetDelayMilliseconds,
   });
 
   final int calibrationMicros;
   final Future<void> Function(int deltaMilliseconds)? onAdjust;
   final VoidCallback? onAutoCalibrate;
+  final ValueChanged<double>? onSetDelayMilliseconds;
 
   String get _valueLabel {
     final milliseconds = calibrationMicros / 1000;
@@ -1043,9 +1232,23 @@ class _CalibrationControls extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(
-            enabled ? 'Delay adjustment: $_valueLabel' : 'Delay adjustment',
-            style: Theme.of(context).textTheme.bodySmall,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                enabled ? 'Delay adjustment: $_valueLabel' : 'Delay adjustment',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (enabled && onSetDelayMilliseconds != null)
+                Slider(
+                  value: (calibrationMicros / 1000).clamp(-500.0, 1000.0),
+                  min: -500,
+                  max: 1000,
+                  divisions: 1500,
+                  label: _valueLabel,
+                  onChanged: onSetDelayMilliseconds,
+                ),
+            ],
           ),
         ),
         IconButton(
@@ -1182,6 +1385,46 @@ class _NameInputDialogState extends State<_NameInputDialog> {
       ],
     );
   }
+}
+
+class _TextImportDialog extends StatefulWidget {
+  const _TextImportDialog();
+
+  @override
+  State<_TextImportDialog> createState() => _TextImportDialogState();
+}
+
+class _TextImportDialogState extends State<_TextImportDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Import speaker groups'),
+    content: TextField(
+      controller: _controller,
+      maxLines: 8,
+      decoration: const InputDecoration(
+        hintText: 'Paste exported group JSON here',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+        child: const Text('Import'),
+      ),
+    ],
+  );
 }
 
 class _ReceiverBulkActions extends StatelessWidget {

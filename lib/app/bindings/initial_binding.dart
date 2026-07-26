@@ -53,12 +53,21 @@ class InitialBinding extends Bindings {
   }
 
   static AudioCaptureService _captureServiceFactory() {
-    if (Platform.isAndroid) return AndroidSystemAudioCaptureService();
-    if (Platform.isIOS) return IosAudioCaptureService();
-    if (Platform.isMacOS) return MacosAudioCaptureService();
-    if (Platform.isWindows) return WindowsAudioCaptureService();
-    if (Platform.isLinux) return LinuxAudioCaptureService();
-    return PlaceholderAudioCaptureService();
+    late final AudioCaptureService capture;
+    if (Platform.isAndroid) {
+      capture = AndroidSystemAudioCaptureService();
+    } else if (Platform.isIOS) {
+      capture = IosAudioCaptureService();
+    } else if (Platform.isMacOS) {
+      capture = MacosAudioCaptureService();
+    } else if (Platform.isWindows) {
+      capture = WindowsAudioCaptureService();
+    } else if (Platform.isLinux) {
+      capture = LinuxAudioCaptureService();
+    } else {
+      capture = PlaceholderAudioCaptureService();
+    }
+    return MicrophoneMixAudioCaptureService(capture);
   }
 
   static AudioPlaybackService _playbackServiceFactory() {

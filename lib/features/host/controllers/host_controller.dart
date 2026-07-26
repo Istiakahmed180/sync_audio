@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/constants/app_constants.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
@@ -94,6 +96,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final adaptiveJitter = true.obs;
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
+  final microphoneMixEnabled = false.obs;
 
   bool get isAudioStreaming =>
       _nativeHostActive || (_audioService?.isStreaming ?? false);
@@ -192,6 +195,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final masterReceiverVolume = 1.0.obs;
   final pairedDevices = <PairedDevice>[].obs;
   final savedGroups = <DeviceGroup>[].obs;
+  final receiverReconnectPriority = <String, int>{}.obs;
   final preflightResults = <String, NetworkPreflightResult>{}.obs;
   final preflightRunning = <String>{}.obs;
   final isBulkReceiverActionRunning = false.obs;
@@ -225,6 +229,20 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   Future<void> loadSavedGroups() async {
     savedGroups.value = await _pairedStore.loadGroups();
+  }
+
+  void addRecentlyUsedDevice(PairedDevice device) {
+    if (!configuredReceiverIps.contains(device.ipAddress)) {
+      configuredReceiverIps.add(device.ipAddress);
+    }
+    receiverPairingControllers[device.ipAddress] ??= TextEditingController();
+    final pairing = receiverPairingControllers[device.ipAddress]!;
+    if (pairing.text.isEmpty) pairing.text = '';
+    discoveredDeviceNames[device.ipAddress] = device.name;
+    if (device.deviceId != null) {
+      discoveredDeviceIds[device.ipAddress] = device.deviceId!;
+    }
+    unawaited(_saveSessionConfiguration());
   }
 
   Future<void> runNetworkTest(String address) async {
@@ -371,6 +389,67 @@ class HostController extends GetxController with WidgetsBindingObserver {
     await loadSavedGroups();
   }
 
+  Future<void> renameGroup(String oldName, String newName) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+    final group = savedGroups.firstWhereOrNull((item) => item.name == oldName);
+    if (group == null) return;
+    await _pairedStore.removeGroup(oldName);
+    await _pairedStore.saveGroup(group.copyWith(name: trimmed));
+    await loadSavedGroups();
+  }
+
+  Future<void> toggleGroupFavorite(DeviceGroup group) async {
+    await _pairedStore.saveGroup(group.copyWith(favorite: !group.favorite));
+    await loadSavedGroups();
+  }
+
+  String exportGroupsJson() =>
+      jsonEncode(savedGroups.map((group) => group.toJson()).toList());
+
+  Future<void> importGroupsJson(String raw) async {
+    try {
+      final decoded = jsonDecode(raw);
+      final list = decoded is List ? decoded : [decoded];
+      final groups = list
+          .whereType<Map>()
+          .map((item) => DeviceGroup.fromJson(Map<String, dynamic>.from(item)))
+          .toList(growable: false);
+      if (groups.isEmpty) throw const FormatException();
+      await _pairedStore.importGroups(groups);
+      await loadSavedGroups();
+    } catch (_) {
+      _showError('Could not import speaker groups. Check the JSON format.');
+    }
+  }
+
+  void setReceiverReconnectPriority(String address, int priority) {
+    receiverReconnectPriority[address] = priority.clamp(0, 100);
+    receiverReconnectPriority.refresh();
+    unawaited(_saveReconnectPriorities());
+  }
+
+  Future<void> _loadReconnectPriorities() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('receiver_reconnect_priorities');
+    if (raw == null) return;
+    try {
+      receiverReconnectPriority.value = Map<String, int>.from(
+        (jsonDecode(raw) as Map).map(
+          (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _saveReconnectPriorities() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'receiver_reconnect_priorities',
+      jsonEncode(receiverReconnectPriority),
+    );
+  }
+
   void setReceiverVolume(String address, double volume) {
     receiverVolumes[address] = volume;
     if (volume <= 0.0) {
@@ -399,6 +478,18 @@ class HostController extends GetxController with WidgetsBindingObserver {
     for (final address in configuredReceiverIps) {
       setReceiverVolume(address, normalized);
     }
+  }
+
+  void normalizeReceiverVolumes() {
+    if (configuredReceiverIps.isEmpty) return;
+    final maximum = configuredReceiverIps
+        .map(volumeForReceiver)
+        .fold<double>(0, (current, value) => value > current ? value : current);
+    if (maximum <= 0) return;
+    for (final address in configuredReceiverIps) {
+      setReceiverVolume(address, volumeForReceiver(address) / maximum);
+    }
+    masterReceiverVolume.value = 1.0;
   }
 
   bool get areAllReceiversMuted =>
@@ -617,6 +708,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     }
     unawaited(loadSavedGroups());
     unawaited(loadPairedDevices());
+    unawaited(_loadReconnectPriorities());
     unawaited(_restoreLastSession());
   }
 
@@ -955,6 +1047,9 @@ class HostController extends GetxController with WidgetsBindingObserver {
     _readyReceiverStreamAddresses
       ..clear()
       ..addAll(addresses);
+    if (_audioService is UdpAudioService) {
+      await _audioService.setMicrophoneMixEnabled(microphoneMixEnabled.value);
+    }
     final effectiveCodec = _autoOpusActive
         ? AudioCodecPreference.opus
         : codecPreference.value;
@@ -975,6 +1070,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     final nativeEligible =
         Platform.isAndroid &&
         !pairingText.contains('=') &&
+        !microphoneMixEnabled.value &&
         (audioService.activeCodecType == AudioCodecType.pcm16 ||
             audioService.activeCodecType == AudioCodecType.opus);
     var nativeStarted = false;
@@ -1096,6 +1192,18 @@ class HostController extends GetxController with WidgetsBindingObserver {
       if (wasStreaming) await startSystemAudioStream();
     } finally {
       _restartingAudioSettings.value = false;
+    }
+  }
+
+  Future<void> setMicrophoneMixEnabled(bool enabled) async {
+    if (isAudioStreaming) {
+      errorMessage.value =
+          'Stop audio streaming before changing microphone mix.';
+      return;
+    }
+    microphoneMixEnabled.value = enabled;
+    if (_audioService is UdpAudioService) {
+      await _audioService.setMicrophoneMixEnabled(enabled);
     }
   }
 
@@ -1391,7 +1499,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   List<String> _receiverAddresses() {
     if (configuredReceiverIps.isNotEmpty) {
-      return configuredReceiverIps.toList(growable: false);
+      final addresses = configuredReceiverIps.toList();
+      addresses.sort(
+        (a, b) => (receiverReconnectPriority[b] ?? 0).compareTo(
+          receiverReconnectPriority[a] ?? 0,
+        ),
+      );
+      return addresses;
     }
     return receiverIpController.text
         .split(RegExp(r'[\s,;]+'))
@@ -1740,6 +1854,28 @@ class HostController extends GetxController with WidgetsBindingObserver {
         playbackCalibrationMicros: calibrationMicros,
       );
       receiverSessions.refresh();
+    }
+  }
+
+  Future<void> setReceiverCalibrationMilliseconds(
+    ReceiverSession session,
+    double milliseconds,
+  ) async {
+    final current = calibrationForReceiver(session.ipAddress) / 1000;
+    final delta = (milliseconds - current).round();
+    if (delta != 0) await adjustReceiverCalibration(session, delta);
+  }
+
+  Future<void> calibrateAllReceivers() async {
+    if (!isAudioStreaming) {
+      errorMessage.value = 'Start audio streaming before calibration.';
+      return;
+    }
+    final addresses = configuredReceiverIps.where(
+      (address) => _findControlSession(address) != null,
+    );
+    for (final address in addresses) {
+      await startAutoCalibration(address);
     }
   }
 

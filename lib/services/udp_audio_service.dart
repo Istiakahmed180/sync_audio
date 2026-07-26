@@ -303,6 +303,13 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     decoder = Pcm16AudioDecoder();
   }
 
+  Future<void> setMicrophoneMixEnabled(bool enabled) async {
+    final mixer = captureService;
+    if (mixer is MicrophoneMixController) {
+      await (mixer as MicrophoneMixController).setMicrophoneMixEnabled(enabled);
+    }
+  }
+
   @override
   Future<void> configureLatency({
     required LatencyMode mode,
@@ -1164,7 +1171,18 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     final data = ByteData.sublistView(adjusted);
     for (var offset = 0; offset + 1 < adjusted.length; offset += 2) {
       final sample = data.getInt16(offset, Endian.little);
-      final scaled = (sample * gain).round().clamp(-32768, 32767);
+      final raw = sample * gain;
+      // Soft-knee limiting prevents volume boosts and mixed microphone audio
+      // from hard-clipping at int16 boundaries.
+      final normalized = (raw / 32767).clamp(-2.0, 2.0);
+      final limited = normalized.abs() <= 0.9
+          ? normalized
+          : normalized.sign *
+                (0.9 +
+                    0.1 *
+                        ((normalized.abs() - 0.9) /
+                            (1 + (normalized.abs() - 0.9))));
+      final scaled = (limited * 32767).round().clamp(-32768, 32767);
       data.setInt16(offset, scaled, Endian.little);
     }
     return adjusted;

@@ -42,6 +42,7 @@ class DeviceGroup {
   final Map<String, double> receiverVolumes;
   final Map<String, int> receiverCalibrations;
   final Map<String, String> deviceIds;
+  final bool favorite;
 
   const DeviceGroup({
     required this.name,
@@ -50,7 +51,18 @@ class DeviceGroup {
     this.receiverVolumes = const <String, double>{},
     this.receiverCalibrations = const <String, int>{},
     this.deviceIds = const <String, String>{},
+    this.favorite = false,
   });
+
+  DeviceGroup copyWith({String? name, bool? favorite}) => DeviceGroup(
+    name: name ?? this.name,
+    deviceIps: deviceIps,
+    pairingCodes: pairingCodes,
+    receiverVolumes: receiverVolumes,
+    receiverCalibrations: receiverCalibrations,
+    deviceIds: deviceIds,
+    favorite: favorite ?? this.favorite,
+  );
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -59,6 +71,7 @@ class DeviceGroup {
     'receiverVolumes': receiverVolumes,
     'receiverCalibrations': receiverCalibrations,
     'deviceIds': deviceIds,
+    'favorite': favorite,
   };
 
   factory DeviceGroup.fromJson(Map<String, dynamic> json) {
@@ -85,6 +98,7 @@ class DeviceGroup {
       deviceIds: rawDeviceIds == null
           ? const <String, String>{}
           : Map<String, String>.from(rawDeviceIds),
+      favorite: json['favorite'] as bool? ?? false,
     );
   }
 }
@@ -182,6 +196,18 @@ class PairedDeviceStore {
     await _write(
       _groupsKey,
       jsonEncode(groups.map((g) => g.toJson()).toList()),
+    );
+  }
+
+  Future<void> importGroups(List<DeviceGroup> imported) async {
+    final groups = await loadGroups();
+    for (final group in imported) {
+      groups.removeWhere((existing) => existing.name == group.name);
+      groups.add(group);
+    }
+    await _write(
+      _groupsKey,
+      jsonEncode(groups.map((group) => group.toJson()).toList()),
     );
   }
 
