@@ -517,6 +517,7 @@ class ReceiverHealthMetrics extends StatelessWidget {
     final jitter = _number('networkJitterMicros');
     final offset = _number('clockOffsetMicros');
     final latency = _number('estimatedTotalLatencyMicros');
+    final overruns = _number('packetOverrunCount', 'overruns');
 
     String value(String content) => hasMetrics ? content : 'Waiting';
 
@@ -572,6 +573,10 @@ class ReceiverHealthMetrics extends StatelessWidget {
                   value: value(
                     _formatCount(_number('packetUnderrunCount', 'underruns')),
                   ),
+                ),
+                _HealthMetric(
+                  label: 'Overruns',
+                  value: value(_formatCount(overruns)),
                 ),
                 _HealthMetric(
                   label: 'Audio latency',

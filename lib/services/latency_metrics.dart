@@ -183,10 +183,14 @@ class LatencyMetricsTracker {
       _queueDelay,
       math.max(0, nowMicros - timestampMicros),
     );
-    _totalLatency = _smooth(
-      _totalLatency,
-      math.max(0, nowMicros - _captureStart),
-    );
+    // Host capture has a shared capture-start timestamp. Receiver playback
+    // does not, so _captureStart remains zero there; using now - 0 would
+    // report the receiver process uptime as audio latency. Fall back to a
+    // bounded path estimate based on jitter wait, codec work, and half RTT.
+    final measuredLatency = _captureStart > 0
+        ? math.max(0, nowMicros - _captureStart)
+        : math.max(0, waitingMicros) + _decode + _decrypt + (_rtt ~/ 2);
+    _totalLatency = _smooth(_totalLatency, measuredLatency);
   }
 
   void clockSample({required int rttMicros, required int offsetMicros}) {

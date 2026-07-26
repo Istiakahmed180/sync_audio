@@ -140,6 +140,16 @@ void main() {
     expect(snapshot.toRedactedMap().containsKey('rawAudio'), isFalse);
   });
 
+  test('receiver latency does not use process uptime as audio latency', () {
+    final metrics = LatencyMetricsTracker();
+    metrics.clockSample(rttMicros: 240000, offsetMicros: -280000);
+    metrics.scheduled(timestampMicros: 0, waitingMicros: 130000);
+
+    final snapshot = metrics.snapshot();
+    expect(snapshot.estimatedTotalLatencyMicros, greaterThan(130000));
+    expect(snapshot.estimatedTotalLatencyMicros, lessThan(1000000));
+  });
+
   test(
     'clock synchronization filters samples per session and bounds drift',
     () async {

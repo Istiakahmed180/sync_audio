@@ -123,7 +123,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   String? receiverWarningFor(String address) {
     final sessionId = _findControlSession(address);
-    return receiverWarnings[sessionId] ?? receiverWarnings[address];
+    if (sessionId != null && receiverWarnings.containsKey(sessionId)) {
+      return receiverWarnings[sessionId];
+    }
+    if (receiverWarnings.containsKey(address)) {
+      return receiverWarnings[address];
+    }
+    return null;
   }
 
   Future<void> _checkBatteryOptimization() async {
@@ -1272,14 +1278,24 @@ class HostController extends GetxController with WidgetsBindingObserver {
       final jitterMs = number('networkJitterMicros') / 1000;
       final rttMs = number('roundTripTimeMicros') / 1000;
       final underruns = number('packetUnderrunCount');
-      final poor =
+      final overruns = number('packetOverrunCount');
+      final poorNetwork =
           loss >= 2 || jitterMs >= 50 || rttMs >= 120 || underruns >= 5;
-      final fair = loss > 0 || jitterMs >= 20 || rttMs >= 60 || underruns > 0;
-      if (poor) {
+      final fairNetwork =
+          loss > 0 || jitterMs >= 20 || rttMs >= 60 || underruns > 0;
+      final playbackBacklog = overruns >= 25;
+      if (poorNetwork) {
         poorReceivers.add(entry.key);
+        receiverWarnings[entry.key] = playbackBacklog
+            ? 'Poor network and receiver playback backlog detected; adapting automatically.'
+            : 'Poor network: automatic latency and buffering are active.';
+      } else if (playbackBacklog) {
+        // Playback overruns indicate that the receiver audio backend is not
+        // consuming frames quickly enough. Warn separately without treating
+        // it as a network failure or changing every receiver's latency mode.
         receiverWarnings[entry.key] =
-            'Poor network: automatic latency and buffering are active.';
-      } else if (fair) {
+            'Receiver playback is falling behind; check its audio output.';
+      } else if (fairNetwork) {
         fairReceivers.add(entry.key);
         receiverWarnings[entry.key] =
             'Network variation detected. Monitoring and adapting automatically.';
