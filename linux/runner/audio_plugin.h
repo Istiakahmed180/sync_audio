@@ -35,6 +35,7 @@ class AudioPlugin {
   FlBinaryMessenger* messenger_ = nullptr;
 
   // GLib-friendly callbacks
+  static gboolean SendCaptureChunk(gpointer user_data);
   static void CaptureControlCallback(FlMethodChannel* channel,
                                       FlMethodCall* method_call,
                                       gpointer user_data);

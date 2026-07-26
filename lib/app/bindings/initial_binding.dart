@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get/get.dart';
 
 import '../../services/audio_capture_service.dart';
@@ -53,6 +54,11 @@ class InitialBinding extends Bindings {
   }
 
   static AudioCaptureService _captureServiceFactory() {
+    // Platform.is* is not available at runtime in a browser.
+    if (kIsWeb) {
+      return MicrophoneMixAudioCaptureService(PlaceholderAudioCaptureService());
+    }
+
     late final AudioCaptureService capture;
     if (Platform.isAndroid) {
       capture = AndroidSystemAudioCaptureService();
@@ -71,6 +77,7 @@ class InitialBinding extends Bindings {
   }
 
   static AudioPlaybackService _playbackServiceFactory() {
+    if (kIsWeb) return PlaceholderAudioPlaybackService();
     if (Platform.isAndroid) return AndroidAudioTrackPlaybackService();
     if (Platform.isIOS) return IosAudioPlaybackService();
     if (Platform.isMacOS) return MacosAudioPlaybackService();

@@ -5,6 +5,15 @@
 
 #include <string>
 
+namespace {
+
+struct CaptureChunk {
+  FlEventChannel* channel;
+  std::vector<uint8_t> data;
+};
+
+}  // namespace
+
 static const pa_sample_spec kSampleSpec = {
     .format = PA_SAMPLE_S16LE,
     .rate = 48000,
@@ -74,10 +83,26 @@ AudioPlugin::~AudioPlugin() {
     playing_ = false;
     if (playback_handle_) pa_simple_free(playback_handle_);
   }
+  if (capture_stream_channel_) {
+    g_object_unref(capture_stream_channel_);
+    capture_stream_channel_ = nullptr;
+  }
 }
 
 void AudioPlugin::SetupCaptureChannel() {
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+
+  capture_stream_channel_ = fl_event_channel_new(
+      messenger_, "sync_audio/linux_audio_stream", FL_METHOD_CODEC(codec));
+  fl_event_channel_set_stream_handlers(
+      capture_stream_channel_,
+      [](FlEventChannel*, FlValue*, gpointer) -> FlMethodErrorResponse* {
+        return nullptr;
+      },
+      [](FlEventChannel*, FlValue*, gpointer) -> FlMethodErrorResponse* {
+        return nullptr;
+      },
+      nullptr, nullptr);
 
   capture_control_channel_ = fl_method_channel_new(
       messenger_, "sync_audio/linux_audio_capture",
@@ -119,8 +144,15 @@ void AudioPlugin::CaptureControlCallback(FlMethodChannel*,
         int ret = pa_simple_read(self->capture_handle_, buf.data(),
                                   kBufferSize, &error);
         if (ret >= 0) {
-          // Send via event channel is tricky with GLib threading.
-          // Store latest data for polling from Dart side.
+          // PulseAudio reads on a worker thread. Marshal the event to GLib's
+          // main context before calling the Flutter Linux event channel API.
+          if (self->capture_stream_channel_) {
+            auto* chunk = new CaptureChunk{
+                FL_EVENT_CHANNEL(g_object_ref(self->capture_stream_channel_)),
+                std::vector<uint8_t>(buf.begin(), buf.begin() + ret)};
+            g_main_context_invoke(nullptr, AudioPlugin::SendCaptureChunk,
+                                  chunk);
+          }
         } else {
           g_warning("pa_simple_read: %s", pa_strerror(error));
           break;
@@ -144,6 +176,18 @@ void AudioPlugin::CaptureControlCallback(FlMethodChannel*,
   } else {
     fl_method_call_respond_not_implemented(method_call);
   }
+}
+
+gboolean AudioPlugin::SendCaptureChunk(gpointer user_data) {
+  auto* chunk = static_cast<CaptureChunk*>(user_data);
+  if (!chunk->data.empty()) {
+    g_autoptr(FlValue) value = fl_value_new_uint8_list(
+        chunk->data.data(), chunk->data.size());
+    fl_event_channel_send(chunk->channel, value, nullptr, nullptr);
+  }
+  g_object_unref(chunk->channel);
+  delete chunk;
+  return G_SOURCE_REMOVE;
 }
 
 void AudioPlugin::SetupPlaybackChannel() {
