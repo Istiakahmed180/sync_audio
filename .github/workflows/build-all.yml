@@ -2,10 +2,18 @@ name: Build all platforms
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
+    inputs:
+      build_target:
+        description: Build target
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - all
+          - android
+          - macos
+          - windows
 
 permissions:
   contents: read
@@ -13,6 +21,7 @@ permissions:
 jobs:
   quality:
     name: Analyze and test
+    if: ${{ inputs.build_target != 'none' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -36,6 +45,7 @@ jobs:
   android:
     name: Build Android APK
     needs: quality
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'android' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -87,6 +97,7 @@ jobs:
   macos:
     name: Build macOS DMG
     needs: quality
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'macos' }}
     runs-on: macos-latest
     steps:
       - name: Check out repository
@@ -115,6 +126,7 @@ jobs:
   windows:
     name: Build Windows installer
     needs: quality
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'windows' }}
     runs-on: windows-latest
     steps:
       - name: Check out repository
