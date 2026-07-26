@@ -76,12 +76,13 @@ jobs:
              [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && \
              [ -n "$ANDROID_KEY_PASSWORD" ] && \
              [ -n "$ANDROID_KEY_ALIAS" ]; then
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/sync-audio-release.jks
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/android/sync-audio-release.jks"
+            test -s "$GITHUB_WORKSPACE/android/sync-audio-release.jks"
             cat > android/key.properties <<EOF
           storePassword=$ANDROID_KEYSTORE_PASSWORD
           keyPassword=$ANDROID_KEY_PASSWORD
           keyAlias=$ANDROID_KEY_ALIAS
-          storeFile=../sync-audio-release.jks
+          storeFile=$GITHUB_WORKSPACE/android/sync-audio-release.jks
           EOF
             echo "mode=release" >> "$GITHUB_OUTPUT"
           else
