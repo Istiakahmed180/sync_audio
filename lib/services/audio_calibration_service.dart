@@ -36,6 +36,7 @@ class AudioCalibrationService {
   /// Starts listening for the chirp on the microphone.
   Future<int?> listenForChirp({
     Duration timeout = const Duration(seconds: 5),
+    FutureOr<void> Function()? onReady,
   }) async {
     final operation = _lifecycle.then((_) async {
       await _stop();
@@ -49,6 +50,8 @@ class AudioCalibrationService {
       final completer = Completer<int?>();
       final startTime = DateTime.now();
       var finishing = false;
+      final reference = Int16List.view(generateChirp().buffer);
+      final samples = <int>[];
 
       Future<void> finish(int? result) async {
         if (finishing) return;
@@ -57,7 +60,6 @@ class AudioCalibrationService {
         if (!completer.isCompleted) completer.complete(result);
       }
 
-      const threshold = 0.3;
       try {
         final stream = await record.startStream(
           const RecordConfig(
@@ -75,19 +77,37 @@ class AudioCalibrationService {
             data.offsetInBytes,
             data.length ~/ 2,
           );
+          samples.addAll(int16Data);
+          if (samples.length > reference.length) {
+            samples.removeRange(0, samples.length - reference.length);
+          }
+          if (samples.length < reference.length) return;
 
-          for (int i = 0; i < int16Data.length; i++) {
-            final sample = int16Data[i].abs() / 32768.0;
-            if (sample > threshold) {
-              final detectTime = DateTime.now();
-              unawaited(
-                finish(detectTime.difference(startTime).inMicroseconds),
-              );
-              break;
-            }
+          // Match the generated chirp rather than treating any loud sound as
+          // calibration audio. Downsampling the correlation keeps this cheap
+          // enough for microphone callbacks.
+          var dot = 0.0;
+          var referenceEnergy = 0.0;
+          var sampleEnergy = 0.0;
+          for (var i = 0; i < reference.length; i += 8) {
+            final expected = reference[i].toDouble();
+            final actual = samples[i].toDouble();
+            dot += expected * actual;
+            referenceEnergy += expected * expected;
+            sampleEnergy += actual * actual;
+          }
+          final denominator = math.sqrt(referenceEnergy * sampleEnergy);
+          final correlation = denominator == 0 ? 0 : dot / denominator;
+          if (correlation >= 0.35) {
+            final detectTime = DateTime.now();
+            final elapsed =
+                detectTime.difference(startTime).inMicroseconds -
+                const Duration(milliseconds: 300).inMicroseconds;
+            unawaited(finish(math.max(0, elapsed)));
           }
         }, onError: (_) => unawaited(finish(null)));
 
+        if (onReady != null) await onReady();
         _timeoutTimer = Timer(timeout, () => unawaited(finish(null)));
         return completer.future;
       } catch (_) {

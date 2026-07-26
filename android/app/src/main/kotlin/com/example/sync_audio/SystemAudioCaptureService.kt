@@ -180,11 +180,13 @@ class SystemAudioCaptureService : Service() {
     private fun stopCapture() {
         val record: AudioRecord?
         val projection: MediaProjection?
+        var thread: Thread? = null
         synchronized(audioLock) {
             if (!capturing && audioRecord == null && mediaProjection == null) return
             capturing = false
             record = audioRecord
             projection = mediaProjection
+            thread = captureThread
             audioRecord = null
             captureThread = null
             mediaProjection = null
@@ -193,6 +195,9 @@ class SystemAudioCaptureService : Service() {
         try {
             record?.stop()
         } catch (_: IllegalStateException) {
+        }
+        if (thread != null && thread !== Thread.currentThread()) {
+            try { thread.join(1_000) } catch (_: InterruptedException) { }
         }
         record?.release()
     }

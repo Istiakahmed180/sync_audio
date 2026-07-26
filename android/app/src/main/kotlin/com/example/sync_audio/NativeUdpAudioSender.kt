@@ -183,8 +183,12 @@ internal class NativeUdpAudioSender(
     fun stop() {
         if (!running.compareAndSet(true, false)) return
         if (SystemAudioPcmBus.nativeSink != null) SystemAudioPcmBus.nativeSink = null
-        worker?.interrupt()
+        val thread = worker
+        thread?.interrupt()
         worker = null
+        if (thread != null && thread !== Thread.currentThread()) {
+            try { thread.join(1_000) } catch (_: InterruptedException) { }
+        }
         queue.clear()
         socket?.close()
         socket = null

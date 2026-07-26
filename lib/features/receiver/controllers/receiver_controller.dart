@@ -667,7 +667,15 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
 
     int? detectedOffset;
     try {
-      detectedOffset = await _calibrationService.listenForChirp();
+      detectedOffset = await _calibrationService.listenForChirp(
+        onReady: () => _service.sendControlCommand(
+          receiverId: hostId,
+          command: const ControlCommand(
+            type: ControlCommandType.calibrationReady,
+            arguments: ['0'],
+          ),
+        ),
+      );
     } finally {
       // Android microphone capture can temporarily move the media stream to
       // a communication/SCO route. Restore the selected speaker/headset

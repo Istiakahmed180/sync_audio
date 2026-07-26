@@ -267,14 +267,24 @@ internal class NativeUdpAudioReceiver(
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return
-        receiveThread?.interrupt()
-        playbackThread?.interrupt()
+        val receive = receiveThread
+        val playback = playbackThread
+        receive?.interrupt()
+        playback?.interrupt()
         receiveThread = null
         playbackThread = null
         socket?.close()
         socket = null
+        // Stop first so a blocking AudioTrack.write returns before the track
+        // is released. Do not join the current thread when fail() calls stop.
+        audioTrack?.let { try { it.stop() } catch (_: IllegalStateException) { } }
+        if (receive != null && receive !== Thread.currentThread()) {
+            try { receive.join(1_000) } catch (_: InterruptedException) { }
+        }
+        if (playback != null && playback !== Thread.currentThread()) {
+            try { playback.join(1_000) } catch (_: InterruptedException) { }
+        }
         audioTrack?.let {
-            try { it.stop() } catch (_: IllegalStateException) { }
             try { it.flush() } catch (_: IllegalStateException) { }
             try { it.release() } catch (_: IllegalStateException) { }
         }

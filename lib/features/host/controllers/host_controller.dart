@@ -161,6 +161,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final isRequestingBatteryOptimization = false.obs;
   bool _batteryOptimizationSettingsOpen = false;
   final _renameAcks = <String, Completer<ControlCommand>>{};
+  final _calibrationReady = <String, Completer<void>>{};
   final _streamingReceiverAddresses = <String>{};
   final _readyReceiverStreamAddresses = <String>{};
   final _restartingAudioSettings = false.obs;
@@ -1132,6 +1133,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
       }
       return;
     }
+    if (event.command.type == ControlCommandType.calibrationReady) {
+      _calibrationReady.remove(event.sourceId)?.complete();
+      return;
+    }
     if (event.command.type != ControlCommandType.bufferStatus ||
         event.command.arguments.length < 7) {
       return;
@@ -1476,22 +1481,35 @@ class HostController extends GetxController with WidgetsBindingObserver {
   Future<void> startAutoCalibration(String address) async {
     final sessionId = _findControlSession(address);
     if (sessionId == null) return;
+    if (!isAudioStreaming) {
+      errorMessage.value = 'Start audio streaming before calibration.';
+      return;
+    }
 
     errorMessage.value =
         'Calibrating ${discoveredDeviceNames[address] ?? address}...';
+    final ready = Completer<void>();
+    _calibrationReady[sessionId] = ready;
 
-    await _service.sendControlCommand(
-      receiverId: sessionId,
-      command: const ControlCommand(
-        type: ControlCommandType.startCalibration,
-        arguments: ['0'],
-      ),
-    );
-
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    final chirp = AudioCalibrationService.generateChirp();
-    await _audioService?.sendRawPcm(chirp);
+    try {
+      await _service.sendControlCommand(
+        receiverId: sessionId,
+        command: const ControlCommand(
+          type: ControlCommandType.startCalibration,
+          arguments: ['0'],
+        ),
+      );
+      await ready.future.timeout(const Duration(seconds: 6));
+      final chirp = AudioCalibrationService.generateChirp();
+      await _audioService?.sendRawPcm(chirp);
+    } on TimeoutException {
+      errorMessage.value =
+          'Calibration timed out. Allow microphone permission on the Receiver and try again.';
+    } finally {
+      if (identical(_calibrationReady[sessionId], ready)) {
+        _calibrationReady.remove(sessionId);
+      }
+    }
   }
 
   Future<void> _updateCalibration(String sessionId, int latencyMicros) async {
@@ -1806,6 +1824,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
       controller.dispose();
     }
     receiverPairingControllers.clear();
+    _calibrationReady.clear();
     super.onClose();
   }
 

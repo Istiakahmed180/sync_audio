@@ -1246,6 +1246,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     if (!_statusController.isClosed) await _statusController.close();
     if (!_errorsController.isClosed) await _errorsController.close();
     if (!_sessionController.isClosed) await _sessionController.close();
+    if (!_visualizerController.isClosed) await _visualizerController.close();
   }
 }
 

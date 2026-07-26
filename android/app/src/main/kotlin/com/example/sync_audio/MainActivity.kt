@@ -97,8 +97,11 @@ class MainActivity : FlutterActivity() {
                                     if (audioTrack != null) {
                                         stopAudioTrack()
                                         initializeAudioTrack()
+                                    } else {
+                                        // The preferred ID is retained and
+                                        // applied when playback is started.
+                                        true
                                     }
-                                    true
                                 }
                                 val nativeSelected = if (device == null) {
                                     false
@@ -124,7 +127,9 @@ class MainActivity : FlutterActivity() {
                             synchronized(audioLock) {
                                 if (audioTrack != null) {
                                     stopAudioTrack()
-                                    initializeAudioTrack()
+                                    if (!initializeAudioTrack()) {
+                                        error("Could not reapply the selected output")
+                                    }
                                 }
                                 nativeReceiver?.let { receiver ->
                                     preferredOutputDeviceId?.let { id ->
@@ -343,14 +348,21 @@ class MainActivity : FlutterActivity() {
                                 return@setMethodCallHandler
                             }
                             nativeReceiver?.stop()
-                            nativeReceiver = NativeUdpAudioReceiver(
+                            val candidate = NativeUdpAudioReceiver(
                                 port = port,
                                 latencyMode = mode,
                                 sessionId = sessionId,
                                 pairingToken = pairingToken,
                                 codec = nativeCodec,
                                 audioManager = getSystemService(AudioManager::class.java),
-                            ).also { it.start() }
+                            )
+                            try {
+                                candidate.start()
+                                nativeReceiver = candidate
+                            } catch (error: Exception) {
+                                candidate.stop()
+                                throw error
+                            }
                             result.success(null)
                         } catch (error: Exception) {
                             nativeReceiver = null
@@ -824,9 +836,9 @@ class MainActivity : FlutterActivity() {
         return Notification.Action.Builder(null, label, pending).build()
     }
 
-    private fun initializeAudioTrack() {
-        synchronized(audioLock) {
-            if (audioTrack != null) return
+    private fun initializeAudioTrack(): Boolean {
+    synchronized(audioLock) {
+            if (audioTrack != null) return true
             val sampleRate = 48000
             val audioManager = getSystemService(AudioManager::class.java)
             val bluetoothRoute = currentBluetoothOutput(audioManager) != null
@@ -859,11 +871,12 @@ class MainActivity : FlutterActivity() {
             check(audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
                 "AudioTrack failed to initialize"
             }
+            var preferredApplied = true
             preferredOutputDeviceId?.let { id ->
                 getSystemService(AudioManager::class.java)
                     .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                     .firstOrNull { it.id == id }
-                    ?.let { audioTrack?.setPreferredDevice(it) }
+                    ?.let { preferredApplied = audioTrack?.setPreferredDevice(it) == true }
             }
             audioTrack?.play()
             preferredOutputDeviceId?.let { id ->
@@ -878,6 +891,7 @@ class MainActivity : FlutterActivity() {
                         )
                     }
             }
+            return preferredApplied
         }
     }
 

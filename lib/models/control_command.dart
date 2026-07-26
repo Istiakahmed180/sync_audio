@@ -12,6 +12,7 @@ enum ControlCommandType {
   setDeviceNameAck,
   bufferStatus,
   startCalibration,
+  calibrationReady,
   calibrationResult,
   error,
 }
@@ -31,6 +32,7 @@ extension ControlCommandTypeWireName on ControlCommandType {
     ControlCommandType.setDeviceNameAck => 'SET_DEVICE_NAME_ACK',
     ControlCommandType.bufferStatus => 'BUFFER_STATUS',
     ControlCommandType.startCalibration => 'START_CALIBRATION',
+    ControlCommandType.calibrationReady => 'CALIBRATION_READY',
     ControlCommandType.calibrationResult => 'CALIBRATION_RESULT',
     ControlCommandType.error => 'ERROR',
   };
@@ -78,7 +80,9 @@ class ControlCommand {
         // parse and use this command.
         ControlCommandType.bufferStatus => count >= 2 && count <= 9,
         ControlCommandType.startCalibration => count == 1, // session id
-        ControlCommandType.calibrationResult => count == 2, // session id, latency micros
+        ControlCommandType.calibrationReady => count == 1,
+        ControlCommandType.calibrationResult =>
+          count == 2, // session id, latency micros
         ControlCommandType.error => count >= 2,
       };
 }
