@@ -123,6 +123,12 @@ class ReceiverView extends GetView<ReceiverController> {
                   isActive: controller.isAudioReceiverRunning.value,
                 ),
               ),
+              Obx(
+                () => DiagnosticReportButton(
+                  scope: 'receiver',
+                  diagnostics: controller.diagnosticsData,
+                ),
+              ),
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),

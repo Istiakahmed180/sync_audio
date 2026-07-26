@@ -292,6 +292,13 @@ class HostView extends GetView<HostController> {
                   isActive: controller.isAudioStreaming,
                 ),
               ),
+              Obx(
+                () => DiagnosticReportButton(
+                  scope: 'host',
+                  diagnostics: controller.diagnosticsData,
+                  receiverDiagnostics: controller.receiverDiagnosticsData,
+                ),
+              ),
               const SizedBox(height: 4),
               Align(
                 alignment: Alignment.centerLeft,

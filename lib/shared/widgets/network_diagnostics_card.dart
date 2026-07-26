@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../services/diagnostic_report_service.dart';
 
 class NetworkDiagnosticsCard extends StatefulWidget {
   const NetworkDiagnosticsCard({
@@ -12,6 +16,57 @@ class NetworkDiagnosticsCard extends StatefulWidget {
 
   @override
   State<NetworkDiagnosticsCard> createState() => _NetworkDiagnosticsCardState();
+}
+
+class DiagnosticReportButton extends StatelessWidget {
+  const DiagnosticReportButton({
+    required this.scope,
+    required this.diagnostics,
+    this.receiverDiagnostics = const <String, Map<String, Object>>{},
+    super.key,
+  });
+
+  final String scope;
+  final Map<String, Object> diagnostics;
+  final Map<String, Map<String, Object>> receiverDiagnostics;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: PopupMenuButton<DiagnosticReportFormat>(
+      onSelected: (format) {
+        unawaited(
+          DiagnosticReportService.share(
+            scope: scope,
+            diagnostics: diagnostics,
+            receiverDiagnostics: receiverDiagnostics,
+            format: format,
+          ),
+        );
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: DiagnosticReportFormat.json,
+          child: Text('Share JSON report'),
+        ),
+        PopupMenuItem(
+          value: DiagnosticReportFormat.text,
+          child: Text('Share text report'),
+        ),
+      ],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.ios_share_rounded, size: 18),
+            SizedBox(width: 8),
+            Text('Export diagnostic report'),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _NetworkDiagnosticsCardState extends State<NetworkDiagnosticsCard> {

@@ -1,6 +1,9 @@
 PODS:
   - cryptography_flutter (0.0.1):
     - FlutterMacOS
+  - flutter_secure_storage_darwin (10.0.0):
+    - Flutter
+    - FlutterMacOS
   - FlutterMacOS (1.0.0)
   - mobile_scanner (7.0.0):
     - Flutter
@@ -23,6 +26,7 @@ PODS:
 
 DEPENDENCIES:
   - cryptography_flutter (from `Flutter/ephemeral/.symlinks/plugins/cryptography_flutter/macos`)
+  - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - mobile_scanner (from `Flutter/ephemeral/.symlinks/plugins/mobile_scanner/darwin`)
   - opus_codec_macos (from `Flutter/ephemeral/.symlinks/plugins/opus_codec_macos/macos`)
@@ -36,6 +40,8 @@ DEPENDENCIES:
 EXTERNAL SOURCES:
   cryptography_flutter:
     :path: Flutter/ephemeral/.symlinks/plugins/cryptography_flutter/macos
+  flutter_secure_storage_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin
   FlutterMacOS:
     :path: Flutter/ephemeral
   mobile_scanner:
@@ -57,6 +63,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   cryptography_flutter: be2b3e0e31603521b6a1c2bea232a88a2488a91c
+  flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   mobile_scanner: 9157936403f5a0644ca3779a38ff8404c5434a93
   opus_codec_macos: b6a7749e5624ecf819044efe088f2124bcbc4ef8

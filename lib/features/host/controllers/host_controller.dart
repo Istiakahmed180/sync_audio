@@ -112,6 +112,12 @@ class HostController extends GetxController with WidgetsBindingObserver {
     return values == null ? const <String, Object>{} : Map.from(values);
   }
 
+  Map<String, Map<String, Object>> get receiverDiagnosticsData => {
+    for (final address in configuredReceiverIps)
+      if (receiverDiagnosticsFor(address).isNotEmpty)
+        address: receiverDiagnosticsFor(address),
+  };
+
   String? receiverWarningFor(String address) {
     final sessionId = _findControlSession(address);
     return receiverWarnings[sessionId] ?? receiverWarnings[address];
