@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:share_plus/share_plus.dart';
 
+import 'crash_reporter.dart';
+
 enum DiagnosticReportFormat { json, text }
 
 class DiagnosticReportService {
@@ -12,6 +14,7 @@ class DiagnosticReportService {
         const <String, Map<String, Object>>{},
     DiagnosticReportFormat format = DiagnosticReportFormat.json,
   }) async {
+    final crashReports = await CrashReporter.recentReports();
     final report = <String, Object>{
       'app': 'Sync Audio',
       'scope': scope,
@@ -22,6 +25,7 @@ class DiagnosticReportService {
           for (final entry in receiverDiagnostics.entries)
             entry.key: _sanitize(entry.value),
         },
+      if (crashReports.isNotEmpty) 'recentCrashes': crashReports,
     };
     final content = format == DiagnosticReportFormat.json
         ? const JsonEncoder.withIndent('  ').convert(report)
@@ -58,6 +62,14 @@ class DiagnosticReportService {
       for (final entry in receivers.entries) {
         buffer.writeln();
         _writeSection(buffer, 'Receiver: ${entry.key}', entry.value);
+      }
+    }
+    final crashes = report['recentCrashes'];
+    if (crashes is Iterable && crashes.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Recent crashes');
+      for (final crash in crashes) {
+        buffer.writeln('  $crash');
       }
     }
     return buffer.toString();

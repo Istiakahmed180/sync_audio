@@ -50,3 +50,4 @@ app.*.map.json
 *.jks
 *.keystore
 *.apk
+/android/sync-audio-release.jks

@@ -6,6 +6,20 @@ if (signingPropertiesFile.exists()) {
     signingPropertiesFile.inputStream().use(signingProperties::load)
 }
 
+val signingValue: (String) -> String? = { key ->
+    signingProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+        ?: System.getenv("ANDROID_${key.uppercase()}")?.takeIf { it.isNotBlank() }
+}
+val signingStoreFile = signingValue("storeFile")
+val hasReleaseSigning = listOf("storePassword", "keyPassword", "keyAlias", "storeFile")
+    .all { signingValue(it) != null }
+val isReleaseTask = gradle.startParameter.taskNames.any {
+    it.lowercase().contains("release")
+}
+if (isReleaseTask && !hasReleaseSigning) {
+    error("Release signing is not configured. Add android/key.properties or ANDROID_* signing variables.")
+}
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -40,10 +54,10 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = signingProperties.getProperty("keyAlias")
-            keyPassword = signingProperties.getProperty("keyPassword")
-            storeFile = signingProperties.getProperty("storeFile")?.let(::file)
-            storePassword = signingProperties.getProperty("storePassword")
+            keyAlias = signingValue("keyAlias")
+            keyPassword = signingValue("keyPassword")
+            storeFile = signingStoreFile?.let(::file)
+            storePassword = signingValue("storePassword")
         }
     }
 

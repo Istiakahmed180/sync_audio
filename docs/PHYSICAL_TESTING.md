@@ -17,6 +17,17 @@ for system audio; older macOS versions use the microphone fallback.
    adb install -r build/app/outputs/flutter-apk/app-debug.apk
    ```
 
+   For an automated 2–3 device smoke pass, connect authorized phones by USB
+   and run:
+
+   ```sh
+   ./tool/run_android_integration_matrix.sh
+   ```
+
+   This validates app startup and pairing on every connected device. The
+   multi-device audio, drift, and Wi-Fi behavior checks below remain physical
+   acceptance tests because they require simultaneous Host/Receiver roles.
+
 2. On each Receiver, open the app, note its pairing code, and start the Receiver.
 3. On the Host, use “Discover receivers on Wi-Fi” or enter each receiver IP. For one shared code, enter `123456`; for independent receiver codes, enter comma-separated entries such as `192.168.1.10=123456,192.168.1.11=654321`.
 4. Select Ultra Low, Balanced, and Stable modes separately. Use PCM first and measure baseline latency with a clap or short sharp transient. Record the UI diagnostics: estimated latency, RTT, buffer packets, target buffer, loss, underruns, drift estimate, and applied correction.
