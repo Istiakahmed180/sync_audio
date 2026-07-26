@@ -203,6 +203,7 @@ class HostView extends GetView<HostController> {
                           diagnostics: controller.receiverDiagnosticsFor(
                             address,
                           ),
+                          warning: controller.receiverWarningFor(address),
                           isStreaming:
                               controller.audioStatus.value ==
                               AudioStreamStatus.streaming,
@@ -637,6 +638,7 @@ class _ReceiverTargetCard extends StatelessWidget {
     this.deviceName,
     this.latencyMs,
     this.diagnostics = const <String, Object>{},
+    this.warning,
     this.isStreaming = false,
   });
 
@@ -645,6 +647,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   final String? deviceName;
   final int? latencyMs;
   final Map<String, Object> diagnostics;
+  final String? warning;
   final bool isStreaming;
   final double volume;
   final bool isMuted;
@@ -803,6 +806,33 @@ class _ReceiverTargetCard extends StatelessWidget {
                 isActive: isStreaming,
               ),
               const SizedBox(height: 4),
+              if (warning != null)
+                Card(
+                  margin: const EdgeInsets.only(bottom: 4),
+                  color: scheme.errorContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 18,
+                          color: scheme.onErrorContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            warning!,
+                            style: TextStyle(color: scheme.onErrorContainer),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const SizedBox(height: 8),
               Row(
                 children: [

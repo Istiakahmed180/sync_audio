@@ -102,6 +102,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
       _audioService?.visualizerPcm ?? const Stream.empty();
 
   final diagnostics = <String, Object>{}.obs;
+  final receiverWarnings = <String, String>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
 
@@ -109,6 +110,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
     final sessionId = _findControlSession(address);
     final values = _receiverDiagnostics[sessionId ?? address];
     return values == null ? const <String, Object>{} : Map.from(values);
+  }
+
+  String? receiverWarningFor(String address) {
+    final sessionId = _findControlSession(address);
+    return receiverWarnings[sessionId] ?? receiverWarnings[address];
   }
 
   Future<void> _checkBatteryOptimization() async {
@@ -186,6 +192,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
   DateTime? _statsStartTime;
   bool _statsActive = false;
   bool _restoringSession = false;
+  bool _automaticAdaptationInProgress = false;
+  bool _autoOpusActive = false;
+  LatencyMode? _latencyBeforeAutomaticAdaptation;
+  DateTime? _lastAutomaticAdaptation;
+  DateTime? _healthyNetworkSince;
 
   /// The TCP control service and UDP audio service use different session IDs
   /// for the same receiver (for example, `192.168.1.10` vs
@@ -568,6 +579,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
       if (session.controlStatus == ControlConnectionStatus.disconnected) {
         _receiverDiagnostics.remove(session.id);
         _receiverDiagnosticsUpdatedAt.remove(session.id);
+        receiverWarnings.remove(session.id);
+        receiverWarnings.refresh();
       }
       _updateSession(session);
     });
@@ -936,7 +949,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
     _readyReceiverStreamAddresses
       ..clear()
       ..addAll(addresses);
-    await audioService.selectCodec(codecPreference.value);
+    final effectiveCodec = _autoOpusActive
+        ? AudioCodecPreference.opus
+        : codecPreference.value;
+    await audioService.selectCodec(effectiveCodec);
     final pairingText = _pairingInputFor(addresses);
     await audioService.configureLatency(
       mode: latencyMode.value,
@@ -1065,6 +1081,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
     final wasStreaming = _audioService?.isStreaming ?? false;
     _restartingAudioSettings.value = wasStreaming;
     try {
+      _autoOpusActive = false;
+      _latencyBeforeAutomaticAdaptation = null;
       if (wasStreaming) await stopSystemAudioStream();
       codecPreference.value = preference;
       unawaited(_saveSessionConfiguration());
@@ -1080,6 +1098,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     final wasStreaming = _audioService?.isStreaming ?? false;
     _restartingAudioSettings.value = wasStreaming;
     try {
+      _latencyBeforeAutomaticAdaptation = null;
       if (wasStreaming) await stopSystemAudioStream();
       latencyMode.value = mode;
       unawaited(_saveSessionConfiguration());
@@ -1103,6 +1122,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
     _receiverDiagnostics.removeWhere(
       (id, _) => !_receiverDiagnosticsUpdatedAt.containsKey(id),
     );
+    receiverWarnings.removeWhere(
+      (id, _) => !_receiverDiagnosticsUpdatedAt.containsKey(id),
+    );
+    receiverWarnings.refresh();
     final local = _nativeHostActive
         ? await _nativeAudioRuntime.diagnostics()
         : audioService.diagnosticsSnapshot;
@@ -1119,6 +1142,99 @@ class HostController extends GetxController with WidgetsBindingObserver {
       if (local['totalBytesSent'] is num)
         'totalBytesSent': local['totalBytesSent']!,
     };
+    unawaited(_evaluateAutomaticNetworkAdaptation());
+  }
+
+  Future<void> _evaluateAutomaticNetworkAdaptation() async {
+    if (!isAudioStreaming || _automaticAdaptationInProgress) return;
+    final now = DateTime.now();
+    final poorReceivers = <String>[];
+    final fairReceivers = <String>[];
+
+    for (final entry in _receiverDiagnostics.entries) {
+      final values = entry.value;
+      num number(String key) => values[key] as num? ?? 0;
+      final loss = number('packetLossPercent');
+      final jitterMs = number('networkJitterMicros') / 1000;
+      final rttMs = number('roundTripTimeMicros') / 1000;
+      final underruns = number('packetUnderrunCount');
+      final poor =
+          loss >= 2 || jitterMs >= 50 || rttMs >= 120 || underruns >= 5;
+      final fair = loss > 0 || jitterMs >= 20 || rttMs >= 60 || underruns > 0;
+      if (poor) {
+        poorReceivers.add(entry.key);
+        receiverWarnings[entry.key] =
+            'Poor network: automatic latency and buffering are active.';
+      } else if (fair) {
+        fairReceivers.add(entry.key);
+        receiverWarnings[entry.key] =
+            'Network variation detected. Monitoring and adapting automatically.';
+      } else {
+        receiverWarnings.remove(entry.key);
+      }
+    }
+    receiverWarnings.refresh();
+
+    if (poorReceivers.isNotEmpty || fairReceivers.isNotEmpty) {
+      _healthyNetworkSince = null;
+    } else {
+      _healthyNetworkSince ??= now;
+    }
+
+    final severe = _receiverDiagnostics.values.any((values) {
+      final loss = values['packetLossPercent'] as num? ?? 0;
+      final jitterMs = (values['networkJitterMicros'] as num? ?? 0) / 1000;
+      final underruns = values['packetUnderrunCount'] as num? ?? 0;
+      return loss >= 5 || jitterMs >= 80 || underruns >= 10;
+    });
+    final healthyLongEnough =
+        _healthyNetworkSince != null &&
+        now.difference(_healthyNetworkSince!) >= const Duration(seconds: 30);
+    final canUseAutomaticOpus =
+        codecPreference.value == AudioCodecPreference.auto &&
+        OpusRuntime.isAvailable;
+    final needsStable =
+        poorReceivers.isNotEmpty && latencyMode.value != LatencyMode.stable;
+    final needsOpus = severe && canUseAutomaticOpus && !_autoOpusActive;
+    final restoreOpus = healthyLongEnough && _autoOpusActive;
+    final restoreLatency =
+        healthyLongEnough && _latencyBeforeAutomaticAdaptation != null;
+
+    if (!needsStable && !needsOpus && !restoreOpus && !restoreLatency) return;
+    if (_lastAutomaticAdaptation != null &&
+        now.difference(_lastAutomaticAdaptation!) <
+            const Duration(seconds: 10)) {
+      return;
+    }
+
+    _automaticAdaptationInProgress = true;
+    _lastAutomaticAdaptation = now;
+    try {
+      if (needsStable) {
+        _latencyBeforeAutomaticAdaptation ??= latencyMode.value;
+        latencyMode.value = LatencyMode.stable;
+      }
+      if (needsOpus) _autoOpusActive = true;
+      if (restoreLatency) {
+        latencyMode.value = _latencyBeforeAutomaticAdaptation!;
+        _latencyBeforeAutomaticAdaptation = null;
+      }
+      if (restoreOpus) _autoOpusActive = false;
+      await _restartAfterAutomaticAdaptation();
+      errorMessage.value = needsStable || needsOpus
+          ? needsOpus
+                ? 'Network is unstable. Switched to Opus and increased jitter buffering.'
+                : 'Network is unstable. Increased latency and jitter buffering automatically.'
+          : 'Network recovered. Restored the normal audio profile.';
+    } finally {
+      _automaticAdaptationInProgress = false;
+    }
+  }
+
+  Future<void> _restartAfterAutomaticAdaptation() async {
+    if (!isAudioStreaming) return;
+    await stopSystemAudioStream();
+    await startSystemAudioStream();
   }
 
   void _handleControlEvent(ControlEvent event) {
