@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'dart:convert';
 
-import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 abstract class PairingStore {
@@ -29,54 +29,58 @@ class SharedPrefsPairingStore implements PairingStore {
   static const _issuedAtKey = 'sync_audio_pairing_token_issued_at';
   static const _trustedDevicesKey = 'sync_audio_trusted_devices';
   static const _trustedDeviceNamesKey = 'sync_audio_trusted_device_names';
+  static const _storage = FlutterSecureStorage();
   String? _inMemoryToken;
 
   @override
   Future<String?> readToken() async {
     try {
+      final value = await _storage.read(key: _key);
+      if (value != null) return value;
+    } catch (_) {
+      // Fall through to migration/fallback below.
+    }
+    String? legacy;
+    try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(_key) ?? _inMemoryToken;
+      legacy = prefs.getString(_key);
+      if (legacy != null) await prefs.remove(_key);
     } catch (_) {
       return _inMemoryToken;
     }
+    if (legacy != null) {
+      _inMemoryToken = legacy;
+      await _writeSecure(_key, legacy);
+      return legacy;
+    }
+    return _inMemoryToken;
   }
 
   @override
   Future<void> writeToken(String token) async {
     _inMemoryToken = token;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_key, token);
-    } catch (_) {
-      // Fallback: token stored in memory only.
-    }
+    await _writeSecure(_key, token);
   }
 
   @override
   Future<DateTime?> readTokenIssuedAt() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final value = prefs.getString(_issuedAtKey);
-      return value == null ? null : DateTime.tryParse(value);
-    } catch (_) {
-      return null;
-    }
+    final value = await _readSecureWithLegacyMigration(_issuedAtKey);
+    return value == null ? null : DateTime.tryParse(value);
   }
 
   @override
   Future<void> writeTokenIssuedAt(DateTime issuedAt) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_issuedAtKey, issuedAt.toIso8601String());
-    } catch (_) {}
+    await _writeSecure(_issuedAtKey, issuedAt.toIso8601String());
   }
 
   @override
   Future<List<String>> readTrustedDevices() async {
+    final value = await _readSecureWithLegacyMigration(_trustedDevicesKey);
+    if (value == null) return const [];
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return (prefs.getStringList(_trustedDevicesKey) ?? const [])
-          .where((value) => value.trim().isNotEmpty)
+      return (jsonDecode(value) as List)
+          .whereType<String>()
+          .where((item) => item.trim().isNotEmpty)
           .toList(growable: false);
     } catch (_) {
       return const [];
@@ -87,29 +91,22 @@ class SharedPrefsPairingStore implements PairingStore {
   Future<void> addTrustedDevice(String deviceAddress) async {
     final address = deviceAddress.trim();
     if (address.isEmpty) return;
-    try {
-      final devices = (await readTrustedDevices()).toSet()..add(address);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_trustedDevicesKey, devices.toList());
-    } catch (_) {}
+    final devices = (await readTrustedDevices()).toSet()..add(address);
+    await _writeSecure(_trustedDevicesKey, jsonEncode(devices.toList()));
   }
 
   @override
   Future<void> revokeTrustedDevice(String deviceAddress) async {
-    try {
-      final devices = (await readTrustedDevices()).toSet()
-        ..remove(deviceAddress.trim());
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_trustedDevicesKey, devices.toList());
-    } catch (_) {}
+    final devices = (await readTrustedDevices()).toSet()
+      ..remove(deviceAddress.trim());
+    await _writeSecure(_trustedDevicesKey, jsonEncode(devices.toList()));
   }
 
   @override
   Future<Map<String, String>> readTrustedDeviceNames() async {
+    final raw = await _readSecureWithLegacyMigration(_trustedDeviceNamesKey);
+    if (raw == null) return const {};
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_trustedDeviceNamesKey);
-      if (raw == null) return const {};
       return Map<String, String>.from(jsonDecode(raw) as Map);
     } catch (_) {
       return const {};
@@ -124,12 +121,58 @@ class SharedPrefsPairingStore implements PairingStore {
     final address = deviceAddress.trim();
     final name = deviceName.trim();
     if (address.isEmpty || name.isEmpty) return;
+    final names = await readTrustedDeviceNames();
+    names[address] = name;
+    await _writeSecure(_trustedDeviceNamesKey, jsonEncode(names));
+  }
+
+  Future<String?> _readSecureWithLegacyMigration(String key) async {
     try {
-      final names = await readTrustedDeviceNames();
-      names[address] = name;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_trustedDeviceNamesKey, jsonEncode(names));
+      final value = await _storage.read(key: key);
+      if (value != null) return value;
+    } catch (_) {
+      // Fall through to the legacy SharedPreferences migration.
+    }
+
+    final SharedPreferences prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (_) {
+      return null;
+    }
+    String? legacy;
+    if (key == _trustedDevicesKey) {
+      final values = prefs.getStringList(key);
+      if (values != null) legacy = jsonEncode(values);
+    } else {
+      legacy = prefs.getString(key);
+    }
+    if (legacy == null) return null;
+
+    await _writeSecure(key, legacy);
+    try {
+      await prefs.remove(key);
     } catch (_) {}
+    return legacy;
+  }
+
+  Future<void> _writeSecure(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (_) {
+      // Flutter tests and unsupported platforms retain a local fallback.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (key == _trustedDevicesKey) {
+          final values = (jsonDecode(value) as List)
+              .whereType<String>()
+              .toList();
+          await prefs.setStringList(key, values);
+        } else {
+          await prefs.setString(key, value);
+        }
+      } catch (_) {}
+    }
   }
 
   static String generateToken() {
@@ -142,26 +185,16 @@ class SharedPrefsPairingStore implements PairingStore {
 }
 
 class AndroidPairingStore implements PairingStore {
-  static const _channel = MethodChannel('sync_audio/pairing');
   final SharedPrefsPairingStore _fallback = SharedPrefsPairingStore();
 
   @override
   Future<String?> readToken() async {
-    try {
-      return await _channel.invokeMethod<String>('read') ??
-          await _fallback.readToken();
-    } on MissingPluginException {
-      return _fallback.readToken();
-    }
+    return _fallback.readToken();
   }
 
   @override
   Future<void> writeToken(String token) async {
-    try {
-      await _channel.invokeMethod<void>('write', token);
-    } on MissingPluginException {
-      await _fallback.writeToken(token);
-    }
+    await _fallback.writeToken(token);
   }
 
   @override

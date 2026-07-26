@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PairedDevice {
@@ -89,12 +90,17 @@ class DeviceGroup {
 }
 
 class PairedDeviceStore {
-  static const _pairedKey = 'paired_devices';
-  static const _groupsKey = 'device_groups';
+  static const _pairedKey = 'sync_audio_paired_devices';
+  static const _groupsKey = 'sync_audio_device_groups';
+  static const _legacyPairedKey = 'paired_devices';
+  static const _legacyGroupsKey = 'device_groups';
+  static const _storage = FlutterSecureStorage();
 
   Future<List<PairedDevice>> loadPaired() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_pairedKey);
+    final data = await _readWithMigration(
+      secureKey: _pairedKey,
+      legacyKey: _legacyPairedKey,
+    );
     if (data == null) return [];
     try {
       final list = jsonDecode(data) as List;
@@ -129,8 +135,7 @@ class PairedDeviceStore {
       ),
     );
     if (devices.length > 20) devices.removeRange(20, devices.length);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    await _write(
       _pairedKey,
       jsonEncode(devices.map((d) => d.toJson()).toList()),
     );
@@ -139,16 +144,17 @@ class PairedDeviceStore {
   Future<void> removePair(String ip) async {
     final devices = await loadPaired();
     devices.removeWhere((d) => d.ipAddress == ip);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    await _write(
       _pairedKey,
       jsonEncode(devices.map((d) => d.toJson()).toList()),
     );
   }
 
   Future<List<DeviceGroup>> loadGroups() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_groupsKey);
+    final data = await _readWithMigration(
+      secureKey: _groupsKey,
+      legacyKey: _legacyGroupsKey,
+    );
     if (data == null) return [];
     try {
       final list = jsonDecode(data) as List;
@@ -164,8 +170,7 @@ class PairedDeviceStore {
     final groups = await loadGroups();
     groups.removeWhere((g) => g.name == group.name);
     groups.add(group);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    await _write(
       _groupsKey,
       jsonEncode(groups.map((g) => g.toJson()).toList()),
     );
@@ -174,10 +179,47 @@ class PairedDeviceStore {
   Future<void> removeGroup(String name) async {
     final groups = await loadGroups();
     groups.removeWhere((g) => g.name == name);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    await _write(
       _groupsKey,
       jsonEncode(groups.map((g) => g.toJson()).toList()),
     );
+  }
+
+  Future<String?> _readWithMigration({
+    required String secureKey,
+    required String legacyKey,
+  }) async {
+    try {
+      final secureValue = await _storage.read(key: secureKey);
+      if (secureValue != null) return secureValue;
+    } catch (_) {
+      // Flutter tests and unsupported platforms may not have a secure-storage
+      // plugin. Keep the legacy fallback for those environments only.
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    // The secure key is also used as a local fallback in Flutter tests and on
+    // platforms without a registered secure-storage implementation.
+    final legacyValue =
+        prefs.getString(legacyKey) ?? prefs.getString(secureKey);
+    if (legacyValue == null) return null;
+
+    try {
+      await _storage.write(key: secureKey, value: legacyValue);
+      await prefs.remove(legacyKey);
+    } catch (_) {
+      // Leave the legacy value in place if secure storage is unavailable.
+    }
+    return legacyValue;
+  }
+
+  Future<void> _write(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (_) {
+      // Keep unit tests and unsupported platforms functional.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+    }
   }
 }
