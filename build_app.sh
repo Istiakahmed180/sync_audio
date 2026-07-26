@@ -6,8 +6,16 @@ APP_NAME="SyncMesh Audio"
 PACKAGE_NAME="io.syncmesh.audio"
 BUILD_TYPE="apk"   # apk | appbundle
 BUILD_TARGET="${1:-android}" # android | macos
+ANDROID_BUILD_MODE="${ANDROID_BUILD_MODE:-release}" # release | debug
+OUTPUT_DIR="${OUTPUT_DIR:-dist}"
 CREATE_MACOS_DMG=false
 UPLOAD_FIREBASE="${UPLOAD_FIREBASE:-false}"
+
+# GitHub Actions can select debug/release without changing local settings.
+if [ "${BUILD_SINGLE_TARGET:-false}" = true ]; then
+  ANDROID_BUILD_MODE="${CI_ANDROID_BUILD_MODE:-$ANDROID_BUILD_MODE}"
+  OUTPUT_DIR="${CI_OUTPUT_DIR:-$OUTPUT_DIR}"
+fi
 
 # ===== Feature Toggles =====
 CHANGE_PACKAGE=false
@@ -71,10 +79,17 @@ fi
 if [ "$BUILD_APP" = true ]; then
   echo "🚀 Building app..."
 
-  if [ "$BUILD_TARGET" = "android" ] && [ ! -f "android/key.properties" ]; then
+  if [ "$BUILD_TARGET" = "android" ] && [ "$ANDROID_BUILD_MODE" != "release" ] && [ "$ANDROID_BUILD_MODE" != "debug" ]; then
+    echo "❌ ANDROID_BUILD_MODE must be release or debug."
+    exit 1
+  fi
+
+  if [ "$BUILD_TARGET" = "android" ] && [ "$ANDROID_BUILD_MODE" = "release" ] && [ ! -f "android/key.properties" ]; then
     echo "❌ Missing android/key.properties. Copy android/key.properties.example and configure release signing first."
     exit 1
   fi
+
+  mkdir -p "$OUTPUT_DIR"
 
   flutter clean
   flutter pub get
@@ -109,11 +124,17 @@ if [ "$BUILD_APP" = true ]; then
     fi
   elif [ "$BUILD_TYPE" = "appbundle" ]; then
     flutter build appbundle --release
+    AAB_PATH="build/app/outputs/bundle/release/app-release.aab"
+    TARGET_PATH="$PWD/$OUTPUT_DIR/$APP_NAME.aab"
+    mv "$AAB_PATH" "$TARGET_PATH"
+    echo "📦 AAB created: $TARGET_PATH"
   else
-    flutter build apk --release --split-per-abi
+    flutter build apk --"$ANDROID_BUILD_MODE" --split-per-abi
 
-    APK_PATH="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-    TARGET_PATH="$PWD/${APP_NAME}.apk"
+    APK_PATH="build/app/outputs/flutter-apk/app-arm64-v8a-${ANDROID_BUILD_MODE}.apk"
+    SUFFIX=""
+    [ "$ANDROID_BUILD_MODE" = "debug" ] && SUFFIX="-debug"
+    TARGET_PATH="$PWD/$OUTPUT_DIR/$APP_NAME$SUFFIX.apk"
 
     if [ -f "$APK_PATH" ]; then
       mv "$APK_PATH" "$TARGET_PATH"
