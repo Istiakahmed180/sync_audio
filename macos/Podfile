@@ -137,6 +137,14 @@ post_install do |installer|
       rm -rf "$opus_framework"
       exit 0
     SH
+    # Run after CocoaPods embeds frameworks; otherwise the embed phase adds
+    # the invalid flat framework back after this cleanup has already run.
+    phases = runner_target.build_phases
+    embed_index = phases.index { |item| item.name == '[CP] Embed Pods Frameworks' }
+    if embed_index
+      phases.delete(phase)
+      phases.insert(embed_index + 1, phase)
+    end
     runner_project.save
   end
 end
