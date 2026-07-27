@@ -909,12 +909,21 @@ class MainActivity : FlutterActivity() {
             var preferredApplied = true
             if (preferredOutputDeviceId != null || preferredOutputName != null) {
                 findPreferredOutput()?.let {
-                    preferredApplied = audioTrack?.setPreferredDevice(it) == true
+                    // Android's built-in speaker/earpiece is already the
+                    // system default route. Forcing it through
+                    // setPreferredDevice can make some OEM AudioFlinger
+                    // implementations repeatedly recreate a dead track.
+                    preferredApplied = !isBluetoothOutput(it) ||
+                            audioTrack?.setPreferredDevice(it) == true
                 }
             }
             audioTrack?.play()
             findPreferredOutput()?.let { device ->
-                val applied = audioTrack?.setPreferredDevice(device)
+                val applied = if (isBluetoothOutput(device)) {
+                    audioTrack?.setPreferredDevice(device)
+                } else {
+                    true
+                }
                 Log.i(
                     "SyncAudioOutput",
                     "Preferred output ${device.productName} (${device.id}) applied=$applied"
@@ -969,7 +978,9 @@ class MainActivity : FlutterActivity() {
                     initializeAudioTrack()
                 }
                 findPreferredOutput()?.let { device ->
-                    nativeReceiver?.setPreferredOutputDevice(device)
+                    if (isBluetoothOutput(device)) {
+                        nativeReceiver?.setPreferredOutputDevice(device)
+                    }
                 }
                 Log.i(
                     "SyncAudioOutput",

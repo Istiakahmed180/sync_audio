@@ -70,7 +70,14 @@ internal class NativeUdpAudioReceiver(
 
     fun setPreferredOutputDevice(device: AudioDeviceInfo): Boolean {
         preferredOutputDeviceId = device.id
-        return audioTrack?.setPreferredDevice(device) ?: true
+        // Built-in outputs are already Android's default route. Explicitly
+        // selecting them can trigger an AudioFlinger track-recreation loop on
+        // some OEM devices; only force external Bluetooth routes.
+        return if (isBluetoothOutput(device)) {
+            audioTrack?.setPreferredDevice(device) ?: true
+        } else {
+            true
+        }
     }
 
     private fun receiveLoop() {
@@ -222,6 +229,7 @@ internal class NativeUdpAudioReceiver(
         preferredOutputDeviceId?.let { id ->
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                 .firstOrNull { it.id == id }
+                ?.takeIf(::isBluetoothOutput)
                 ?.let { track.setPreferredDevice(it) }
         }
         return track
