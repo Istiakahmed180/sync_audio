@@ -51,6 +51,9 @@ internal class NativeUdpAudioReceiver(
         socket = DatagramSocket(port)
         audioTrack?.play()
         Log.i(TAG, "AudioTrack play() called playState=${audioTrack?.playState}")
+        check(audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
+            "Native AudioTrack could not start"
+        }
         audioTrack?.let { track ->
             preferredOutputDeviceId?.let { id ->
                 audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -153,12 +156,18 @@ internal class NativeUdpAudioReceiver(
                     continue
                 }
                 if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                    Log.w(TAG, "AudioTrack not playing (state=${track.playState}), calling play()")
-                    track.play()
+                    Log.w(TAG, "AudioTrack stopped (state=${track.playState}); stopping native receiver")
+                    fail("AudioTrack stopped unexpectedly")
+                    return
                 }
-                val written = track.write(packet.payload, 0, packet.payload.size, AudioTrack.WRITE_BLOCKING)
+                // A Bluetooth/system-route change can temporarily kill the
+                // AudioTrack. Never block this playback thread in the native
+                // AudioTrack write path while AudioFlinger is recovering.
+                val written = track.write(packet.payload, 0, packet.payload.size, AudioTrack.WRITE_NON_BLOCKING)
                 if (written < 0) {
-                    Log.e(TAG, "AudioTrack.write failed written=$written")
+                    Log.w(TAG, "AudioTrack.write failed written=$written; stopping native receiver")
+                    fail("AudioTrack write failed: $written")
+                    return
                 } else {
                     writtenSinceLog += written
                 }
