@@ -23,6 +23,7 @@ import '../../../services/calibration_store.dart';
 import '../../../services/connection_service.dart';
 import '../../../services/connection_activity_store.dart';
 import '../../../services/device_discovery_service.dart';
+import '../../../services/desktop_tray_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/network_preflight_service.dart';
@@ -745,6 +746,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
     _service.setLocalDeviceName('Host Device');
+    DesktopTrayService.setActionHandler(_handleDesktopTrayAction);
+    unawaited(_updateDesktopTray());
     unawaited(refreshLocalNetworkInfo());
     unawaited(_checkBatteryOptimization());
     // Host connections are app-scoped; opening this screen is only a view of
@@ -805,6 +808,38 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   Future<void> _loadConnectionActivity() async {
     connectionActivity.assignAll(await _activityStore.load());
+  }
+
+  Future<void> _handleDesktopTrayAction(String action) async {
+    switch (action) {
+      case 'pause_stream':
+        await stopSystemAudioStream();
+      case 'resume_stream':
+        await startSystemAudioStream();
+      case 'toggle_mute':
+        await toggleMasterMute();
+    }
+    unawaited(_updateDesktopTray());
+  }
+
+  Future<void> _updateDesktopTray() {
+    final connectedCount = receiverSessions
+        .where(
+          (session) =>
+              session.port != AppConstants.audioPort &&
+              session.controlStatus == ControlConnectionStatus.connected,
+        )
+        .map((session) => session.ipAddress)
+        .toSet()
+        .length;
+    final addresses = _receiverAddresses();
+    final muted = addresses.isNotEmpty &&
+        addresses.every((address) => receiverMuted[address] == true);
+    return DesktopTrayService.updateHostState(
+      isStreaming: isAudioStreaming,
+      isMuted: muted,
+      receiverCount: connectedCount,
+    );
   }
 
   void _recordSessionActivity(ReceiverSession session) {
@@ -1129,6 +1164,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   void _handleStatus(ConnectionStatus status) {
     final previous = _lastNotifiedConnectionStatus;
     connectionStatus.value = status;
+    unawaited(_updateDesktopTray());
     if (status == ConnectionStatus.connecting ||
         status == ConnectionStatus.connected) {
       unawaited(BackgroundConnectionService.start());
@@ -1277,6 +1313,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
       }),
     );
     unawaited(_updateMediaNotification());
+    unawaited(_updateDesktopTray());
   }
 
   Future<void> _handleNotificationAction(String action) async {
@@ -1308,6 +1345,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
       );
     }
     receiverMuted.refresh();
+    unawaited(_updateDesktopTray());
   }
 
   Future<void> adjustMasterVolume(double delta) async {
@@ -1638,6 +1676,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     _readyReceiverStreamAddresses.clear();
     receiverSessions.clear();
     unawaited(_updateMediaNotification());
+    unawaited(_updateDesktopTray());
   }
 
   Future<void> _sendControlCommand(
@@ -2150,6 +2189,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     } else if (session.port != AppConstants.audioPort) {
       _readyReceiverStreamAddresses.remove(session.ipAddress);
     }
+    unawaited(_updateDesktopTray());
   }
 
   Future<void> _autoStartForConnectedReceivers() async {
@@ -2288,6 +2328,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
+    DesktopTrayService.setActionHandler(null);
     _statusSubscription.cancel();
     _audioStatusSubscription?.cancel();
     _audioErrorSubscription?.cancel();

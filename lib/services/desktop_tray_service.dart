@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -12,6 +13,10 @@ class DesktopTrayService with WindowListener, TrayListener {
 
   static final DesktopTrayService instance = DesktopTrayService._();
   bool _quitting = false;
+  Future<void> Function(String action)? _actionHandler;
+  bool _isStreaming = false;
+  bool _isMuted = false;
+  int _receiverCount = 0;
 
   static bool get isSupported =>
       Platform.isWindows || Platform.isMacOS || Platform.isLinux;
@@ -22,6 +27,23 @@ class DesktopTrayService with WindowListener, TrayListener {
     instance._registerListeners();
     await instance._configureTray();
     await windowManager.setPreventClose(true);
+  }
+
+  static void setActionHandler(Future<void> Function(String action)? handler) {
+    instance._actionHandler = handler;
+  }
+
+  static Future<void> updateHostState({
+    required bool isStreaming,
+    required bool isMuted,
+    required int receiverCount,
+  }) async {
+    if (!isSupported) return;
+    instance
+      .._isStreaming = isStreaming
+      .._isMuted = isMuted
+      .._receiverCount = receiverCount;
+    await instance._configureTray();
   }
 
   void _registerListeners() {
@@ -40,6 +62,21 @@ class DesktopTrayService with WindowListener, TrayListener {
         Menu(
           items: [
             MenuItem(key: 'show_window', label: 'Show SyncMesh Audio'),
+            MenuItem.separator(),
+            MenuItem(
+              label: _isStreaming
+                  ? 'Streaming • $_receiverCount Receiver(s)'
+                  : 'Ready • $_receiverCount Receiver(s)',
+              disabled: true,
+            ),
+            MenuItem(
+              key: _isStreaming ? 'pause_stream' : 'resume_stream',
+              label: _isStreaming ? 'Pause streaming' : 'Resume streaming',
+            ),
+            MenuItem(
+              key: 'toggle_mute',
+              label: _isMuted ? 'Unmute all Receivers' : 'Mute all Receivers',
+            ),
             MenuItem.separator(),
             MenuItem(key: 'exit_app', label: 'Quit SyncMesh Audio'),
           ],
@@ -84,6 +121,13 @@ class DesktopTrayService with WindowListener, TrayListener {
   void onTrayMenuItemClick(MenuItem menuItem) {
     if (menuItem.key == 'show_window') {
       _showWindow();
+    } else if (menuItem.key == 'pause_stream' ||
+        menuItem.key == 'resume_stream') {
+      final handler = _actionHandler;
+      if (handler != null) unawaited(handler(menuItem.key!));
+    } else if (menuItem.key == 'toggle_mute') {
+      final handler = _actionHandler;
+      if (handler != null) unawaited(handler(menuItem.key!));
     } else if (menuItem.key == 'exit_app') {
       _quit();
     }
