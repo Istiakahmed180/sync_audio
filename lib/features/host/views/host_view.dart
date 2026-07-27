@@ -333,6 +333,12 @@ class HostView extends GetView<HostController> {
                                         session,
                                         value,
                                       ),
+                            onSetDelayPreset: session == null
+                                ? null
+                                : (value) => controller.setReceiverDelayPreset(
+                                    session,
+                                    value,
+                                  ),
                             preflightResult:
                                 controller.preflightResults[address],
                             isPreflightRunning: controller.preflightRunning
@@ -1012,6 +1018,7 @@ class _ReceiverTargetCard extends StatelessWidget {
     this.onAdjustCalibration,
     this.onAutoCalibrate,
     this.onSetDelayMilliseconds,
+    this.onSetDelayPreset,
     required this.onRunPreflight,
     required this.isPreflightRunning,
     this.preflightResult,
@@ -1045,6 +1052,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   final Future<void> Function(int deltaMilliseconds)? onAdjustCalibration;
   final VoidCallback? onAutoCalibrate;
   final ValueChanged<double>? onSetDelayMilliseconds;
+  final ValueChanged<int>? onSetDelayPreset;
   final Future<void> Function() onRunPreflight;
   final bool isPreflightRunning;
   final NetworkPreflightResult? preflightResult;
@@ -1277,6 +1285,7 @@ class _ReceiverTargetCard extends StatelessWidget {
               onAdjust: onAdjustCalibration,
               onAutoCalibrate: onAutoCalibrate,
               onSetDelayMilliseconds: onSetDelayMilliseconds,
+              onSetDelayPreset: onSetDelayPreset,
             ),
             Align(
               alignment: Alignment.centerLeft,
@@ -1420,12 +1429,14 @@ class _CalibrationControls extends StatelessWidget {
     required this.onAdjust,
     this.onAutoCalibrate,
     this.onSetDelayMilliseconds,
+    this.onSetDelayPreset,
   });
 
   final int calibrationMicros;
   final Future<void> Function(int deltaMilliseconds)? onAdjust;
   final VoidCallback? onAutoCalibrate;
   final ValueChanged<double>? onSetDelayMilliseconds;
+  final ValueChanged<int>? onSetDelayPreset;
 
   String get _valueLabel {
     final milliseconds = calibrationMicros / 1000;
@@ -1454,6 +1465,24 @@ class _CalibrationControls extends StatelessWidget {
                 enabled ? 'Delay adjustment: $_valueLabel' : 'Delay adjustment',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+              if (enabled && onSetDelayPreset != null)
+                DropdownButton<int>(
+                  value: _presetFor(calibrationMicros),
+                  hint: const Text('Custom preset'),
+                  isDense: true,
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(value: -50, child: Text('Ahead 50 ms')),
+                    DropdownMenuItem(value: 0, child: Text('Direct 0 ms')),
+                    DropdownMenuItem(value: 25, child: Text('Small 25 ms')),
+                    DropdownMenuItem(value: 50, child: Text('Medium 50 ms')),
+                    DropdownMenuItem(value: 100, child: Text('Large 100 ms')),
+                    DropdownMenuItem(value: 200, child: Text('Extra 200 ms')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) onSetDelayPreset!(value);
+                  },
+                ),
               if (enabled && onSetDelayMilliseconds != null)
                 Slider(
                   value: (calibrationMicros / 1000).clamp(-500.0, 1000.0),
@@ -1508,6 +1537,12 @@ class _CalibrationControls extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  int? _presetFor(int calibrationMicros) {
+    final milliseconds = (calibrationMicros / 1000).round();
+    const presets = {-50, 0, 25, 50, 100, 200};
+    return presets.contains(milliseconds) ? milliseconds : null;
   }
 }
 

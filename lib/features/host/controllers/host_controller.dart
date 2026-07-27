@@ -2040,6 +2040,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
     if (delta != 0) await adjustReceiverCalibration(session, delta);
   }
 
+  Future<void> setReceiverDelayPreset(
+    ReceiverSession session,
+    int milliseconds,
+  ) async {
+    await setReceiverCalibrationMilliseconds(session, milliseconds.toDouble());
+  }
+
   Future<void> calibrateAllReceivers() async {
     if (!isAudioStreaming) {
       errorMessage.value = 'Start audio streaming before calibration.';
