@@ -85,6 +85,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final receiverCount = 0.obs;
   final isDiscoveringReceivers = false.obs;
   final isDiscoveryPolling = false.obs;
+  final autoPairingEnabled = true.obs;
   final discoveryStatus = 'Search is off. Press Search to find Receivers.'.obs;
   final localNetworkInfo = 'Checking network…'.obs;
   final receiverSessions = <ReceiverSession>[].obs;
@@ -101,6 +102,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
   final microphoneMixEnabled = false.obs;
+  final _autoPairingInProgress = <String>{};
 
   bool get isAudioStreaming =>
       _nativeHostActive || (_audioService?.isStreaming ?? false);
@@ -860,6 +862,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
     } else {
       startDiscoveryPolling();
     }
+  }
+
+  void setAutoPairingEnabled(bool enabled) {
+    autoPairingEnabled.value = enabled;
+    if (!enabled) _autoPairingInProgress.clear();
   }
 
   Future<void> connect() async {
@@ -1748,13 +1755,22 @@ class HostController extends GetxController with WidgetsBindingObserver {
         final pairingCode = device.pairingCode;
         if (pairingCode != null && RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
           receiverPairingControllers[device.ipAddress]?.text = pairingCode;
+          _autoConnectDiscoveredReceiver(device);
         }
       }
+      final autoPairingLabel = autoPairingEnabled.value &&
+              visibleDevices.any(
+                (device) =>
+                    device.pairingCode != null &&
+                    RegExp(r'^\d{8}$').hasMatch(device.pairingCode!),
+              )
+          ? ' • Auto-pairing enabled'
+          : '';
       discoveryStatus.value = visibleDevices.isEmpty
           ? (isDiscoveryPolling.value
                 ? 'Searching for Receivers…'
                 : 'Search stopped.')
-          : '${visibleDevices.length} Receiver${visibleDevices.length == 1 ? '' : 's'} found';
+          : '${visibleDevices.length} Receiver${visibleDevices.length == 1 ? '' : 's'} found$autoPairingLabel';
     } catch (_) {
       // Discovery is best-effort. A blocked broadcast must not show a false
       // error snackbar or interrupt manual/QR setup.
@@ -1767,6 +1783,24 @@ class HostController extends GetxController with WidgetsBindingObserver {
         isDiscoveringReceivers.value = false;
       }
     }
+  }
+
+  void _autoConnectDiscoveredReceiver(AudioDevice device) {
+    if (!autoPairingEnabled.value || !isDiscoveryPolling.value) return;
+    final address = device.ipAddress;
+    final session = receiverSessionFor(address);
+    if (session != null &&
+        (session.controlStatus == ControlConnectionStatus.connected ||
+            session.controlStatus == ControlConnectionStatus.connecting ||
+            session.controlStatus == ControlConnectionStatus.reconnecting)) {
+      return;
+    }
+    if (!_autoPairingInProgress.add(address)) return;
+    unawaited(
+      connectReceiver(address).whenComplete(
+        () => _autoPairingInProgress.remove(address),
+      ),
+    );
   }
 
   Future<Set<String>> _localIpv4Addresses() async {

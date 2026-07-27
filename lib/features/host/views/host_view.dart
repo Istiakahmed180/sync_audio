@@ -72,6 +72,20 @@ class HostView extends GetView<HostController> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                Obx(
+                  () => Card(
+                    child: SwitchListTile.adaptive(
+                      value: controller.autoPairingEnabled.value,
+                      onChanged: controller.setAutoPairingEnabled,
+                      secondary: const Icon(Icons.auto_awesome_rounded),
+                      title: const Text('Automatically pair nearby Receivers'),
+                      subtitle: const Text(
+                        'Find Receivers on the same Wi‑Fi and connect without entering an IP address.',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 Obx(() {
                   if (controller.isIgnoringBatteryOptimizations.value) {
                     return const SizedBox.shrink();
