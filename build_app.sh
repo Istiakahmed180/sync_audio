@@ -5,16 +5,23 @@ set -e
 APP_NAME="SyncMesh Audio"
 PACKAGE_NAME="io.syncmesh.audio"
 BUILD_TYPE="apk"   # apk | appbundle
-BUILD_TARGET="${1:-android}" # android | macos
+BUILD_TARGET="${1:-android}" # android | macos | windows
 ANDROID_BUILD_MODE="${ANDROID_BUILD_MODE:-release}" # release | debug
 OUTPUT_DIR="${OUTPUT_DIR:-dist}"
 CREATE_MACOS_DMG=false
+CREATE_WINDOWS_INSTALLER=false
+WINDOWS_INSTALLER_NAME="SyncAudioSetup"
+ISCC_PATH=""
 UPLOAD_FIREBASE="${UPLOAD_FIREBASE:-false}"
 
 # GitHub Actions can select debug/release without changing local settings.
 if [ "${BUILD_SINGLE_TARGET:-false}" = true ]; then
   ANDROID_BUILD_MODE="${CI_ANDROID_BUILD_MODE:-$ANDROID_BUILD_MODE}"
   OUTPUT_DIR="${CI_OUTPUT_DIR:-$OUTPUT_DIR}"
+  CREATE_MACOS_DMG="${CI_CREATE_MACOS_DMG:-$CREATE_MACOS_DMG}"
+  CREATE_WINDOWS_INSTALLER="${CI_CREATE_WINDOWS_INSTALLER:-$CREATE_WINDOWS_INSTALLER}"
+  WINDOWS_INSTALLER_NAME="${CI_WINDOWS_INSTALLER_NAME:-$WINDOWS_INSTALLER_NAME}"
+  ISCC_PATH="${CI_ISCC_PATH:-$ISCC_PATH}"
 fi
 
 # ===== Feature Toggles =====
@@ -114,6 +121,7 @@ if [ "$BUILD_APP" = true ]; then
       trap 'rm -rf "$DMG_STAGING_DIR"' EXIT
       cp -R "$MACOS_APP_PATH" "$DMG_STAGING_DIR/"
       ln -s /Applications "$DMG_STAGING_DIR/Applications"
+      MACOS_DMG_PATH="$PWD/$OUTPUT_DIR/${APP_NAME}.dmg"
       hdiutil create \
         -volname "$APP_NAME" \
         -srcfolder "$DMG_STAGING_DIR" \
@@ -121,6 +129,41 @@ if [ "$BUILD_APP" = true ]; then
         -format UDZO \
         "$MACOS_DMG_PATH"
       echo "📦 macOS DMG created: $MACOS_DMG_PATH"
+    fi
+  elif [ "$BUILD_TARGET" = "windows" ]; then
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) ;;
+      *)
+        echo "❌ Windows builds must run on Windows."
+        exit 1
+        ;;
+    esac
+
+    flutter build windows --release
+
+    WINDOWS_RELEASE_PATH="build/windows/x64/runner/Release"
+    WINDOWS_PORTABLE_PATH="$PWD/$OUTPUT_DIR/windows-portable"
+    if [ ! -d "$WINDOWS_RELEASE_PATH" ]; then
+      echo "❌ Windows release not found: $WINDOWS_RELEASE_PATH"
+      exit 1
+    fi
+    mkdir -p "$WINDOWS_PORTABLE_PATH"
+    cp -R "$WINDOWS_RELEASE_PATH/." "$WINDOWS_PORTABLE_PATH/"
+    echo "📦 Windows portable build created: $WINDOWS_PORTABLE_PATH"
+
+    if [ "$CREATE_WINDOWS_INSTALLER" = true ]; then
+      if [ -z "$ISCC_PATH" ]; then
+        ISCC_PATH="$(command -v ISCC.exe 2>/dev/null || command -v iscc 2>/dev/null || true)"
+      fi
+      if [ -z "$ISCC_PATH" ] && [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+        ISCC_PATH="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+      fi
+      if [ -z "$ISCC_PATH" ]; then
+        echo "❌ Inno Setup compiler (ISCC.exe) was not found."
+        exit 1
+      fi
+      "$ISCC_PATH" "/O$OUTPUT_DIR" "/F$WINDOWS_INSTALLER_NAME" "installer/SyncAudio.iss"
+      echo "📦 Windows installer created: $OUTPUT_DIR/$WINDOWS_INSTALLER_NAME.exe"
     fi
   elif [ "$BUILD_TYPE" = "appbundle" ]; then
     flutter build appbundle --release
