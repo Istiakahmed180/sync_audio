@@ -17,6 +17,13 @@ class PreflightCheck {
   final PreflightCheckState state;
   final String detail;
   final int? latencyMs;
+
+  Map<String, Object?> toJson() => {
+    'label': label,
+    'state': state.name,
+    'detail': detail,
+    if (latencyMs != null) 'latencyMs': latencyMs,
+  };
 }
 
 class NetworkPreflightResult {
@@ -33,6 +40,13 @@ class NetworkPreflightResult {
   bool get passed => checks
       .where((check) => check.state != PreflightCheckState.skipped)
       .every((check) => check.state == PreflightCheckState.passed);
+
+  Map<String, Object?> toJson() => {
+    'address': address,
+    'passed': passed,
+    'finishedAt': finishedAt.toUtc().toIso8601String(),
+    'checks': checks.map((check) => check.toJson()).toList(growable: false),
+  };
 }
 
 class NetworkPreflightService {

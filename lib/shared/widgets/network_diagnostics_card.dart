@@ -25,6 +25,7 @@ class DiagnosticReportButton extends StatelessWidget {
     this.receiverDiagnostics = const <String, Map<String, Object>>{},
     this.networkInfo,
     this.deviceInfo = const <String, Object>{},
+    this.networkChecks = const <String, Object>{},
     super.key,
   });
 
@@ -33,6 +34,7 @@ class DiagnosticReportButton extends StatelessWidget {
   final Map<String, Map<String, Object>> receiverDiagnostics;
   final String? networkInfo;
   final Map<String, Object> deviceInfo;
+  final Map<String, Object> networkChecks;
 
   @override
   Widget build(BuildContext context) => Align(
@@ -46,6 +48,7 @@ class DiagnosticReportButton extends StatelessWidget {
             receiverDiagnostics: receiverDiagnostics,
             networkInfo: networkInfo,
             deviceInfo: deviceInfo,
+            networkChecks: networkChecks,
             format: format,
           ),
         );

@@ -427,6 +427,7 @@ class HostView extends GetView<HostController> {
                     diagnostics: controller.diagnosticsData,
                     networkInfo: controller.localNetworkInfo.value,
                     deviceInfo: controller.deviceInfoData,
+                    networkChecks: controller.preflightReportData,
                     receiverDiagnostics: controller.receiverDiagnosticsData,
                   ),
                 ),

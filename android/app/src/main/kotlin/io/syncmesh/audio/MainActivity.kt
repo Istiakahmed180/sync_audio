@@ -18,6 +18,7 @@ import android.media.AudioTrack
 import android.media.projection.MediaProjectionManager
 import android.media.projection.MediaProjectionConfig
 import android.net.wifi.WifiManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -278,6 +279,15 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getDeviceName" -> result.success("${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                    "openSettings" -> {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:$packageName"),
+                            ),
+                        )
+                        result.success(null)
+                    }
                     "getDeviceInfo" -> result.success(
                         mapOf(
                             "platform" to "Android",

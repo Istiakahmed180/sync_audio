@@ -123,6 +123,18 @@ void AudioPlugin::SetupDeviceInfoChannel(
           result->Success(flutter::EncodableValue(device_name));
           return;
         }
+        if (call.method_name() == "openSettings") {
+          const auto opened = reinterpret_cast<intptr_t>(ShellExecuteW(
+              nullptr, L"open", L"ms-settings:privacy-microphone", nullptr,
+              nullptr, SW_SHOWNORMAL));
+          if (opened <= 32) {
+            result->Error("SETTINGS_OPEN_FAILED",
+                          "Could not open Windows privacy settings");
+          } else {
+            result->Success();
+          }
+          return;
+        }
         if (call.method_name() == "getDeviceInfo") {
           SYSTEM_INFO system_info = {};
           GetNativeSystemInfo(&system_info);

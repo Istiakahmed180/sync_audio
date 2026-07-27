@@ -17,4 +17,14 @@ class DeviceInfoService {
       return const <String, Object>{};
     }
   }
+
+  Future<void> openPlatformSettings() async {
+    try {
+      await _channel.invokeMethod<void>('openSettings');
+    } on MissingPluginException {
+      // The guide remains available if a platform bridge is unavailable.
+    } on PlatformException {
+      // Settings launch is best-effort.
+    }
+  }
 }

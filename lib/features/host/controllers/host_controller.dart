@@ -125,6 +125,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
   Map<String, Object> get deviceInfoData => Map<String, Object>.from(deviceInfo);
+  Map<String, Object> get preflightReportData => {
+    for (final entry in preflightResults.entries)
+      entry.key: entry.value.toJson(),
+  };
 
   Map<String, Object> receiverDiagnosticsFor(String address) {
     final sessionId = _findControlSession(address);

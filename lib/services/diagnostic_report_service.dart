@@ -14,6 +14,7 @@ class DiagnosticReportService {
         const <String, Map<String, Object>>{},
     String? networkInfo,
     Map<String, Object> deviceInfo = const <String, Object>{},
+    Map<String, Object> networkChecks = const <String, Object>{},
     DiagnosticReportFormat format = DiagnosticReportFormat.json,
   }) async {
     final crashReports = await CrashReporter.recentReports();
@@ -27,6 +28,7 @@ class DiagnosticReportService {
       if (networkInfo != null && networkInfo.isNotEmpty)
         'network': networkInfo,
       if (deviceInfo.isNotEmpty) 'device': _sanitize(deviceInfo),
+      if (networkChecks.isNotEmpty) 'networkChecks': _sanitize(networkChecks),
       if (receiverDiagnostics.isNotEmpty)
         'receivers': {
           for (final entry in receiverDiagnostics.entries)
@@ -95,6 +97,10 @@ class DiagnosticReportService {
     if (report['device'] != null) {
       buffer.writeln();
       _writeSection(buffer, 'Device', report['device']);
+    }
+    if (report['networkChecks'] != null) {
+      buffer.writeln();
+      _writeSection(buffer, 'Network preflight', report['networkChecks']);
     }
     final receivers = report['receivers'];
     if (receivers is Map) {

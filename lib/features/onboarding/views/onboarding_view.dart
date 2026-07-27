@@ -6,6 +6,7 @@ import '../../../app/routes/app_routes.dart';
 import '../../../shared/widgets/app_primary_button.dart';
 import '../../../shared/widgets/responsive_content.dart';
 import '../controllers/onboarding_controller.dart';
+import '../../../services/device_info_service.dart';
 
 class OnboardingView extends GetView<OnboardingController> {
   const OnboardingView({super.key});
@@ -457,6 +458,18 @@ class _PermissionSetupPage extends StatelessWidget {
             ),
             if (index != steps.length - 1) const SizedBox(height: 10),
           ],
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => DeviceInfoService().openPlatformSettings(),
+            icon: const Icon(Icons.settings_rounded),
+            label: const Text('Open platform settings'),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'After changing permissions, return to SyncMesh Audio and continue setup.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
       ),
     );

@@ -61,6 +61,10 @@ class AppDelegate: FlutterAppDelegate {
       switch call.method {
       case "getDeviceName":
         result(Host.current().localizedName ?? "Mac")
+      case "openSettings":
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+        NSWorkspace.shared.open(url)
+        result(nil)
       case "getDeviceInfo":
         result([
           "platform": "macOS",
