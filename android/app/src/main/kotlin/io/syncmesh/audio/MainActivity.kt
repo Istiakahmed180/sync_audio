@@ -441,11 +441,15 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         audioExecutor.execute {
+                            // Do not hold audioLock during a potentially
+                            // blocking AudioTrack call. A route change can
+                            // release/recreate the track on the main thread;
+                            // holding the lock here can otherwise deadlock the
+                            // UI and trigger an ANR when AudioFlinger is down.
+                            val track = synchronized(audioLock) { audioTrack }
                             val written = try {
-                                synchronized(audioLock) {
-                                    audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
-                                        ?: -1
-                                }
+                                track?.write(data, 0, data.size, AudioTrack.WRITE_NON_BLOCKING)
+                                    ?: -1
                             } catch (_: IllegalStateException) {
                                 // stop() may race with a queued PCM write. The
                                 // receiver will restart the track on demand.
