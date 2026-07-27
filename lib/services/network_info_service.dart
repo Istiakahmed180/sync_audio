@@ -1,4 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
+
+class NetworkSnapshot {
+  const NetworkSnapshot({
+    required this.signature,
+    required this.display,
+    required this.hasActiveInterface,
+  });
+
+  final String signature;
+  final String display;
+  final bool hasActiveInterface;
+}
 
 class NetworkInfoService {
   static const _channel = MethodChannel('sync_audio/network_info');
@@ -15,6 +29,43 @@ class NetworkInfoService {
       return null;
     } on PlatformException {
       return null;
+    }
+  }
+
+  Future<NetworkSnapshot> readSnapshot() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      final entries = <String>[];
+      for (final interface in interfaces) {
+        final addresses = interface.addresses
+            .where((address) => address.address.isNotEmpty)
+            .map((address) => address.address)
+            .toList(growable: false);
+        if (addresses.isNotEmpty) {
+          entries.add('${interface.name}:${addresses.join(',')}');
+        }
+      }
+      entries.sort();
+      final name = await connectedNetworkName();
+      final networkText = entries.isEmpty
+          ? 'No active local network found'
+          : entries.map((entry) => entry.replaceFirst(':', ': ')).join('  •  ');
+      return NetworkSnapshot(
+        signature: '${name ?? ''}|${entries.join('|')}',
+        display: name == null
+            ? networkText
+            : 'Wi‑Fi: "$name"  •  $networkText',
+        hasActiveInterface: entries.isNotEmpty,
+      );
+    } catch (_) {
+      return const NetworkSnapshot(
+        signature: 'unavailable',
+        display: 'Network information unavailable',
+        hasActiveInterface: false,
+      );
     }
   }
 

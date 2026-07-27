@@ -38,15 +38,29 @@ class ReceiverView extends GetView<ReceiverController> {
                     busy:
                         controller.connectionStatus.value ==
                         ConnectionStatus.startingServer,
-                    message: !controller.isServerRunning.value
+                    message: controller.networkMismatchWarning.value ?? (!controller.isServerRunning.value
                         ? 'Start this Receiver first. The Host cannot connect while the server is stopped.'
                         : controller.isConnectedToHost.value
                         ? controller.audioStatus.value ==
                                   AudioStreamStatus.receiving
                               ? 'Host connected and audio is being received.'
                               : 'Host connected. Audio will start when the Host starts streaming.'
-                        : 'Waiting for a Host. Share the IP address and pairing code below.',
+                        : 'Waiting for a Host. Share the IP address and pairing code below.'),
                   ),
+                ),
+                Obx(
+                  () => controller.networkMismatchWarning.value == null
+                      ? const SizedBox.shrink()
+                      : Card(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: ListTile(
+                            leading: const Icon(Icons.sync_problem_rounded),
+                            title: const Text('Network changed'),
+                            subtitle: Text(
+                              controller.networkMismatchWarning.value!,
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 20),
                 Obx(() {

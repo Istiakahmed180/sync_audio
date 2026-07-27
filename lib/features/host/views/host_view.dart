@@ -54,15 +54,29 @@ class HostView extends GetView<HostController> {
                         ? Icons.check_circle_outline
                         : Icons.wifi_tethering_rounded,
                     busy: controller.isConnecting,
-                    message: switch (controller.connectionStatus.value) {
+                    message: controller.networkMismatchWarning.value ?? (switch (controller.connectionStatus.value) {
                       ConnectionStatus.connected =>
                         'Receiver connection established. You can start system audio.',
                       ConnectionStatus.connecting =>
                         'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
-                      _ =>
+                        _ =>
                         'Enter the Receiver IP and required pairing code to begin.',
-                    },
+                    }),
                   ),
+                ),
+                Obx(
+                  () => controller.networkMismatchWarning.value == null
+                      ? const SizedBox.shrink()
+                      : Card(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: ListTile(
+                            leading: const Icon(Icons.sync_problem_rounded),
+                            title: const Text('Network changed'),
+                            subtitle: Text(
+                              controller.networkMismatchWarning.value!,
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 12),
                 Obx(

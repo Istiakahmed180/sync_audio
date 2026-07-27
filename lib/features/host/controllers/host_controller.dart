@@ -86,6 +86,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final isDiscoveringReceivers = false.obs;
   final isDiscoveryPolling = false.obs;
   final autoPairingEnabled = true.obs;
+  final networkMismatchWarning = RxnString();
   final discoveryStatus = 'Search is off. Press Search to find Receivers.'.obs;
   final localNetworkInfo = 'Checking network…'.obs;
   final receiverSessions = <ReceiverSession>[].obs;
@@ -163,30 +164,24 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> refreshLocalNetworkInfo() async {
+    if (_networkCheckInProgress) return;
+    _networkCheckInProgress = true;
     try {
-      final interfaces = await NetworkInterface.list(
-        includeLoopback: false,
-        type: InternetAddressType.IPv4,
-      );
-      final networks = <String>[];
-      for (final interface in interfaces) {
-        final addresses = interface.addresses
-            .where((address) => address.address.isNotEmpty)
-            .map((address) => address.address)
-            .toList(growable: false);
-        if (addresses.isNotEmpty) {
-          networks.add('${interface.name}: ${addresses.join(', ')}');
+      final snapshot = await _networkInfoService.readSnapshot();
+      final previousSignature = _networkSignature;
+      _networkSignature = snapshot.signature;
+      localNetworkInfo.value = snapshot.display;
+      if (previousSignature != null &&
+          previousSignature != snapshot.signature) {
+        networkMismatchWarning.value = snapshot.hasActiveInterface
+            ? 'Host network changed. Checking the new Wi‑Fi and reconnecting Receivers automatically.'
+            : 'Host is not connected to a local network. Receiver connections are paused.';
+        if (snapshot.hasActiveInterface && isDiscoveryPolling.value) {
+          unawaited(discoverReceivers());
         }
       }
-      final networkName = await _networkInfoService.connectedNetworkName();
-      final addresses = networks.isEmpty
-          ? 'No active local network found'
-          : networks.join('  •  ');
-      localNetworkInfo.value = networkName == null
-          ? addresses
-          : 'Wi‑Fi: "$networkName"  •  $addresses';
-    } catch (_) {
-      localNetworkInfo.value = 'Network information unavailable';
+    } finally {
+      _networkCheckInProgress = false;
     }
   }
 
@@ -206,6 +201,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
   late final StreamSubscription<ControlEvent> _diagnosticsSubscription;
   Timer? _diagnosticTimer;
   Timer? _discoveryTimer;
+  String? _networkSignature;
+  bool _networkCheckInProgress = false;
   bool _discoveryInProgress = false;
   bool _showDiscoveryBusyIndicator = true;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
@@ -844,7 +841,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
     unawaited(discoverReceivers());
     _discoveryTimer = Timer.periodic(
       const Duration(seconds: 4),
-      (_) => unawaited(discoverReceivers()),
+      (_) {
+        unawaited(refreshLocalNetworkInfo());
+        unawaited(discoverReceivers());
+      },
     );
   }
 
@@ -1726,6 +1726,9 @@ class HostController extends GetxController with WidgetsBindingObserver {
       final visibleAddresses = visibleDevices
           .map((device) => device.ipAddress)
           .toSet();
+      final previousAddressesById = <String, String>{
+        for (final entry in discoveredDeviceIds.entries) entry.value: entry.key,
+      };
       discoveredDeviceNames.removeWhere(
         (address, _) => !visibleAddresses.contains(address),
       );
@@ -1747,6 +1750,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
         discoveredDeviceNames[device.ipAddress] = device.name;
         discoveredDeviceIds[device.ipAddress] = device.id;
         discoveredDeviceLatencyMs[device.ipAddress] = device.latencyMs;
+        final previousAddress = previousAddressesById[device.id];
+        if (previousAddress != null && previousAddress != device.ipAddress) {
+          await _migrateDiscoveredReceiver(previousAddress, device.ipAddress);
+        }
         if (!configuredReceiverIps.contains(device.ipAddress)) {
           configuredReceiverIps.add(device.ipAddress);
           receiverPairingControllers[device.ipAddress] =
@@ -1771,6 +1778,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
                 ? 'Searching for Receivers…'
                 : 'Search stopped.')
           : '${visibleDevices.length} Receiver${visibleDevices.length == 1 ? '' : 's'} found$autoPairingLabel';
+      if (visibleDevices.isNotEmpty) networkMismatchWarning.value = null;
     } catch (_) {
       // Discovery is best-effort. A blocked broadcast must not show a false
       // error snackbar or interrupt manual/QR setup.
@@ -1783,6 +1791,26 @@ class HostController extends GetxController with WidgetsBindingObserver {
         isDiscoveringReceivers.value = false;
       }
     }
+  }
+
+  Future<void> _migrateDiscoveredReceiver(
+    String previousAddress,
+    String newAddress,
+  ) async {
+    final pairingController = receiverPairingControllers.remove(
+      previousAddress,
+    );
+    final wasConfigured = configuredReceiverIps.remove(previousAddress);
+    if (wasConfigured && !configuredReceiverIps.contains(newAddress)) {
+      configuredReceiverIps.add(newAddress);
+    }
+    if (pairingController != null) {
+      receiverPairingControllers[newAddress] = pairingController;
+    }
+    discoveredDeviceNames.remove(previousAddress);
+    discoveredDeviceIds.remove(previousAddress);
+    discoveredDeviceLatencyMs.remove(previousAddress);
+    await _service.disconnectFrom(previousAddress);
   }
 
   void _autoConnectDiscoveredReceiver(AudioDevice device) {

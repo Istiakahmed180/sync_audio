@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -83,6 +82,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
   final localNetworkInfo = 'Checking network…'.obs;
+  final networkMismatchWarning = RxnString();
   final deviceName = 'My Speaker'.obs;
   final deviceId = ''.obs;
   final isServerRunning = false.obs;
@@ -110,6 +110,9 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   late final StreamSubscription<ControlEvent> _controlEventSubscription;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
   Timer? _bufferStatusTimer;
+  Timer? _networkMonitorTimer;
+  String? _networkSignature;
+  bool _networkCheckInProgress = false;
   Timer? _pairingExpiryTimer;
   bool _nativeReceiverActive = false;
   int? _hostRoundTripTimeMicros;
@@ -402,6 +405,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     if (isServerRunning.value) {
       await _sessionRestoreStore.setReceiverServerRunning(true);
       _startPairingExpiryTimer();
+      _startNetworkMonitor();
       await _discoveryService.startResponder(
         deviceId: deviceId.value,
         deviceName: deviceName.value,
@@ -432,6 +436,8 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     await _discoveryService.stopResponder();
     _pairingExpiryTimer?.cancel();
     _pairingExpiryTimer = null;
+    _networkMonitorTimer?.cancel();
+    _networkMonitorTimer = null;
     if (_audioService?.isReceiving ?? false) {
       await stopAudioReceiver();
     }
@@ -810,30 +816,21 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> refreshLocalNetworkInfo() async {
+    if (_networkCheckInProgress) return;
+    _networkCheckInProgress = true;
     try {
-      final interfaces = await NetworkInterface.list(
-        includeLoopback: false,
-        type: InternetAddressType.IPv4,
-      );
-      final networks = <String>[];
-      for (final interface in interfaces) {
-        final addresses = interface.addresses
-            .where((address) => address.address.isNotEmpty)
-            .map((address) => address.address)
-            .toList(growable: false);
-        if (addresses.isNotEmpty) {
-          networks.add('${interface.name}: ${addresses.join(', ')}');
-        }
+      final snapshot = await _networkInfoService.readSnapshot();
+      final previousSignature = _networkSignature;
+      _networkSignature = snapshot.signature;
+      localNetworkInfo.value = snapshot.display;
+      if (previousSignature != null &&
+          previousSignature != snapshot.signature) {
+        networkMismatchWarning.value = snapshot.hasActiveInterface
+            ? 'Receiver network changed. Waiting for the Host to reconnect on this Wi‑Fi.'
+            : 'Receiver is not connected to a local network. Host connection is paused.';
       }
-      final networkName = await _networkInfoService.connectedNetworkName();
-      final addresses = networks.isEmpty
-          ? 'No active local network found'
-          : networks.join('  •  ');
-      localNetworkInfo.value = networkName == null
-          ? addresses
-          : 'Wi‑Fi: "$networkName"  •  $addresses';
-    } catch (_) {
-      localNetworkInfo.value = 'Network information unavailable';
+    } finally {
+      _networkCheckInProgress = false;
     }
   }
 
@@ -842,6 +839,14 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     await _checkBatteryOptimization();
     _batteryOptimizationSettingsOpen = false;
     isRequestingBatteryOptimization.value = false;
+  }
+
+  void _startNetworkMonitor() {
+    _networkMonitorTimer?.cancel();
+    _networkMonitorTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(refreshLocalNetworkInfo()),
+    );
   }
 
   @override
@@ -860,6 +865,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     _diagnosticTimer?.cancel();
     _bufferStatusTimer?.cancel();
     _pairingExpiryTimer?.cancel();
+    _networkMonitorTimer?.cancel();
     messageController.dispose();
     super.onClose();
   }
