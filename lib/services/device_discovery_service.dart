@@ -98,7 +98,12 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       // directed broadcast. Send a few times because Wi-Fi can drop UDP.
       for (var attempt = 0; attempt < 3; attempt++) {
         for (final target in targets) {
-          socket.send(payload, InternetAddress(target), discoveryPort);
+          try {
+            socket.send(payload, InternetAddress(target), discoveryPort);
+          } on SocketException {
+            // A disconnected interface can leave a stale broadcast target.
+            // Ignore that target and continue discovery on the other routes.
+          }
         }
         if (attempt < 2) {
           await Future<void>.delayed(const Duration(milliseconds: 150));
