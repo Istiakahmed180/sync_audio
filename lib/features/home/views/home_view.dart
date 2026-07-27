@@ -5,6 +5,7 @@ import '../../../app/constants/app_constants.dart';
 import '../../../app/constants/platform_capabilities.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../shared/widgets/mode_selection_card.dart';
+import '../../../shared/widgets/responsive_content.dart';
 import '../controllers/home_controller.dart';
 
 class HomeView extends GetView<HomeController> {
@@ -24,56 +25,58 @@ class HomeView extends GetView<HomeController> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          children: [
-            Text(
-              'Synchronized audio,\nsimplified.',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              PlatformCapabilities.supportsHost
-                  ? 'Use this device as the Host or Receiver on the same Wi‑Fi network.'
-                  : 'Use this device as a Receiver on the same Wi‑Fi network.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 32),
-            Text(
-              'Choose a role',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            if (PlatformCapabilities.supportsHost) ...[
-              ModeSelectionCard(
-                title: 'Host Device',
-                description: 'Capture and send audio to all Receivers.',
-                icon: Icons.wifi_tethering_rounded,
-                onTap: () => Get.toNamed(AppRoutes.host),
-              ),
-              const SizedBox(height: 12),
-            ] else ...[
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('Host unavailable on this device'),
-                  subtitle: Text(PlatformCapabilities.hostSupportMessage),
+        child: ResponsiveContent(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(0, 16, 0, 32),
+            children: [
+              Text(
+                'Synchronized audio,\nsimplified.',
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 12),
+              Text(
+                PlatformCapabilities.supportsHost
+                    ? 'Use this device as the Host or Receiver on the same Wi‑Fi network.'
+                    : 'Use this device as a Receiver on the same Wi‑Fi network.',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 32),
+              Text(
+                'Choose a role',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              if (PlatformCapabilities.supportsHost) ...[
+                ModeSelectionCard(
+                  title: 'Host Device',
+                  description: 'Capture and send audio to all Receivers.',
+                  icon: Icons.wifi_tethering_rounded,
+                  onTap: () => Get.toNamed(AppRoutes.host),
+                ),
+                const SizedBox(height: 12),
+              ] else ...[
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('Host unavailable on this device'),
+                    subtitle: Text(PlatformCapabilities.hostSupportMessage),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              ModeSelectionCard(
+                title: 'Receiver Device',
+                description:
+                    'Join as a speaker — play the Host\'s audio in sync.',
+                icon: Icons.speaker_group_rounded,
+                onTap: () => Get.toNamed(AppRoutes.receiver),
+              ),
             ],
-            ModeSelectionCard(
-              title: 'Receiver Device',
-              description:
-                  'Join as a speaker — play the Host\'s audio in sync.',
-              icon: Icons.speaker_group_rounded,
-              onTap: () => Get.toNamed(AppRoutes.receiver),
-            ),
-          ],
+          ),
         ),
       ),
     );

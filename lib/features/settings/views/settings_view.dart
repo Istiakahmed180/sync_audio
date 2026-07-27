@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../../../app/constants/app_constants.dart';
 import '../../../services/paired_device_store.dart';
 import '../../../services/crash_reporter.dart';
+import '../../../shared/widgets/responsive_content.dart';
 import '../controllers/settings_controller.dart';
 
 class SettingsView extends GetView<SettingsController> {
@@ -14,92 +15,94 @@ class SettingsView extends GetView<SettingsController> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _sectionTitle(context, 'Basic'),
-          const SizedBox(height: 12),
-          _ThemeSelector(controller: controller),
-          const SizedBox(height: 24),
-          _sectionTitle(context, 'Advanced'),
-          const SizedBox(height: 12),
-          _AdvancedSettingsCard(controller: controller),
-          const SizedBox(height: 24),
-          _sectionTitle(context, 'Security'),
-          const SizedBox(height: 12),
-          _TrustedDevicesCard(controller: controller),
-          const SizedBox(height: 24),
-          _sectionTitle(context, 'About'),
-          const SizedBox(height: 12),
-          _SettingRow(label: 'Version', value: AppConstants.appVersion),
-          const SizedBox(height: 8),
-          Obx(
-            () => _SettingRow(
-              label: 'Device',
-              value: controller.deviceModel.value,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Obx(
-            () => _SettingRow(
-              label: 'Manufacturer',
-              value: controller.deviceManufacturer.value,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Obx(
-            () => _SettingRow(
-              label: controller.osVersionLabel,
-              value: controller.osVersion.value,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Obx(
-            () => _SettingRow(
-              label: controller.osBuildLabel,
-              value: controller.osBuild.value,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _sectionTitle(context, 'Statistics'),
-          const SizedBox(height: 12),
-          Obx(
-            () => _SettingRow(
-              label: 'Total stream time',
-              value: _formatMinutes(controller.totalStreamTimeMinutes.value),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Obx(
-            () => _SettingRow(
-              label: 'Data sent',
-              value:
-                  '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
-            ),
-          ),
-          const SizedBox(height: 8),
-          Obx(
-            () => _SettingRow(
-              label: 'Packets lost',
-              value: '${controller.totalPacketsLost.value}',
-            ),
-          ),
-          if (kDebugMode) ...[
-            const SizedBox(height: 24),
-            _sectionTitle(context, 'Developer'),
+      body: ResponsiveContent(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          children: [
+            _sectionTitle(context, 'Basic'),
             const SizedBox(height: 12),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.bug_report_outlined),
-                title: const Text('Test Crashlytics'),
-                subtitle: const Text(
-                  'Send a deliberate test crash to Firebase Crashlytics.',
-                ),
-                onTap: () => _confirmTestCrash(context),
+            _ThemeSelector(controller: controller),
+            const SizedBox(height: 24),
+            _sectionTitle(context, 'Advanced'),
+            const SizedBox(height: 12),
+            _AdvancedSettingsCard(controller: controller),
+            const SizedBox(height: 24),
+            _sectionTitle(context, 'Security'),
+            const SizedBox(height: 12),
+            _TrustedDevicesCard(controller: controller),
+            const SizedBox(height: 24),
+            _sectionTitle(context, 'About'),
+            const SizedBox(height: 12),
+            _SettingRow(label: 'Version', value: AppConstants.appVersion),
+            const SizedBox(height: 8),
+            Obx(
+              () => _SettingRow(
+                label: 'Device',
+                value: controller.deviceModel.value,
               ),
             ),
+            const SizedBox(height: 8),
+            Obx(
+              () => _SettingRow(
+                label: 'Manufacturer',
+                value: controller.deviceManufacturer.value,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => _SettingRow(
+                label: controller.osVersionLabel,
+                value: controller.osVersion.value,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => _SettingRow(
+                label: controller.osBuildLabel,
+                value: controller.osBuild.value,
+              ),
+            ),
+            const SizedBox(height: 24),
+            _sectionTitle(context, 'Statistics'),
+            const SizedBox(height: 12),
+            Obx(
+              () => _SettingRow(
+                label: 'Total stream time',
+                value: _formatMinutes(controller.totalStreamTimeMinutes.value),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => _SettingRow(
+                label: 'Data sent',
+                value:
+                    '${controller.totalDataSentMb.value.toStringAsFixed(1)} MB',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => _SettingRow(
+                label: 'Packets lost',
+                value: '${controller.totalPacketsLost.value}',
+              ),
+            ),
+            if (kDebugMode) ...[
+              const SizedBox(height: 24),
+              _sectionTitle(context, 'Developer'),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: const Text('Test Crashlytics'),
+                  subtitle: const Text(
+                    'Send a deliberate test crash to Firebase Crashlytics.',
+                  ),
+                  onTap: () => _confirmTestCrash(context),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

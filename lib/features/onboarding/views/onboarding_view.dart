@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../shared/widgets/app_primary_button.dart';
+import '../../../shared/widgets/responsive_content.dart';
 import '../controllers/onboarding_controller.dart';
 
 class OnboardingView extends GetView<OnboardingController> {
@@ -18,16 +19,25 @@ class OnboardingView extends GetView<OnboardingController> {
           children: [
             _buildSkipButton(context),
             Expanded(
-              child: PageView(
-                controller: controller.pageController,
-                onPageChanged: (page) => controller.currentPage.value = page,
-                children: [
-                  _WelcomePage(scheme: scheme),
-                  _HostPage(scheme: scheme),
-                  _ReceiverPage(scheme: scheme),
-                  _ReadyPage(scheme: scheme),
-                  _SetupPage(controller: controller, scheme: scheme),
-                ],
+              child: ResponsiveContent(
+                maxWidth: 760,
+                child: PageView(
+                  controller: controller.pageController,
+                  onPageChanged: (page) => controller.currentPage.value = page,
+                  children: [
+                    _AdaptiveOnboardingPage(
+                      child: _WelcomePage(scheme: scheme),
+                    ),
+                    _AdaptiveOnboardingPage(child: _HostPage(scheme: scheme)),
+                    _AdaptiveOnboardingPage(
+                      child: _ReceiverPage(scheme: scheme),
+                    ),
+                    _AdaptiveOnboardingPage(child: _ReadyPage(scheme: scheme)),
+                    _AdaptiveOnboardingPage(
+                      child: _SetupPage(controller: controller, scheme: scheme),
+                    ),
+                  ],
+                ),
               ),
             ),
             _buildBottomNav(context),
@@ -108,6 +118,21 @@ class OnboardingView extends GetView<OnboardingController> {
         : AppRoutes.host;
     Get.offAllNamed(route);
   }
+}
+
+class _AdaptiveOnboardingPage extends StatelessWidget {
+  const _AdaptiveOnboardingPage({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    physics: const BouncingScrollPhysics(),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height),
+      child: child,
+    ),
+  );
 }
 
 class _PageIndicator extends StatelessWidget {

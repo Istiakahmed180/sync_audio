@@ -105,15 +105,20 @@ class _QrScannerViewState extends State<QrScannerView>
               );
             },
           ),
-          Center(
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 3),
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final size = (constraints.maxWidth - 48).clamp(160.0, 260.0);
+              return Center(
+                child: Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white, width: 3),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              );
+            },
           ),
           const Positioned(
             left: 24,

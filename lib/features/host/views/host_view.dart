@@ -12,6 +12,7 @@ import '../../../shared/widgets/audio_visualizer.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../../shared/widgets/responsive_content.dart';
 import '../controllers/host_controller.dart';
 import 'qr_scanner_view.dart';
 
@@ -39,347 +40,366 @@ class HostView extends GetView<HostController> {
       child: Scaffold(
         appBar: AppBar(title: const Text('Host Device')),
         body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Obx(
-                () => ConnectionOverviewCard(
-                  title: 'Host connection',
-                  state: controller.connectionStatus.value.label,
-                  icon: controller.isConnected
-                      ? Icons.check_circle_outline
-                      : Icons.wifi_tethering_rounded,
-                  busy: controller.isConnecting,
-                  message: switch (controller.connectionStatus.value) {
-                    ConnectionStatus.connected =>
-                      'Receiver connection established. You can start system audio.',
-                    ConnectionStatus.connecting =>
-                      'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
-                    _ =>
-                      'Enter the Receiver IP and required pairing code to begin.',
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              Obx(
-                () => _HostNetworkCard(
-                  networkInfo: controller.localNetworkInfo.value,
-                  onRefresh: controller.refreshLocalNetworkInfo,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Obx(() {
-                if (controller.isIgnoringBatteryOptimizations.value) {
-                  return const SizedBox.shrink();
-                }
-                return Card(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.battery_alert_rounded,
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                'Battery optimization is active',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Background audio may stutter or disconnect. Disabling battery optimization is recommended for this app.',
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Obx(
-                            () => TextButton(
-                              onPressed:
-                                  controller
-                                      .isRequestingBatteryOptimization
-                                      .value
-                                  ? null
-                                  : controller
-                                        .requestIgnoreBatteryOptimizations,
-                              child:
-                                  controller
-                                      .isRequestingBatteryOptimization
-                                      .value
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Text('Disable optimization'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+          child: ResponsiveContent(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              children: [
+                Obx(
+                  () => ConnectionOverviewCard(
+                    title: 'Host connection',
+                    state: controller.connectionStatus.value.label,
+                    icon: controller.isConnected
+                        ? Icons.check_circle_outline
+                        : Icons.wifi_tethering_rounded,
+                    busy: controller.isConnecting,
+                    message: switch (controller.connectionStatus.value) {
+                      ConnectionStatus.connected =>
+                        'Receiver connection established. You can start system audio.',
+                      ConnectionStatus.connecting =>
+                        'Connecting to the Receiver. Keep both devices on the same Wi‑Fi network.',
+                      _ =>
+                        'Enter the Receiver IP and required pairing code to begin.',
+                    },
                   ),
-                );
-              }),
-              Text(
-                'Connect a receiver',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  if (PlatformCapabilities.supportsQrScanning) ...[
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () async {
-                          final data = await Navigator.of(context).push<String>(
-                            MaterialPageRoute(
-                              builder: (_) => const QrScannerView(),
-                            ),
-                          );
-                          if (data != null && context.mounted) {
-                            controller.addReceiverFromQrData(data);
-                          }
-                        },
-                        icon: const Icon(Icons.qr_code_scanner),
-                        label: const Text('Scan QR'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(child: _ManualSetupSection(controller: controller)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _SavedSpeakerGroupsSection(controller: controller),
-              const SizedBox(height: 12),
-              _RecentlyUsedDevicesSection(controller: controller),
-              const SizedBox(height: 12),
-              _AllReceiverVolumeControl(controller: controller),
-              const SizedBox(height: 12),
-
-              Obx(() {
-                // Subscribe this receiver list to live diagnostics updates.
-                final diagnosticsCount = controller.diagnostics.length;
-                final nearbyCount = controller.discoveredDevices.length;
-                final addresses = controller.configuredReceiverIps
-                    .where(
-                      (a) =>
-                          controller.receiverPairingControllers.containsKey(a),
-                    )
-                    .toList();
-                if (addresses.isEmpty) {
-                  return const _EmptyReceiverState();
-                }
-                return Column(
-                  key: ValueKey('$diagnosticsCount-$nearbyCount'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ReceiverBulkActions(controller: controller),
-                    const SizedBox(height: 8),
-                    if (nearbyCount > 0) ...[
-                      Text(
-                        'Nearby receivers',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    ...addresses.map((address) {
-                      final session = controller.receiverSessionFor(address);
-                      final deviceName =
-                          session?.deviceName ??
-                          controller.discoveredDeviceNames[address];
-                      final latencyMs =
-                          controller.discoveredDeviceLatencyMs[address];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _ReceiverTargetCard(
-                          address: address,
-                          calibrationMicros: controller.calibrationForReceiver(
-                            address,
-                          ),
-                          deviceName: deviceName,
-                          latencyMs: latencyMs,
-                          diagnostics: controller.receiverDiagnosticsFor(
-                            address,
-                          ),
-                          warning: controller.receiverWarningFor(address),
-                          reconnectPriority:
-                              controller.receiverReconnectPriority[address] ??
-                              0,
-                          onReconnectPriorityChanged: (priority) => controller
-                              .setReceiverReconnectPriority(address, priority),
-                          isStreaming:
-                              controller.audioStatus.value ==
-                              AudioStreamStatus.streaming,
-                          volume: controller.volumeForReceiver(address),
-                          isMuted: controller.receiverMuted[address] ?? false,
-                          onVolumeChanged: (v) =>
-                              controller.setReceiverVolume(address, v),
-                          onToggleMute: () =>
-                              controller.toggleReceiverMute(address),
-                          onRemove: () => controller.removeReceiverIp(address),
-                          onRename:
-                              session?.controlStatus ==
-                                  ControlConnectionStatus.connected
-                              ? (name) =>
-                                    controller.renameReceiver(address, name)
-                              : null,
-                          session: session,
-                          onConnect: () => controller.connectReceiver(address),
-                          onDisconnect: () =>
-                              controller.disconnectReceiver(address),
-                          onAdjustCalibration: session == null
-                              ? null
-                              : (delta) => controller.adjustReceiverCalibration(
-                                  session,
-                                  delta,
+                ),
+                const SizedBox(height: 12),
+                Obx(
+                  () => _HostNetworkCard(
+                    networkInfo: controller.localNetworkInfo.value,
+                    onRefresh: controller.refreshLocalNetworkInfo,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Obx(() {
+                  if (controller.isIgnoringBatteryOptimizations.value) {
+                    return const SizedBox.shrink();
+                  }
+                  return Card(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.battery_alert_rounded,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  'Battery optimization is active',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
-                          onAutoCalibrate: session == null
-                              ? null
-                              : () => controller.startAutoCalibration(address),
-                          onSetDelayMilliseconds: session == null
-                              ? null
-                              : (value) => controller
-                                    .setReceiverCalibrationMilliseconds(
-                                      session,
-                                      value,
-                                    ),
-                          preflightResult: controller.preflightResults[address],
-                          isPreflightRunning: controller.preflightRunning
-                              .contains(address),
-                          onRunPreflight: () =>
-                              controller.runNetworkTest(address),
-                        ),
-                      );
-                    }),
-                  ],
-                );
-              }),
-              const SizedBox(height: 12),
-              Obx(
-                () => Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.graphic_eq),
-                            const SizedBox(width: 10),
-                            Text(
-                              'System audio',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const Spacer(),
-                            StatusBadge(
-                              label: controller.audioStatus.value.label,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Mix microphone into system audio'),
-                          subtitle: const Text(
-                            'Streams your microphone together with the system audio.',
+                              ),
+                            ],
                           ),
-                          value: controller.microphoneMixEnabled.value,
-                          onChanged: controller.isAudioStreaming
-                              ? null
-                              : controller.setMicrophoneMixEnabled,
-                        ),
-                        if (controller.isAudioStreaming) ...[
-                          AudioVisualizer(
-                            stream: controller.visualizerPcm,
-                            color: Theme.of(context).colorScheme.primary,
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Background audio may stutter or disconnect. Disabling battery optimization is recommended for this app.',
                           ),
-                          const SizedBox(height: 12),
-                        ],
-                        Text(
-                          controller.isAudioStreaming
-                              ? 'Audio is being sent to the connected Receiver(s).'
-                              : 'System audio will start automatically when the Receiver is connected.',
-                        ),
-                        if (controller.isAudioStreaming)
                           Align(
                             alignment: Alignment.centerRight,
-                            child: FilledButton.tonalIcon(
-                              onPressed: controller.stopSystemAudioStream,
-                              icon: const Icon(Icons.stop_circle_outlined),
-                              label: const Text('Emergency stop'),
+                            child: Obx(
+                              () => TextButton(
+                                onPressed:
+                                    controller
+                                        .isRequestingBatteryOptimization
+                                        .value
+                                    ? null
+                                    : controller
+                                          .requestIgnoreBatteryOptimizations,
+                                child:
+                                    controller
+                                        .isRequestingBatteryOptimization
+                                        .value
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text('Disable optimization'),
+                              ),
                             ),
                           ),
-                      ],
+                        ],
+                      ),
                     ),
+                  );
+                }),
+                Text(
+                  'Connect a receiver',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Obx(
-                () => NetworkDiagnosticsCard(
-                  diagnostics: controller.diagnosticsData,
-                  isActive: controller.isAudioStreaming,
-                ),
-              ),
-              Obx(
-                () => DiagnosticReportButton(
-                  scope: 'host',
-                  diagnostics: controller.diagnosticsData,
-                  receiverDiagnostics: controller.receiverDiagnosticsData,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Obx(
-                  () => TextButton.icon(
-                    onPressed: controller.toggleDiscoveryPolling,
-                    icon: controller.isDiscoveringReceivers.value
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            controller.isDiscoveryPolling.value
-                                ? Icons.stop_circle_outlined
-                                : Icons.wifi_find_rounded,
+                const SizedBox(height: 8),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final qrButton = FilledButton.icon(
+                      onPressed: () async {
+                        final data = await Navigator.of(context).push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => const QrScannerView(),
                           ),
-                    label: Text(
-                      controller.isDiscoveringReceivers.value
-                          ? 'Searching…'
-                          : controller.isDiscoveryPolling.value
-                          ? 'Stop search'
-                          : 'Search',
+                        );
+                        if (data != null && context.mounted) {
+                          controller.addReceiverFromQrData(data);
+                        }
+                      },
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Scan QR'),
+                    );
+                    final manual = _ManualSetupSection(controller: controller);
+                    if (!PlatformCapabilities.supportsQrScanning) return manual;
+                    if (constraints.maxWidth < 560) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [qrButton, manual],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: qrButton),
+                        const SizedBox(width: 8),
+                        Expanded(child: manual),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _SavedSpeakerGroupsSection(controller: controller),
+                const SizedBox(height: 12),
+                _RecentlyUsedDevicesSection(controller: controller),
+                const SizedBox(height: 12),
+                _AllReceiverVolumeControl(controller: controller),
+                const SizedBox(height: 12),
+
+                Obx(() {
+                  // Subscribe this receiver list to live diagnostics updates.
+                  final diagnosticsCount = controller.diagnostics.length;
+                  final nearbyCount = controller.discoveredDevices.length;
+                  final addresses = controller.configuredReceiverIps
+                      .where(
+                        (a) => controller.receiverPairingControllers
+                            .containsKey(a),
+                      )
+                      .toList();
+                  if (addresses.isEmpty) {
+                    return const _EmptyReceiverState();
+                  }
+                  return Column(
+                    key: ValueKey('$diagnosticsCount-$nearbyCount'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ReceiverBulkActions(controller: controller),
+                      const SizedBox(height: 8),
+                      if (nearbyCount > 0) ...[
+                        Text(
+                          'Nearby receivers',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      ...addresses.map((address) {
+                        final session = controller.receiverSessionFor(address);
+                        final deviceName =
+                            session?.deviceName ??
+                            controller.discoveredDeviceNames[address];
+                        final latencyMs =
+                            controller.discoveredDeviceLatencyMs[address];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _ReceiverTargetCard(
+                            address: address,
+                            calibrationMicros: controller
+                                .calibrationForReceiver(address),
+                            deviceName: deviceName,
+                            latencyMs: latencyMs,
+                            diagnostics: controller.receiverDiagnosticsFor(
+                              address,
+                            ),
+                            warning: controller.receiverWarningFor(address),
+                            reconnectPriority:
+                                controller.receiverReconnectPriority[address] ??
+                                0,
+                            onReconnectPriorityChanged: (priority) =>
+                                controller.setReceiverReconnectPriority(
+                                  address,
+                                  priority,
+                                ),
+                            isStreaming:
+                                controller.audioStatus.value ==
+                                AudioStreamStatus.streaming,
+                            volume: controller.volumeForReceiver(address),
+                            isMuted: controller.receiverMuted[address] ?? false,
+                            onVolumeChanged: (v) =>
+                                controller.setReceiverVolume(address, v),
+                            onToggleMute: () =>
+                                controller.toggleReceiverMute(address),
+                            onRemove: () =>
+                                controller.removeReceiverIp(address),
+                            onRename:
+                                session?.controlStatus ==
+                                    ControlConnectionStatus.connected
+                                ? (name) =>
+                                      controller.renameReceiver(address, name)
+                                : null,
+                            session: session,
+                            onConnect: () =>
+                                controller.connectReceiver(address),
+                            onDisconnect: () =>
+                                controller.disconnectReceiver(address),
+                            onAdjustCalibration: session == null
+                                ? null
+                                : (delta) =>
+                                      controller.adjustReceiverCalibration(
+                                        session,
+                                        delta,
+                                      ),
+                            onAutoCalibrate: session == null
+                                ? null
+                                : () =>
+                                      controller.startAutoCalibration(address),
+                            onSetDelayMilliseconds: session == null
+                                ? null
+                                : (value) => controller
+                                      .setReceiverCalibrationMilliseconds(
+                                        session,
+                                        value,
+                                      ),
+                            preflightResult:
+                                controller.preflightResults[address],
+                            isPreflightRunning: controller.preflightRunning
+                                .contains(address),
+                            onRunPreflight: () =>
+                                controller.runNetworkTest(address),
+                          ),
+                        );
+                      }),
+                    ],
+                  );
+                }),
+                const SizedBox(height: 12),
+                Obx(
+                  () => Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.graphic_eq),
+                              const SizedBox(width: 10),
+                              Text(
+                                'System audio',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const Spacer(),
+                              StatusBadge(
+                                label: controller.audioStatus.value.label,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Mix microphone into system audio',
+                            ),
+                            subtitle: const Text(
+                              'Streams your microphone together with the system audio.',
+                            ),
+                            value: controller.microphoneMixEnabled.value,
+                            onChanged: controller.isAudioStreaming
+                                ? null
+                                : controller.setMicrophoneMixEnabled,
+                          ),
+                          if (controller.isAudioStreaming) ...[
+                            AudioVisualizer(
+                              stream: controller.visualizerPcm,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          Text(
+                            controller.isAudioStreaming
+                                ? 'Audio is being sent to the connected Receiver(s).'
+                                : 'System audio will start automatically when the Receiver is connected.',
+                          ),
+                          if (controller.isAudioStreaming)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: FilledButton.tonalIcon(
+                                onPressed: controller.stopSystemAudioStream,
+                                icon: const Icon(Icons.stop_circle_outlined),
+                                label: const Text('Emergency stop'),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Obx(
-                () =>
-                    controller.isDiscoveryPolling.value ||
+                const SizedBox(height: 4),
+                Obx(
+                  () => NetworkDiagnosticsCard(
+                    diagnostics: controller.diagnosticsData,
+                    isActive: controller.isAudioStreaming,
+                  ),
+                ),
+                Obx(
+                  () => DiagnosticReportButton(
+                    scope: 'host',
+                    diagnostics: controller.diagnosticsData,
+                    receiverDiagnostics: controller.receiverDiagnosticsData,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Obx(
+                    () => TextButton.icon(
+                      onPressed: controller.toggleDiscoveryPolling,
+                      icon: controller.isDiscoveringReceivers.value
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              controller.isDiscoveryPolling.value
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.wifi_find_rounded,
+                            ),
+                      label: Text(
                         controller.isDiscoveringReceivers.value
-                    ? Text(
-                        controller.discoveryStatus.value,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+                            ? 'Searching…'
+                            : controller.isDiscoveryPolling.value
+                            ? 'Stop search'
+                            : 'Search',
+                      ),
+                    ),
+                  ),
+                ),
+                Obx(
+                  () =>
+                      controller.isDiscoveryPolling.value ||
+                          controller.isDiscoveringReceivers.value
+                      ? Text(
+                          controller.discoveryStatus.value,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
