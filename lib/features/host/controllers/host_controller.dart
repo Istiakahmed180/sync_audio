@@ -84,6 +84,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final isDiscoveringReceivers = false.obs;
   final isDiscoveryPolling = false.obs;
   final discoveryStatus = 'Search is off. Press Search to find Receivers.'.obs;
+  final localNetworkInfo = 'Checking network…'.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
   final discoveredDeviceNames = <String, String>{}.obs;
@@ -147,11 +148,38 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(refreshLocalNetworkInfo());
+    }
     if (state != AppLifecycleState.resumed ||
         !_batteryOptimizationSettingsOpen) {
       return;
     }
     unawaited(_finishBatteryOptimizationRequest());
+  }
+
+  Future<void> refreshLocalNetworkInfo() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      final networks = <String>[];
+      for (final interface in interfaces) {
+        final addresses = interface.addresses
+            .where((address) => address.address.isNotEmpty)
+            .map((address) => address.address)
+            .toList(growable: false);
+        if (addresses.isNotEmpty) {
+          networks.add('${interface.name}: ${addresses.join(', ')}');
+        }
+      }
+      localNetworkInfo.value = networks.isEmpty
+          ? 'No active local network found'
+          : networks.join('  •  ');
+    } catch (_) {
+      localNetworkInfo.value = 'Network information unavailable';
+    }
   }
 
   Future<void> _finishBatteryOptimizationRequest() async {
@@ -668,6 +696,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
     _service.setLocalDeviceName('Host Device');
+    unawaited(refreshLocalNetworkInfo());
     unawaited(_checkBatteryOptimization());
     // Host connections are app-scoped; opening this screen is only a view of
     // the current session and must not reset an existing background stream.

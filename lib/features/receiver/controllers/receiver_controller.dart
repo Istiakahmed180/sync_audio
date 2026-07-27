@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -79,6 +80,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final trustedDeviceNames = <String, String>{}.obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
+  final localNetworkInfo = 'Checking network…'.obs;
   final deviceName = 'My Speaker'.obs;
   final deviceId = ''.obs;
   final isServerRunning = false.obs;
@@ -124,6 +126,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(refreshLocalNetworkInfo());
     unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
     unawaited(_loadDeviceIdentity());
@@ -794,11 +797,38 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(refreshLocalNetworkInfo());
+    }
     if (state != AppLifecycleState.resumed ||
         !_batteryOptimizationSettingsOpen) {
       return;
     }
     unawaited(_finishBatteryOptimizationRequest());
+  }
+
+  Future<void> refreshLocalNetworkInfo() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      final networks = <String>[];
+      for (final interface in interfaces) {
+        final addresses = interface.addresses
+            .where((address) => address.address.isNotEmpty)
+            .map((address) => address.address)
+            .toList(growable: false);
+        if (addresses.isNotEmpty) {
+          networks.add('${interface.name}: ${addresses.join(', ')}');
+        }
+      }
+      localNetworkInfo.value = networks.isEmpty
+          ? 'No active local network found'
+          : networks.join('  •  ');
+    } catch (_) {
+      localNetworkInfo.value = 'Network information unavailable';
+    }
   }
 
   Future<void> _finishBatteryOptimizationRequest() async {

@@ -60,6 +60,13 @@ class HostView extends GetView<HostController> {
                   },
                 ),
               ),
+              const SizedBox(height: 12),
+              Obx(
+                () => _HostNetworkCard(
+                  networkInfo: controller.localNetworkInfo.value,
+                  onRefresh: controller.refreshLocalNetworkInfo,
+                ),
+              ),
               const SizedBox(height: 20),
               Obx(() {
                 if (controller.isIgnoringBatteryOptimizations.value) {
@@ -374,6 +381,51 @@ class HostView extends GetView<HostController> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HostNetworkCard extends StatelessWidget {
+  const _HostNetworkCard({required this.networkInfo, required this.onRefresh});
+
+  final String networkInfo;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.wifi_rounded, color: theme.colorScheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Connected network',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(networkInfo, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Refresh network',
+              onPressed: () => onRefresh(),
+              icon: const Icon(Icons.refresh_rounded),
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
         ),
       ),
     );
