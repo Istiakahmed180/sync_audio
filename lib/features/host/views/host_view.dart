@@ -425,6 +425,8 @@ class HostView extends GetView<HostController> {
                   () => DiagnosticReportButton(
                     scope: 'host',
                     diagnostics: controller.diagnosticsData,
+                    networkInfo: controller.localNetworkInfo.value,
+                    deviceInfo: controller.deviceInfoData,
                     receiverDiagnostics: controller.receiverDiagnosticsData,
                   ),
                 ),

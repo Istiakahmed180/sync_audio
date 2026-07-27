@@ -12,6 +12,8 @@ class DiagnosticReportService {
     required Map<String, Object> diagnostics,
     Map<String, Map<String, Object>> receiverDiagnostics =
         const <String, Map<String, Object>>{},
+    String? networkInfo,
+    Map<String, Object> deviceInfo = const <String, Object>{},
     DiagnosticReportFormat format = DiagnosticReportFormat.json,
   }) async {
     final crashReports = await CrashReporter.recentReports();
@@ -20,6 +22,11 @@ class DiagnosticReportService {
       'scope': scope,
       'generatedAt': DateTime.now().toUtc().toIso8601String(),
       'diagnostics': _sanitize(diagnostics),
+      if (_metricSummary(diagnostics).isNotEmpty)
+        'metrics': _metricSummary(diagnostics),
+      if (networkInfo != null && networkInfo.isNotEmpty)
+        'network': networkInfo,
+      if (deviceInfo.isNotEmpty) 'device': _sanitize(deviceInfo),
       if (receiverDiagnostics.isNotEmpty)
         'receivers': {
           for (final entry in receiverDiagnostics.entries)
@@ -34,6 +41,26 @@ class DiagnosticReportService {
       content,
       subject: 'SyncMesh Audio diagnostic report ($scope)',
     );
+  }
+
+  static Map<String, Object> _metricSummary(Map<String, Object> values) {
+    num? number(String key, [String? fallback]) {
+      final value = values[key] ?? (fallback == null ? null : values[fallback]);
+      return value is num ? value : null;
+    }
+
+    final summary = <String, Object>{};
+    final rtt = number('roundTripTimeMicros');
+    final jitter = number('networkJitterMicros');
+    final loss = number('packetLossPercent');
+    final buffer = number('currentJitterBufferPackets', 'bufferPackets');
+    final bufferMs = number('bufferedDurationMicros');
+    if (rtt != null) summary['pingMs'] = rtt / 1000;
+    if (jitter != null) summary['jitterMs'] = jitter / 1000;
+    if (loss != null) summary['packetLossPercent'] = loss;
+    if (buffer != null) summary['bufferPackets'] = buffer;
+    if (bufferMs != null) summary['bufferMs'] = bufferMs / 1000;
+    return summary;
   }
 
   static Object _sanitize(Object value) {
@@ -57,6 +84,18 @@ class DiagnosticReportService {
       ..writeln('Generated: ${report['generatedAt']}')
       ..writeln();
     _writeSection(buffer, 'Local diagnostics', report['diagnostics']);
+    if (report['metrics'] != null) {
+      buffer.writeln();
+      _writeSection(buffer, 'Metrics summary', report['metrics']);
+    }
+    if (report['network'] != null) {
+      buffer.writeln();
+      _writeSection(buffer, 'Network', report['network']);
+    }
+    if (report['device'] != null) {
+      buffer.writeln();
+      _writeSection(buffer, 'Device', report['device']);
+    }
     final receivers = report['receivers'];
     if (receivers is Map) {
       for (final entry in receivers.entries) {

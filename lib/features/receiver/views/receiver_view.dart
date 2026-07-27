@@ -144,6 +144,8 @@ class ReceiverView extends GetView<ReceiverController> {
                   () => DiagnosticReportButton(
                     scope: 'receiver',
                     diagnostics: controller.diagnosticsData,
+                    networkInfo: controller.localNetworkInfo.value,
+                    deviceInfo: controller.deviceInfoData,
                   ),
                 ),
                 const SizedBox(height: 8),

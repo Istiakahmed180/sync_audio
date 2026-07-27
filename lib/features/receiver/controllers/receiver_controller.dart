@@ -18,6 +18,7 @@ import '../../../services/battery_optimization_service.dart';
 import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/device_identity_store.dart';
+import '../../../services/device_info_service.dart';
 import '../../../services/firebase_telemetry.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
@@ -66,6 +67,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final AudioOutputRouteService _audioOutputRouteService =
       AudioOutputRouteService();
   final _networkInfoService = NetworkInfoService();
+  final _deviceInfoService = DeviceInfoService();
   Future<void> _audioOutputOperation = Future<void>.value();
   final _deviceIdentityStore = DeviceIdentityStore();
   final _sessionRestoreStore = SessionRestoreStore();
@@ -82,6 +84,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
   final localNetworkInfo = 'Checking network…'.obs;
+  final deviceInfo = <String, Object>{}.obs;
   final networkMismatchWarning = RxnString();
   final deviceName = 'My Speaker'.obs;
   final deviceId = ''.obs;
@@ -102,6 +105,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final diagnostics = <String, Object>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
+  Map<String, Object> get deviceInfoData => Map<String, Object>.from(deviceInfo);
   Timer? _diagnosticTimer;
   late final StreamSubscription<String> _messageSubscription;
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
@@ -132,6 +136,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
     unawaited(refreshLocalNetworkInfo());
+    unawaited(_loadDeviceInfo());
     unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
     unawaited(_loadDeviceIdentity());
@@ -841,6 +846,10 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     } finally {
       _networkCheckInProgress = false;
     }
+  }
+
+  Future<void> _loadDeviceInfo() async {
+    deviceInfo.assignAll(await _deviceInfoService.read());
   }
 
   Future<void> _finishBatteryOptimizationRequest() async {

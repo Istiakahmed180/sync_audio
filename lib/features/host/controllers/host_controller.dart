@@ -23,6 +23,7 @@ import '../../../services/calibration_store.dart';
 import '../../../services/connection_service.dart';
 import '../../../services/connection_activity_store.dart';
 import '../../../services/device_discovery_service.dart';
+import '../../../services/device_info_service.dart';
 import '../../../services/desktop_tray_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
@@ -72,6 +73,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final NativeAudioRuntime _nativeAudioRuntime;
   final _networkPreflightService = NetworkPreflightService();
   final _networkInfoService = NetworkInfoService();
+  final _deviceInfoService = DeviceInfoService();
   final _activityStore = ConnectionActivityStore();
   final _sessionRestoreStore = SessionRestoreStore();
   final pairingTokenController = TextEditingController();
@@ -93,6 +95,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final networkMismatchWarning = RxnString();
   final discoveryStatus = 'Search is off. Press Search to find Receivers.'.obs;
   final localNetworkInfo = 'Checking network…'.obs;
+  final deviceInfo = <String, Object>{}.obs;
   final receiverSessions = <ReceiverSession>[].obs;
   final configuredReceiverIps = <String>[].obs;
   final discoveredDeviceNames = <String, String>{}.obs;
@@ -121,6 +124,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final receiverWarnings = <String, String>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
+  Map<String, Object> get deviceInfoData => Map<String, Object>.from(deviceInfo);
 
   Map<String, Object> receiverDiagnosticsFor(String address) {
     final sessionId = _findControlSession(address);
@@ -226,6 +230,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
     } finally {
       _networkCheckInProgress = false;
     }
+  }
+
+  Future<void> _loadDeviceInfo() async {
+    deviceInfo.assignAll(await _deviceInfoService.read());
   }
 
   Future<void> _finishBatteryOptimizationRequest() async {
@@ -749,6 +757,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     DesktopTrayService.setActionHandler(_handleDesktopTrayAction);
     unawaited(_updateDesktopTray());
     unawaited(refreshLocalNetworkInfo());
+    unawaited(_loadDeviceInfo());
     unawaited(_checkBatteryOptimization());
     // Host connections are app-scoped; opening this screen is only a view of
     // the current session and must not reset an existing background stream.

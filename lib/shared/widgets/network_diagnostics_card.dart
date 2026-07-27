@@ -23,12 +23,16 @@ class DiagnosticReportButton extends StatelessWidget {
     required this.scope,
     required this.diagnostics,
     this.receiverDiagnostics = const <String, Map<String, Object>>{},
+    this.networkInfo,
+    this.deviceInfo = const <String, Object>{},
     super.key,
   });
 
   final String scope;
   final Map<String, Object> diagnostics;
   final Map<String, Map<String, Object>> receiverDiagnostics;
+  final String? networkInfo;
+  final Map<String, Object> deviceInfo;
 
   @override
   Widget build(BuildContext context) => Align(
@@ -40,6 +44,8 @@ class DiagnosticReportButton extends StatelessWidget {
             scope: scope,
             diagnostics: diagnostics,
             receiverDiagnostics: receiverDiagnostics,
+            networkInfo: networkInfo,
+            deviceInfo: deviceInfo,
             format: format,
           ),
         );

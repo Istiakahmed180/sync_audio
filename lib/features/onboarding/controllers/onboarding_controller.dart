@@ -9,7 +9,7 @@ class OnboardingController extends GetxController {
   static const _keyOnboardingComplete = 'onboarding_complete';
 
   final RxInt currentPage = 0.obs;
-  int get totalPages => 5;
+  int get totalPages => 6;
   final pageController = PageController();
   final selectedRole = Rxn<SetupRole>();
   final wifiCheckMessage = RxnString();

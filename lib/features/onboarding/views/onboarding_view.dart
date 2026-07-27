@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
@@ -31,6 +32,9 @@ class OnboardingView extends GetView<OnboardingController> {
                     _AdaptiveOnboardingPage(child: _HostPage(scheme: scheme)),
                     _AdaptiveOnboardingPage(
                       child: _ReceiverPage(scheme: scheme),
+                    ),
+                    _AdaptiveOnboardingPage(
+                      child: _PermissionSetupPage(scheme: scheme),
                     ),
                     _AdaptiveOnboardingPage(child: _ReadyPage(scheme: scheme)),
                     _AdaptiveOnboardingPage(
@@ -342,6 +346,180 @@ class _ReceiverPage extends StatelessWidget {
             scheme: scheme,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PermissionSetupPage extends StatelessWidget {
+  const _PermissionSetupPage({required this.scheme});
+
+  final ColorScheme scheme;
+
+  List<_PermissionStepData> get _steps {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return const [
+          _PermissionStepData(
+            icon: Icons.mic_rounded,
+            title: 'Allow microphone access',
+            details:
+                'Settings → Apps → SyncMesh Audio → Permissions → Microphone → Allow while using the app.',
+          ),
+          _PermissionStepData(
+            icon: Icons.location_on_rounded,
+            title: 'Allow location while using the app',
+            details:
+                'Location access lets Android reveal the connected Wi‑Fi name for discovery and network diagnostics.',
+          ),
+          _PermissionStepData(
+            icon: Icons.notifications_rounded,
+            title: 'Allow notifications',
+            details:
+                'Notifications keep background streaming status and media controls available when the app is minimized.',
+          ),
+        ];
+      case TargetPlatform.macOS:
+        return const [
+          _PermissionStepData(
+            icon: Icons.screen_share_rounded,
+            title: 'Allow Screen & System Audio Recording',
+            details:
+                'System Settings → Privacy & Security → Screen & System Audio Recording → enable SyncMesh Audio, then restart the app.',
+          ),
+          _PermissionStepData(
+            icon: Icons.mic_rounded,
+            title: 'Allow Microphone if mixing mic audio',
+            details:
+                'Enable SyncMesh Audio under Privacy & Security → Microphone when microphone mixing or calibration is needed.',
+          ),
+          _PermissionStepData(
+            icon: Icons.wifi_rounded,
+            title: 'Keep Local Network available',
+            details:
+                'Allow local network access if macOS asks, so Host and Receiver discovery can work on the same Wi‑Fi.',
+          ),
+        ];
+      case TargetPlatform.windows:
+        return const [
+          _PermissionStepData(
+            icon: Icons.mic_rounded,
+            title: 'Allow microphone access',
+            details:
+                'Settings → Privacy & security → Microphone → enable microphone access for desktop apps.',
+          ),
+          _PermissionStepData(
+            icon: Icons.volume_up_rounded,
+            title: 'Choose a Windows audio output',
+            details:
+                'Select the speakers or headphones you want the Receiver to use, and keep the device enabled in Sound settings.',
+          ),
+          _PermissionStepData(
+            icon: Icons.security_rounded,
+            title: 'Allow Private network access',
+            details:
+                'When Windows Firewall asks, allow SyncMesh Audio on Private networks so discovery and audio control can reach other devices.',
+          ),
+        ];
+      default:
+        return const [];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = _steps;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+      child: Column(
+        children: [
+          Icon(Icons.verified_user_rounded, size: 54, color: scheme.primary),
+          const SizedBox(height: 16),
+          Text(
+            'Permission setup',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Complete these steps before starting audio so pairing and background streaming work reliably.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          const SizedBox(height: 20),
+          for (var index = 0; index < steps.length; index++) ...[
+            _PermissionStep(
+              number: index + 1,
+              data: steps[index],
+              scheme: scheme,
+            ),
+            if (index != steps.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PermissionStepData {
+  const _PermissionStepData({
+    required this.icon,
+    required this.title,
+    required this.details,
+  });
+
+  final IconData icon;
+  final String title;
+  final String details;
+}
+
+class _PermissionStep extends StatelessWidget {
+  const _PermissionStep({
+    required this.number,
+    required this.data,
+    required this.scheme,
+  });
+
+  final int number;
+  final _PermissionStepData data;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: scheme.primaryContainer,
+              foregroundColor: scheme.onPrimaryContainer,
+              child: Text('$number'),
+            ),
+            const SizedBox(width: 12),
+            Icon(data.icon, color: scheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data.title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(data.details),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
