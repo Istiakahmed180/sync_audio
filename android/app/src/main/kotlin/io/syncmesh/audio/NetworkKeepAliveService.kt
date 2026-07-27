@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.net.wifi.WifiManager
+import android.util.Log
 
 class NetworkKeepAliveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
@@ -55,20 +56,42 @@ class NetworkKeepAliveService : Service() {
             .setCategory(Notification.CATEGORY_SERVICE)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (error: RuntimeException) {
+            // Android 15 rejects dataSync after its rolling time budget is
+            // exhausted. This is a recoverable background-service condition,
+            // not a reason to crash the application process.
+            Log.w(TAG, "Network keep-alive foreground service was rejected", error)
+            releaseLocks()
+            stopSelf(startId)
+            return START_NOT_STICKY
         }
         if (wakeLock?.isHeld != true) wakeLock?.acquire()
         @Suppress("DEPRECATION")
         if (wifiLock?.isHeld != true) wifiLock?.acquire()
-        return START_STICKY
+        // Do not let Android restart the service after a timeout or rejected
+        // foreground promotion; the next user-initiated connection can start it.
+        return START_NOT_STICKY
+    }
+
+    @Suppress("NewApi")
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        // Android 15 calls this when the dataSync foreground-service budget is
+        // exhausted. stopSelf must happen within the short grace period.
+        Log.w(TAG, "Network keep-alive foreground service timed out: type=$fgsType")
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        releaseLocks()
+        stopSelf(startId)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -83,17 +106,22 @@ class NetworkKeepAliveService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
-        @Suppress("DEPRECATION")
+        releaseLocks()
+        super.onDestroy()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun releaseLocks() {
         wifiLock?.let { if (it.isHeld) it.release() }
         wakeLock?.let { if (it.isHeld) it.release() }
         wifiLock = null
         wakeLock = null
-        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val TAG = "NetworkKeepAliveService"
         private const val CHANNEL_ID = "sync_audio_connection"
         private const val NOTIFICATION_ID = 506
     }

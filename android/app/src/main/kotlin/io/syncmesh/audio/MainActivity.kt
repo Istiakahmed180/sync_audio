@@ -244,12 +244,23 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "start" -> {
                         val intent = Intent(this, NetworkKeepAliveService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(null)
+                        } catch (error: RuntimeException) {
+                            // Android may reject a dataSync foreground service
+                            // after its rolling time budget is exhausted.
+                            Log.w("MainActivity", "Unable to start network keep-alive service", error)
+                            result.error(
+                                "BACKGROUND_SERVICE_UNAVAILABLE",
+                                "Android temporarily rejected background connection keep-alive",
+                                null,
+                            )
                         }
-                        result.success(null)
                     }
 
                     "stop" -> {
