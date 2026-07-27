@@ -162,7 +162,12 @@ if [ "$BUILD_APP" = true ]; then
         echo "❌ Inno Setup compiler (ISCC.exe) was not found."
         exit 1
       fi
-      "$ISCC_PATH" "/O$OUTPUT_DIR" "/F$WINDOWS_INSTALLER_NAME" "installer/SyncAudio.iss"
+      # Git Bash/MSYS otherwise rewrites Inno's /O and /F switches as paths,
+      # making ISCC interpret them as additional script filenames.
+      MSYS_NO_PATHCONV=1 "$ISCC_PATH" \
+        "/O$OUTPUT_DIR" \
+        "/F$WINDOWS_INSTALLER_NAME" \
+        "installer/SyncAudio.iss"
       echo "📦 Windows installer created: $OUTPUT_DIR/$WINDOWS_INSTALLER_NAME.exe"
     fi
   elif [ "$BUILD_TYPE" = "appbundle" ]; then
