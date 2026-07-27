@@ -828,6 +828,15 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
         networkMismatchWarning.value = snapshot.hasActiveInterface
             ? 'Receiver network changed. Waiting for the Host to reconnect on this Wi‑Fi.'
             : 'Receiver is not connected to a local network. Host connection is paused.';
+        if (snapshot.hasActiveInterface && isServerRunning.value) {
+          await _discoveryService.startResponder(
+            deviceId: deviceId.value,
+            deviceName: deviceName.value,
+            controlPort: defaultPort,
+            pairingCode: _pairingTokenValue ?? '',
+          );
+          await BackgroundConnectionService.start();
+        }
       }
     } finally {
       _networkCheckInProgress = false;

@@ -809,11 +809,19 @@ class _AllReceiverVolumeControl extends StatelessWidget {
                   const Icon(Icons.volume_up_rounded),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      'All receiver volume',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'All receiver volume',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'Changes are synchronized to every connected Receiver.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ),
                   ),
                   Text(

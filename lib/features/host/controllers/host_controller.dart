@@ -158,14 +158,51 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _appWasBackgrounded = true;
+      if (configuredReceiverIps.isNotEmpty || isAudioStreaming) {
+        unawaited(BackgroundConnectionService.start());
+      }
+    }
     if (state == AppLifecycleState.resumed) {
       unawaited(refreshLocalNetworkInfo());
+      if (_appWasBackgrounded) {
+        _appWasBackgrounded = false;
+        unawaited(_recoverConnectionsAfterResume());
+      }
     }
     if (state != AppLifecycleState.resumed ||
         !_batteryOptimizationSettingsOpen) {
       return;
     }
     unawaited(_finishBatteryOptimizationRequest());
+  }
+
+  Future<void> _recoverConnectionsAfterResume() async {
+    if (_resumeReconnectInProgress) return;
+    _resumeReconnectInProgress = true;
+    try {
+      final snapshot = await _networkInfoService.readSnapshot();
+      if (!snapshot.hasActiveInterface) return;
+      if (isDiscoveryPolling.value) await discoverReceivers();
+      for (final address in configuredReceiverIps.toList(growable: false)) {
+        final session = receiverSessionFor(address);
+        final needsReconnect = session == null ||
+            session.controlStatus == ControlConnectionStatus.disconnected ||
+            session.controlStatus == ControlConnectionStatus.error;
+        final code = receiverPairingControllers[address]?.text.trim() ?? '';
+        if (needsReconnect && RegExp(r'^\d{8}$').hasMatch(code)) {
+          await connectReceiver(address);
+        }
+      }
+      if (configuredReceiverIps.isNotEmpty) {
+        await BackgroundConnectionService.start();
+      }
+    } finally {
+      _resumeReconnectInProgress = false;
+    }
   }
 
   Future<void> refreshLocalNetworkInfo() async {
@@ -208,6 +245,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
   Timer? _discoveryTimer;
   String? _networkSignature;
   bool _networkCheckInProgress = false;
+  bool _appWasBackgrounded = false;
+  bool _resumeReconnectInProgress = false;
   bool _discoveryInProgress = false;
   bool _showDiscoveryBusyIndicator = true;
   late final StreamSubscription<ReceiverSession> _controlSessionSubscription;
