@@ -24,6 +24,7 @@ import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/network_preflight_service.dart';
+import '../../../services/network_info_service.dart';
 import '../../../services/paired_device_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
 import '../../../services/session_restore_store.dart';
@@ -67,6 +68,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final DeviceDiscoveryService _discoveryService;
   final NativeAudioRuntime _nativeAudioRuntime;
   final _networkPreflightService = NetworkPreflightService();
+  final _networkInfoService = NetworkInfoService();
   final _sessionRestoreStore = SessionRestoreStore();
   final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
@@ -174,9 +176,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
           networks.add('${interface.name}: ${addresses.join(', ')}');
         }
       }
-      localNetworkInfo.value = networks.isEmpty
+      final networkName = await _networkInfoService.connectedNetworkName();
+      final addresses = networks.isEmpty
           ? 'No active local network found'
           : networks.join('  •  ');
+      localNetworkInfo.value = networkName == null
+          ? addresses
+          : 'Wi‑Fi: "$networkName"  •  $addresses';
     } catch (_) {
       localNetworkInfo.value = 'Network information unavailable';
     }

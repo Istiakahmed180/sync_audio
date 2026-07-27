@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <cwctype>
 #include <shellapi.h>
+#include <wlanapi.h>
 #include "utils.h"
+
+#pragma comment(lib, "wlanapi.lib")
 
 static flutter::EncodableList ListWaveOutDevices(UINT selected_device) {
   flutter::EncodableList devices;
@@ -43,6 +46,59 @@ AudioPlugin::AudioPlugin(flutter::BinaryMessenger* messenger) {
   SetupCaptureChannel(messenger);
   SetupPlaybackChannel(messenger);
   SetupDeviceInfoChannel(messenger);
+  SetupNetworkInfoChannel(messenger);
+}
+
+void AudioPlugin::SetupNetworkInfoChannel(
+    flutter::BinaryMessenger* messenger) {
+  auto channel = std::make_unique<flutter::MethodChannel<>>(
+      messenger, "sync_audio/network_info",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  channel->SetMethodCallHandler(
+      [](const flutter::MethodCall<>& call,
+         std::unique_ptr<flutter::MethodResult<>> result) {
+        if (call.method_name() != "getNetworkName") {
+          result->NotImplemented();
+          return;
+        }
+
+        HANDLE client = nullptr;
+        DWORD negotiated_version = 0;
+        if (WlanOpenHandle(2, nullptr, &negotiated_version, &client) != ERROR_SUCCESS) {
+          result->Success();
+          return;
+        }
+
+        PWLAN_INTERFACE_INFO_LIST interfaces = nullptr;
+        std::string ssid;
+        if (WlanEnumInterfaces(client, nullptr, &interfaces) == ERROR_SUCCESS &&
+            interfaces != nullptr) {
+          for (unsigned long i = 0; i < interfaces->dwNumberOfItems; ++i) {
+            const auto& info = interfaces->InterfaceInfo[i];
+            if (info.isState != wlan_interface_state_connected) continue;
+
+            DWORD data_size = 0;
+            PWLAN_CONNECTION_ATTRIBUTES attributes = nullptr;
+            if (WlanQueryInterface(
+                    client, &info.InterfaceGuid,
+                    wlan_intf_opcode_current_connection, nullptr,
+                    &data_size, reinterpret_cast<PVOID*>(&attributes), nullptr) ==
+                    ERROR_SUCCESS &&
+                attributes != nullptr) {
+              const auto& network = attributes->wlanAssociationAttributes.dot11Ssid;
+              ssid.assign(reinterpret_cast<const char*>(network.ucSSID),
+                          network.uSSIDLength);
+              WlanFreeMemory(attributes);
+            }
+            if (!ssid.empty()) break;
+          }
+          WlanFreeMemory(interfaces);
+        }
+        WlanCloseHandle(client, nullptr);
+        result->Success(ssid.empty() ? flutter::EncodableValue()
+                                     : flutter::EncodableValue(ssid));
+      });
 }
 
 void AudioPlugin::SetupDeviceInfoChannel(

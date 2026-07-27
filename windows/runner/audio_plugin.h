@@ -27,6 +27,7 @@ class AudioPlugin {
   void SetupCaptureChannel(flutter::BinaryMessenger* messenger);
   void SetupPlaybackChannel(flutter::BinaryMessenger* messenger);
   void SetupDeviceInfoChannel(flutter::BinaryMessenger* messenger);
+  void SetupNetworkInfoChannel(flutter::BinaryMessenger* messenger);
 
   void StartCapture(const flutter::MethodCall<>& call,
                     std::unique_ptr<flutter::MethodResult<>> result);

@@ -4,6 +4,7 @@ import AVFoundation
 import ScreenCaptureKit
 import AudioToolbox
 import Darwin
+import CoreWLAN
 
 @main
 class AppDelegate: FlutterAppDelegate {
@@ -34,6 +35,21 @@ class AppDelegate: FlutterAppDelegate {
     setupPlaybackChannel(messenger: controller.engine.binaryMessenger)
     setupAudioOutputChannel(messenger: controller.engine.binaryMessenger)
     setupDeviceInfoChannel(messenger: controller.engine.binaryMessenger)
+    setupNetworkInfoChannel(messenger: controller.engine.binaryMessenger)
+  }
+
+  private func setupNetworkInfoChannel(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "sync_audio/network_info",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "getNetworkName" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(CWWiFiClient.shared().interface()?.ssid())
+    }
   }
 
   private func setupDeviceInfoChannel(messenger: FlutterBinaryMessenger) {

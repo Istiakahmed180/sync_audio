@@ -17,6 +17,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.projection.MediaProjectionManager
 import android.media.projection.MediaProjectionConfig
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -36,6 +37,8 @@ import java.security.KeyStore
 import java.net.InetAddress
 
 class MainActivity : FlutterActivity() {
+    private var pendingNetworkInfoResult: MethodChannel.Result? = null
+    private val networkInfoPermissionRequestCode = 4101
     private val playbackChannelName = "sync_audio/audio_track"
     private val systemAudioChannelName = "sync_audio/system_audio_capture"
     private val systemAudioStreamChannelName = "sync_audio/system_audio_stream"
@@ -286,6 +289,27 @@ class MainActivity : FlutterActivity() {
                             "sdk" to Build.VERSION.SDK_INT,
                         ),
                     )
+
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sync_audio/network_info")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getNetworkName" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
+                                PackageManager.PERMISSION_GRANTED
+                        ) {
+                            pendingNetworkInfoResult = result
+                            requestPermissions(
+                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                                networkInfoPermissionRequestCode,
+                            )
+                        } else {
+                            result.success(currentWifiSsid())
+                        }
+                    }
 
                     else -> result.notImplemented()
                 }
@@ -557,6 +581,11 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    private fun currentWifiSsid(): String? {
+        val wifiManager = getSystemService(WIFI_SERVICE) as WifiManager
+        return wifiManager.connectionInfo?.ssid
+    }
+
     private fun pairingKey(): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val existing = keyStore.getKey(PAIRING_KEY_ALIAS, null) as? SecretKey
@@ -738,6 +767,18 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == networkInfoPermissionRequestCode) {
+            val result = pendingNetworkInfoResult
+            pendingNetworkInfoResult = null
+            result?.success(
+                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                    currentWifiSsid()
+                } else {
+                    null
+                },
+            )
+            return
+        }
         if (requestCode == notificationPermissionRequestCode) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 pendingMediaNotification?.let { media ->
