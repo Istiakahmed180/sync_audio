@@ -72,10 +72,17 @@ class AudioCalibrationService {
         _subscription = stream.listen((data) {
           if (finishing || data.length < 2) return;
 
+          // Audio plugins may deliver chunks whose Uint8List starts at an
+          // odd byte offset. Int16List.view requires 2-byte alignment.
+          final alignedData = data.offsetInBytes.isEven
+              ? data
+              : Uint8List.fromList(data);
+          final sampleByteLength = alignedData.lengthInBytes & ~1;
+          if (sampleByteLength == 0) return;
           final int16Data = Int16List.view(
-            data.buffer,
-            data.offsetInBytes,
-            data.length ~/ 2,
+            alignedData.buffer,
+            alignedData.offsetInBytes,
+            sampleByteLength ~/ 2,
           );
           samples.addAll(int16Data);
           if (samples.length > reference.length) {

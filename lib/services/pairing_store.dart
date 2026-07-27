@@ -105,11 +105,11 @@ class SharedPrefsPairingStore implements PairingStore {
   @override
   Future<Map<String, String>> readTrustedDeviceNames() async {
     final raw = await _readSecureWithLegacyMigration(_trustedDeviceNamesKey);
-    if (raw == null) return const {};
+    if (raw == null) return <String, String>{};
     try {
       return Map<String, String>.from(jsonDecode(raw) as Map);
     } catch (_) {
-      return const {};
+      return <String, String>{};
     }
   }
 
@@ -121,7 +121,7 @@ class SharedPrefsPairingStore implements PairingStore {
     final address = deviceAddress.trim();
     final name = deviceName.trim();
     if (address.isEmpty || name.isEmpty) return;
-    final names = await readTrustedDeviceNames();
+    final names = Map<String, String>.from(await readTrustedDeviceNames());
     names[address] = name;
     await _writeSecure(_trustedDeviceNamesKey, jsonEncode(names));
   }
