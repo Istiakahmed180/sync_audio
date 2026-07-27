@@ -119,6 +119,24 @@ post_install do |installer|
     File.write(path, updated) unless updated == contents
   end
 
+  # Remove the invalid Opus framework after CocoaPods has copied all pod
+  # frameworks and before Xcode validates and signs the app bundle.
+  embed_scripts = Dir[
+    File.join(installer.sandbox.target_support_files_dir('Pods-Runner'),
+              'Pods-Runner-frameworks.sh'),
+  ]
+  embed_scripts.each do |path|
+    contents = File.read(path)
+    cleanup = <<~'SH'
+
+      # opus_codec_macos ships an invalid shallow framework for current Xcode.
+      rm -rf "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/opus.framework"
+    SH
+    unless contents.include?('opus_codec_macos ships an invalid shallow framework')
+      File.write(path, contents + cleanup)
+    end
+  end
+
   # Xcode 26 rejects the flat opus.framework shipped by opus_codec_macos 3.0.5.
   # Normalize the copied framework after CocoaPods embeds it.
   runner_project = installer.aggregate_targets.first.user_project
