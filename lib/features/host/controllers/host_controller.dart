@@ -11,6 +11,7 @@ import '../../../app/constants/app_constants.dart';
 import '../../../features/settings/controllers/settings_controller.dart';
 import '../../../models/audio_device.dart';
 import '../../../models/audio_stream_status.dart';
+import '../../../models/connection_activity.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
@@ -20,6 +21,7 @@ import '../../../services/background_connection_service.dart';
 import '../../../services/battery_optimization_service.dart';
 import '../../../services/calibration_store.dart';
 import '../../../services/connection_service.dart';
+import '../../../services/connection_activity_store.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
@@ -69,6 +71,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final NativeAudioRuntime _nativeAudioRuntime;
   final _networkPreflightService = NetworkPreflightService();
   final _networkInfoService = NetworkInfoService();
+  final _activityStore = ConnectionActivityStore();
   final _sessionRestoreStore = SessionRestoreStore();
   final pairingTokenController = TextEditingController();
   final receiverIpController = TextEditingController();
@@ -95,6 +98,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final discoveredDeviceIds = <String, String>{}.obs;
   final discoveredDeviceLatencyMs = <String, int>{}.obs;
   final discoveredDevices = <AudioDevice>[].obs;
+  final connectionActivity = <ConnectionActivity>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
   // Stable is the safer default for Wi-Fi + Bluetooth receiver setups.
@@ -104,6 +108,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final maximumDriftCorrectionPpm = 200.obs;
   final microphoneMixEnabled = false.obs;
   final _autoPairingInProgress = <String>{};
+  final _lastSessionStatuses = <String, ControlConnectionStatus>{};
 
   bool get isAudioStreaming =>
       _nativeHostActive || (_audioService?.isStreaming ?? false);
@@ -707,6 +712,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
     // the current session and must not reset an existing background stream.
     connectionStatus.value = _service.status;
     receiverSessions.assignAll(_service.controlSessions);
+    _lastSessionStatuses.addAll({
+      for (final session in _service.controlSessions)
+        session.id: session.controlStatus,
+    });
+    unawaited(_loadConnectionActivity());
     if (_audioService != null) {
       audioStatus.value = _audioService.status;
     }
@@ -714,6 +724,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     _controlSessionSubscription = _service.controlSessionChanges.listen((
       session,
     ) {
+      _recordSessionActivity(session);
       if (session.controlStatus == ControlConnectionStatus.disconnected) {
         _receiverDiagnostics.remove(session.id);
         _receiverDiagnosticsUpdatedAt.remove(session.id);
@@ -751,6 +762,48 @@ class HostController extends GetxController with WidgetsBindingObserver {
     unawaited(loadPairedDevices());
     unawaited(_loadReconnectPriorities());
     unawaited(_restoreLastSession());
+  }
+
+  Future<void> _loadConnectionActivity() async {
+    connectionActivity.assignAll(await _activityStore.load());
+  }
+
+  void _recordSessionActivity(ReceiverSession session) {
+    if (session.port == AppConstants.audioPort) return;
+    final previous = _lastSessionStatuses[session.id];
+    _lastSessionStatuses[session.id] = session.controlStatus;
+    if (previous == session.controlStatus) return;
+    final type = switch (session.controlStatus) {
+      ControlConnectionStatus.connected => ConnectionActivityType.connected,
+      ControlConnectionStatus.disconnected =>
+        ConnectionActivityType.disconnected,
+      ControlConnectionStatus.reconnecting =>
+        ConnectionActivityType.reconnecting,
+      ControlConnectionStatus.error => ConnectionActivityType.error,
+      ControlConnectionStatus.connecting => null,
+    };
+    if (type == null) return;
+    final entry = ConnectionActivity(
+      type: type,
+      receiverName: session.deviceName?.trim().isNotEmpty == true
+          ? session.deviceName!.trim()
+          : discoveredDeviceNames[session.ipAddress] ?? 'Receiver',
+      address: session.ipAddress,
+      timestamp: DateTime.now(),
+      details: type == ConnectionActivityType.error
+          ? 'Connection error'
+          : null,
+    );
+    final entries = [entry, ...connectionActivity].take(
+      ConnectionActivityStore.maxEntries,
+    );
+    connectionActivity.assignAll(entries);
+    unawaited(_activityStore.save(connectionActivity));
+  }
+
+  Future<void> clearConnectionActivity() async {
+    connectionActivity.clear();
+    await _activityStore.clear();
   }
 
   Future<void> _restoreLastSession() async {

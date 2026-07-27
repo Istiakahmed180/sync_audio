@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../app/constants/platform_capabilities.dart';
 import '../../../models/audio_stream_status.dart';
+import '../../../models/connection_activity.dart';
 import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/network_preflight_service.dart';
@@ -458,6 +459,8 @@ class HostView extends GetView<HostController> {
                         )
                       : const SizedBox.shrink(),
                 ),
+                const SizedBox(height: 12),
+                _ConnectionActivitySection(controller: controller),
               ],
             ),
           ),
@@ -699,6 +702,86 @@ class _RecentlyUsedDevicesSection extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _ConnectionActivitySection extends StatelessWidget {
+  const _ConnectionActivitySection({required this.controller});
+
+  final HostController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final entries = controller.connectionActivity.take(8).toList();
+      return Card(
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          leading: const Icon(Icons.event_note_rounded),
+          title: const Text('Connection activity'),
+          subtitle: Text(
+            entries.isEmpty
+                ? 'No connection events yet.'
+                : '${controller.connectionActivity.length} saved event(s)',
+          ),
+          trailing: entries.isEmpty
+              ? null
+              : TextButton(
+                  onPressed: controller.clearConnectionActivity,
+                  child: const Text('Clear'),
+                ),
+          children: entries.isEmpty
+              ? const [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Connected and disconnected Receiver events will appear here.',
+                      ),
+                    ),
+                  ),
+                ]
+              : [
+                  for (final entry in entries)
+                    ListTile(
+                      dense: true,
+                      leading: Icon(_activityIcon(entry.type)),
+                      title: Text(
+                        '${_activityTitle(entry.type)} — ${entry.receiverName}',
+                      ),
+                      subtitle: Text(
+                        '${entry.address}  •  ${_formatActivityTime(entry.timestamp)}',
+                      ),
+                    ),
+                ],
+        ),
+      );
+    });
+  }
+
+  IconData _activityIcon(ConnectionActivityType type) => switch (type) {
+    ConnectionActivityType.connected => Icons.check_circle_outline,
+    ConnectionActivityType.disconnected => Icons.link_off_rounded,
+    ConnectionActivityType.reconnecting => Icons.sync_rounded,
+    ConnectionActivityType.error => Icons.error_outline_rounded,
+    ConnectionActivityType.networkChanged => Icons.wifi_find_rounded,
+  };
+
+  String _activityTitle(ConnectionActivityType type) => switch (type) {
+    ConnectionActivityType.connected => 'Connected',
+    ConnectionActivityType.disconnected => 'Disconnected',
+    ConnectionActivityType.reconnecting => 'Reconnecting',
+    ConnectionActivityType.error => 'Connection error',
+    ConnectionActivityType.networkChanged => 'Network changed',
+  };
+
+  String _formatActivityTime(DateTime value) {
+    final date = '${value.day.toString().padLeft(2, '0')}/'
+        '${value.month.toString().padLeft(2, '0')}/${value.year}';
+    final time = '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}';
+    return '$date $time';
+  }
 }
 
 class _AllReceiverVolumeControl extends StatelessWidget {
