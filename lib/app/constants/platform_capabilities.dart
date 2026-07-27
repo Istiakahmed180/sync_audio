@@ -23,6 +23,9 @@ abstract final class PlatformCapabilities {
     };
   }
 
+  static bool get supportsQrImageImport =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
   static String get hostSupportMessage =>
       'Host is supported on Android, macOS, and Windows. '
       'iPhone and iPad can join as Receivers.';

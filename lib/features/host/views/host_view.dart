@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -8,6 +9,7 @@ import '../../../models/connection_status.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/network_preflight_service.dart';
 import '../../../services/paired_device_store.dart';
+import '../../../services/qr_image_decoder_service.dart';
 import '../../../shared/widgets/audio_visualizer.dart';
 import '../../../shared/widgets/connection_overview_card.dart';
 import '../../../shared/widgets/network_diagnostics_card.dart';
@@ -153,17 +155,47 @@ class HostView extends GetView<HostController> {
                       icon: const Icon(Icons.qr_code_scanner),
                       label: const Text('Scan QR'),
                     );
+                    final importButton = OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await FilePicker.platform.pickFiles(
+                          type: FileType.image,
+                          allowMultiple: false,
+                        );
+                        final path = result?.files.single.path;
+                        if (path == null || !context.mounted) return;
+                        final data = await QrImageDecoderService().decodeFile(
+                          path,
+                        );
+                        if (!context.mounted) return;
+                        if (data == null || data.trim().isEmpty) {
+                          Get.snackbar(
+                            'QR image not recognized',
+                            'Choose a clear PNG or JPG image containing a Receiver QR code.',
+                          );
+                          return;
+                        }
+                        controller.addReceiverFromQrData(data);
+                      },
+                      icon: const Icon(Icons.image_search_rounded),
+                      label: const Text('Import QR image'),
+                    );
                     final manual = _ManualSetupSection(controller: controller);
-                    if (!PlatformCapabilities.supportsQrScanning) return manual;
+                    final primaryButton =
+                        PlatformCapabilities.supportsQrScanning
+                        ? qrButton
+                        : PlatformCapabilities.supportsQrImageImport
+                        ? importButton
+                        : null;
+                    if (primaryButton == null) return manual;
                     if (constraints.maxWidth < 560) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [qrButton, manual],
+                        children: [primaryButton, manual],
                       );
                     }
                     return Row(
                       children: [
-                        Expanded(child: qrButton),
+                        Expanded(child: primaryButton),
                         const SizedBox(width: 8),
                         Expanded(child: manual),
                       ],

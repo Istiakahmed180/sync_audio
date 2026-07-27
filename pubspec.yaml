@@ -54,6 +54,9 @@ dependencies:
   record: ^7.1.1
   flutter_driver:
     sdk: flutter
+  file_picker: ^10.3.8
+  zxing2: ^0.2.4
+  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:
