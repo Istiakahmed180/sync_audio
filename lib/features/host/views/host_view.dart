@@ -607,7 +607,7 @@ class _SavedSpeakerGroupsSection extends StatelessWidget {
               ),
               if (controller.savedGroups.isEmpty)
                 Text(
-                  'Add receivers first, then save them as a reusable group.',
+                  'Add receivers first, then save groups such as Living Room, Bedroom, or Party Mode.',
                   style: Theme.of(context).textTheme.bodySmall,
                 )
               else
