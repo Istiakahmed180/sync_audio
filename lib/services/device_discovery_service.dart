@@ -260,7 +260,6 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
         InternetAddress.anyIPv4,
         _mdnsPort,
         reuseAddress: true,
-        reusePort: true,
       );
       final multicastAddress = InternetAddress(_mdnsAddress);
       for (final network in await NetworkInterface.list(
