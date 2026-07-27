@@ -142,7 +142,9 @@ post_install do |installer|
   runner_project = installer.aggregate_targets.first.user_project
   runner_target = runner_project.native_targets.find { |target| target.name == 'Runner' }
   if runner_target
-    phase = runner_target.shell_script_build_phases.find { |item| item.name == 'Normalize embedded Opus framework' }
+    phase = runner_target.shell_script_build_phases.find do |item|
+      item.respond_to?(:name) && item.name == 'Normalize embedded Opus framework'
+    end
     phase ||= runner_target.new_shell_script_build_phase('Normalize embedded Opus framework')
     phase.output_paths = [
       '$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/opus.framework/Info.plist',
@@ -158,7 +160,9 @@ post_install do |installer|
     # Run after CocoaPods embeds frameworks; otherwise the embed phase adds
     # the invalid flat framework back after this cleanup has already run.
     phases = runner_target.build_phases
-    embed_index = phases.index { |item| item.name == '[CP] Embed Pods Frameworks' }
+    embed_index = phases.index do |item|
+      item.respond_to?(:name) && item.name == '[CP] Embed Pods Frameworks'
+    end
     if embed_index
       phases.delete(phase)
       phases.insert(embed_index + 1, phase)
