@@ -252,8 +252,6 @@
 				33CC11202044C79F0003C045 /* PBXTargetDependency */,
 			);
 			name = Runner;
-			packageProductDependencies = (
-			);
 			productName = Runner;
 			productReference = 33CC10ED2044A3C60003C045 /* sync_audio.app */;
 			productType = "com.apple.product-type.application";
@@ -823,7 +821,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = 33CC10E52044A3C60003C045 /* Project object */;
 }
