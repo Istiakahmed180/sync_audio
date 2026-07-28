@@ -167,8 +167,17 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Desktop Flutter apps keep running while the window loses focus or is
+    // minimized. Do not run mobile background/reconnect recovery on Windows,
+    // macOS, or Linux, because it can interrupt an active audio stream when
+    // the user switches to another app. iOS has no background service
+    // implementation in this project, so Android is the only platform where
+    // this recovery path is meaningful.
+    if (!Platform.isAndroid) return;
+
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _appWasBackgrounded = true;
       if (configuredReceiverIps.isNotEmpty || isAudioStreaming) {

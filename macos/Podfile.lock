@@ -136,6 +136,8 @@ PODS:
   - nanopb/encode (3.30910.0)
   - opus_codec_macos (3.0.5):
     - FlutterMacOS
+  - package_info_plus (0.0.1):
+    - FlutterMacOS
   - PromisesObjC (2.4.1)
   - PromisesSwift (2.4.1):
     - PromisesObjC (= 2.4.1)
@@ -143,6 +145,11 @@ PODS:
     - FlutterMacOS
   - screen_retriever_macos (0.0.1):
     - FlutterMacOS
+  - Sentry/HybridSDK (8.58.4)
+  - sentry_flutter (9.25.0):
+    - Flutter
+    - FlutterMacOS
+    - Sentry/HybridSDK (= 8.58.4)
   - share_plus (0.0.1):
     - FlutterMacOS
   - shared_preferences_foundation (0.0.1):
@@ -163,8 +170,10 @@ DEPENDENCIES:
   - FlutterMacOS (from `Flutter/ephemeral`)
   - mobile_scanner (from `Flutter/ephemeral/.symlinks/plugins/mobile_scanner/darwin`)
   - opus_codec_macos (from `Flutter/ephemeral/.symlinks/plugins/opus_codec_macos/macos`)
+  - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - record_macos (from `Flutter/ephemeral/.symlinks/plugins/record_macos/macos`)
   - screen_retriever_macos (from `Flutter/ephemeral/.symlinks/plugins/screen_retriever_macos/macos`)
+  - sentry_flutter (from `Flutter/ephemeral/.symlinks/plugins/sentry_flutter/macos`)
   - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
   - tray_manager (from `Flutter/ephemeral/.symlinks/plugins/tray_manager/macos`)
@@ -187,6 +196,7 @@ SPEC REPOS:
     - nanopb
     - PromisesObjC
     - PromisesSwift
+    - Sentry
 
 EXTERNAL SOURCES:
   cryptography_flutter:
@@ -207,10 +217,14 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/mobile_scanner/darwin
   opus_codec_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/opus_codec_macos/macos
+  package_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
   record_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/record_macos/macos
   screen_retriever_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/screen_retriever_macos/macos
+  sentry_flutter:
+    :path: Flutter/ephemeral/.symlinks/plugins/sentry_flutter/macos
   share_plus:
     :path: Flutter/ephemeral/.symlinks/plugins/share_plus/macos
   shared_preferences_foundation:
@@ -243,10 +257,13 @@ SPEC CHECKSUMS:
   mobile_scanner: 9157936403f5a0644ca3779a38ff8404c5434a93
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   opus_codec_macos: b6a7749e5624ecf819044efe088f2124bcbc4ef8
+  package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
   PromisesSwift: 217dea0fd5d2ad65222a109c48698add13cc1c5b
   record_macos: 2e43c16b84ce188b8137754ee648322a2dcdf7fa
   screen_retriever_macos: c5508cc3c66ff0d4db650480cf0ab691e220d933
+  Sentry: 5321d74bdd28d6f6f8beaa1ca06f1fdc746bff49
+  sentry_flutter: d6279f3b5156b6535e2159e03437b571a24cc648
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   tray_manager: 19c369010e59c073f13b82354d78a35f7972d609
