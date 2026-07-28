@@ -1,6 +1,7 @@
 enum ControlCommandType {
   hello,
   helloAck,
+  receiverReady,
   ping,
   pong,
   streamPrepare,
@@ -21,6 +22,7 @@ extension ControlCommandTypeWireName on ControlCommandType {
   String get wireName => switch (this) {
     ControlCommandType.hello => 'HELLO',
     ControlCommandType.helloAck => 'HELLO_ACK',
+    ControlCommandType.receiverReady => 'RECEIVER_READY',
     ControlCommandType.ping => 'PING',
     ControlCommandType.pong => 'PONG',
     ControlCommandType.streamPrepare => 'STREAM_PREPARE',
@@ -65,6 +67,7 @@ class ControlCommand {
   static bool _hasValidArgumentCount(ControlCommandType type, int count) =>
       switch (type) {
         ControlCommandType.helloAck => count == 1 || count == 2,
+        ControlCommandType.receiverReady => count == 0,
         ControlCommandType.hello => count >= 1 && count <= 3,
         ControlCommandType.ping => count == 2,
         ControlCommandType.pong => count == 3,

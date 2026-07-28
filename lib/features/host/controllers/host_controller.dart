@@ -1599,6 +1599,16 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   void _handleControlEvent(ControlEvent event) {
+    if (event.command.type == ControlCommandType.receiverReady) {
+      // A Receiver may be backgrounded/restarted while the Host still sees
+      // the old control socket as connected. Force a fresh stream handshake
+      // for that Receiver instead of requiring manual reconnect.
+      _readyReceiverStreamAddresses.remove(event.sourceId);
+      if (isAudioStreaming) {
+        unawaited(_autoStartForConnectedReceivers());
+      }
+      return;
+    }
     if (event.command.type == ControlCommandType.setDeviceNameAck) {
       _renameAcks.remove(event.sourceId)?.complete(event.command);
       return;

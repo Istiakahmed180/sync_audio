@@ -489,6 +489,10 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
       (_) => _sendBufferStatus(),
     );
     switch (event.command.type) {
+      case ControlCommandType.hello:
+        unawaited(_notifyHostReceiverReady());
+      case ControlCommandType.receiverReady:
+        break;
       case ControlCommandType.streamPrepare:
       case ControlCommandType.streamStart:
         final sessionId = event.command.arguments.first;
@@ -768,6 +772,19 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     if (!isServerRunning.value || !isConnectedToHost.value) return;
     if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) return;
     await _ensureAudioReceiverStarted();
+    await _notifyHostReceiverReady();
+  }
+
+  Future<void> _notifyHostReceiverReady() async {
+    final hostId = _hostSessionId;
+    if (hostId == null || !isConnectedToHost.value) return;
+    await _service.sendControlCommand(
+      receiverId: hostId,
+      command: const ControlCommand(
+        type: ControlCommandType.receiverReady,
+        arguments: [],
+      ),
+    );
   }
 
   Future<void> refreshLocalNetworkInfo() async {
