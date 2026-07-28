@@ -54,10 +54,11 @@ class NetworkInfoService {
           ? 'No active local network found'
           : entries.map((entry) => entry.replaceFirst(':', ': ')).join('  •  ');
       return NetworkSnapshot(
-        signature: '${name ?? ''}|${entries.join('|')}',
-        display: name == null
-            ? networkText
-            : 'Wi‑Fi: "$name"  •  $networkText',
+        // SSID availability can change temporarily on Android when the app
+        // resumes or permissions are refreshed. It must not make the app
+        // report a network change while the local interface is unchanged.
+        signature: entries.join('|'),
+        display: name == null ? networkText : 'Wi‑Fi: "$name"  •  $networkText',
         hasActiveInterface: entries.isNotEmpty,
       );
     } catch (_) {

@@ -769,6 +769,8 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
       _networkSignature = snapshot.signature;
       localNetworkInfo.value = snapshot.display;
       if (previousSignature != null &&
+          previousSignature != 'unavailable' &&
+          snapshot.signature != 'unavailable' &&
           previousSignature != snapshot.signature) {
         networkMismatchWarning.value = snapshot.hasActiveInterface
             ? 'Receiver network changed. Waiting for the Host to reconnect on this Wi‑Fi.'
@@ -782,6 +784,8 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
           );
           await BackgroundConnectionService.start();
         }
+      } else if (previousSignature == snapshot.signature) {
+        networkMismatchWarning.value = null;
       }
     } finally {
       _networkCheckInProgress = false;
