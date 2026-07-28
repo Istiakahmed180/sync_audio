@@ -162,6 +162,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   int? _nextAudioTimestampMicros;
   AudioStreamStatus _status = AudioStreamStatus.idle;
   bool _streaming = false;
+  bool _handlingNetworkSendFailure = false;
   bool _receiving = false;
   List<InternetAddress> _destinations = const [];
   final Map<String, ReceiverSession> _sessions = <String, ReceiverSession>{};
@@ -739,9 +740,31 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   }
 
   void _sendWirePacket(Uint8List wirePacket, RawDatagramSocket socket) {
-    for (final destination in _destinations) {
-      socket.send(wirePacket, destination, _destinationPort);
-      _totalBytesSent += wirePacket.length;
+    try {
+      for (final destination in _destinations) {
+        socket.send(wirePacket, destination, _destinationPort);
+        _totalBytesSent += wirePacket.length;
+      }
+    } on SocketException catch (error) {
+      unawaited(_handleNetworkSendFailure(error));
+    } on StateError catch (error) {
+      // A socket can be closed concurrently by stop/disconnect.
+      unawaited(_handleNetworkSendFailure(error));
+    }
+  }
+
+  Future<void> _handleNetworkSendFailure(Object error) async {
+    if (_handlingNetworkSendFailure || !_streaming) return;
+    _handlingNetworkSendFailure = true;
+    _streaming = false;
+    _streamGeneration++;
+    _emitError(
+      'Audio stream stopped because the network connection was lost. Check Wi‑Fi and try again.',
+    );
+    try {
+      await stopStreaming();
+    } finally {
+      _handlingNetworkSendFailure = false;
     }
   }
 

@@ -10,8 +10,15 @@ object SystemAudioPcmBus {
     @Volatile var nativeSink: ((ByteArray) -> Unit)? = null
 
     fun emit(bytes: ByteArray) {
-        nativeSink?.invoke(bytes)
-        mainHandler.post { sink?.success(bytes) }
+        val nativeHandler = nativeSink
+        nativeHandler?.invoke(bytes)
+
+        // Native host streaming consumes PCM directly. Do not also enqueue
+        // every 20 ms audio frame on Flutter's main thread; that queue can
+        // grow under load and contribute to an Android ANR.
+        if (nativeHandler == null) {
+            mainHandler.post { sink?.success(bytes) }
+        }
     }
 
     fun emitError(code: String, message: String) {

@@ -416,16 +416,22 @@ class TcpConnectionService implements ConnectionService {
       _emitError('Receiver is not connected.');
       return;
     }
+    int? remotePort;
     try {
+      // Capture the endpoint before writing. Once a socket is closed,
+      // reading remotePort can itself throw SocketException.
+      remotePort = socket.remotePort;
       socket.write('${message.trim()}\n');
       await socket.flush();
     } on SocketException catch (error) {
       _emitError(
-        _friendlySocketError(
-          error,
-          'Could not send the message',
-          socket.remotePort,
-        ),
+        remotePort == null
+            ? 'Could not send the message because the connection was closed.'
+            : _friendlySocketError(
+                error,
+                'Could not send the message',
+                remotePort,
+              ),
       );
       await _handleSocketClosed(receiverId, socket);
     } on StateError {
