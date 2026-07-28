@@ -50,6 +50,8 @@ app.*.map.json
 *.jks
 *.keystore
 *.apk
+*.dmg
+/dist/
 /android/sync-audio-release.jks
 
 sentry.properties
