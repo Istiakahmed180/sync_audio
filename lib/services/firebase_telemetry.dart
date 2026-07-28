@@ -73,14 +73,6 @@ class FirebaseTelemetry {
     }
   }
 
-  /// Deliberately crashes a debug build so Firebase Crashlytics setup can be
-  /// verified from a real device. This is never enabled in release builds.
-  static Future<void> triggerTestCrash() async {
-    if (!kDebugMode || !_crashlyticsAvailable) return;
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-    FirebaseCrashlytics.instance.crash();
-  }
-
   static bool get _supportsFirebaseCore =>
       kIsWeb ||
       defaultTargetPlatform == TargetPlatform.android ||

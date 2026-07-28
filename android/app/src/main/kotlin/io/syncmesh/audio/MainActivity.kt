@@ -256,8 +256,8 @@ class MainActivity : FlutterActivity() {
                             }
                             result.success(null)
                         } catch (error: RuntimeException) {
-                            // Android may reject a dataSync foreground service
-                            // after its rolling time budget is exhausted.
+                            // Android may reject a foreground service when the
+                            // app is not in an allowed background-start state.
                             Log.w("MainActivity", "Unable to start network keep-alive service", error)
                             result.error(
                                 "BACKGROUND_SERVICE_UNAVAILABLE",

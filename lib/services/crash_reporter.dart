@@ -60,10 +60,6 @@ class CrashReporter {
     }
   }
 
-  static Future<void> triggerTestCrash() {
-    return FirebaseTelemetry.triggerTestCrash();
-  }
-
   static Future<List<Map<String, Object>>> recentReports() async {
     try {
       final prefs = await SharedPreferences.getInstance();

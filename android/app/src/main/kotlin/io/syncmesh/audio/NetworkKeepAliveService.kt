@@ -57,20 +57,19 @@ class NetworkKeepAliveService : Service() {
             .build()
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
                 )
             } else {
                 @Suppress("DEPRECATION")
                 startForeground(NOTIFICATION_ID, notification)
             }
         } catch (error: RuntimeException) {
-            // Android 15 rejects dataSync after its rolling time budget is
-            // exhausted. This is a recoverable background-service condition,
-            // not a reason to crash the application process.
+            // Android can reject foreground-service promotion for background
+            // start reasons. This is recoverable and must not crash the app.
             Log.w(TAG, "Network keep-alive foreground service was rejected", error)
             releaseLocks()
             stopSelf(startId)
@@ -79,19 +78,9 @@ class NetworkKeepAliveService : Service() {
         if (wakeLock?.isHeld != true) wakeLock?.acquire()
         @Suppress("DEPRECATION")
         if (wifiLock?.isHeld != true) wifiLock?.acquire()
-        // Do not let Android restart the service after a timeout or rejected
-        // foreground promotion; the next user-initiated connection can start it.
+        // Do not let Android restart the service after rejected foreground
+        // promotion; the next user-initiated connection can start it.
         return START_NOT_STICKY
-    }
-
-    @Suppress("NewApi")
-    override fun onTimeout(startId: Int, fgsType: Int) {
-        // Android 15 calls this when the dataSync foreground-service budget is
-        // exhausted. stopSelf must happen within the short grace period.
-        Log.w(TAG, "Network keep-alive foreground service timed out: type=$fgsType")
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        releaseLocks()
-        stopSelf(startId)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

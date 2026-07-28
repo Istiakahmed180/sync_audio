@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../app/constants/app_constants.dart';
 import '../../../services/paired_device_store.dart';
-import '../../../services/crash_reporter.dart';
 import '../../../shared/widgets/responsive_content.dart';
 import '../controllers/settings_controller.dart';
 
@@ -86,50 +84,10 @@ class SettingsView extends GetView<SettingsController> {
                 value: '${controller.totalPacketsLost.value}',
               ),
             ),
-            if (kDebugMode) ...[
-              const SizedBox(height: 24),
-              _sectionTitle(context, 'Developer'),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.bug_report_outlined),
-                  title: const Text('Test Crashlytics'),
-                  subtitle: const Text(
-                    'Send a deliberate test crash to Firebase Crashlytics.',
-                  ),
-                  onTap: () => _confirmTestCrash(context),
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _confirmTestCrash(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Trigger test crash?'),
-        content: const Text(
-          'The app will close immediately. Reopen it after the crash and wait a few minutes for the report to appear in Firebase Crashlytics.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Crash app'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await CrashReporter.triggerTestCrash();
-    }
   }
 
   String _formatMinutes(int minutes) {
