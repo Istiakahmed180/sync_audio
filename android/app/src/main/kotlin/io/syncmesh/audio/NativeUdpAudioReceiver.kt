@@ -70,9 +70,13 @@ internal class NativeUdpAudioReceiver(
 
     fun setPreferredOutputDevice(device: AudioDeviceInfo): Boolean {
         preferredOutputDeviceId = device.id
-        // Built-in outputs are already Android's default route. Explicitly
-        // selecting them can trigger an AudioFlinger track-recreation loop on
-        // some OEM devices; only force external Bluetooth routes.
+        @Suppress("DEPRECATION")
+        run {
+            // ColorOS may invalidate an AudioTrack when the built-in speaker
+            // is passed to setPreferredDevice. Disable the A2DP media route;
+            // Android then uses the built-in speaker as the default route.
+            audioManager.setBluetoothA2dpOn(isBluetoothOutput(device))
+        }
         return if (isBluetoothOutput(device)) {
             audioTrack?.setPreferredDevice(device) ?: true
         } else {
@@ -229,7 +233,6 @@ internal class NativeUdpAudioReceiver(
         preferredOutputDeviceId?.let { id ->
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                 .firstOrNull { it.id == id }
-                ?.takeIf(::isBluetoothOutput)
                 ?.let { track.setPreferredDevice(it) }
         }
         return track

@@ -22,6 +22,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -113,6 +114,7 @@ class MainActivity : FlutterActivity() {
                             device?.let {
                                 preferredOutputName = it.productName?.toString()?.trim()
                                 preferredOutputType = it.type
+                                applyOutputRoute(it)
                             }
                             val selected = synchronized(audioLock) {
                                 val flutterSelected = if (device == null) {
@@ -121,10 +123,13 @@ class MainActivity : FlutterActivity() {
                                     // setPreferredDevice is ignored by some
                                     // Android builds while AudioTrack is
                                     // already playing. Recreate the track so
-                                    // Bluetooth <-> system changes use the
-                                    // correct route and buffer profile.
+                                    // Bluetooth <-> built-in speaker changes
+                                    // use the selected route and buffer profile.
                                     if (audioTrack != null) {
                                         stopAudioTrack()
+                                        // ColorOS applies Bluetooth A2DP
+                                        // changes asynchronously.
+                                        SystemClock.sleep(250)
                                         initializeAudioTrack()
                                     } else {
                                         // The preferred ID is retained and
@@ -154,6 +159,8 @@ class MainActivity : FlutterActivity() {
                     "reapplyOutput" -> {
                         try {
                             synchronized(audioLock) {
+                                findPreferredOutput()?.let(::applyOutputRoute)
+                                SystemClock.sleep(250)
                                 if (audioTrack != null) {
                                     stopAudioTrack()
                                     if (!initializeAudioTrack()) {
@@ -960,10 +967,10 @@ class MainActivity : FlutterActivity() {
             var preferredApplied = true
             if (preferredOutputDeviceId != null || preferredOutputName != null) {
                 findPreferredOutput()?.let {
-                    // Android's built-in speaker/earpiece is already the
-                    // system default route. Forcing it through
-                    // setPreferredDevice can make some OEM AudioFlinger
-                    // implementations repeatedly recreate a dead track.
+                    // ColorOS can invalidate an AudioTrack when its built-in
+                    // speaker is passed to setPreferredDevice. The system
+                    // route was already selected in applyOutputRoute(); only
+                    // force Bluetooth at the AudioTrack level.
                     preferredApplied = !isBluetoothOutput(it) ||
                             audioTrack?.setPreferredDevice(it) == true
                 }
@@ -1010,6 +1017,15 @@ class MainActivity : FlutterActivity() {
     private fun isPreferredOutput(device: AudioDeviceInfo): Boolean =
         findPreferredOutput()?.id == device.id
 
+    @Suppress("DEPRECATION")
+    private fun applyOutputRoute(device: AudioDeviceInfo) {
+        val audioManager = getSystemService(AudioManager::class.java)
+        // On some Oppo/ColorOS builds, setPreferredDevice(built-in speaker)
+        // invalidates the track. Removing the A2DP media route lets Android
+        // use the built-in speaker without killing AudioTrack.
+        audioManager.setBluetoothA2dpOn(isBluetoothOutput(device))
+    }
+
     private fun restoreOutputAfterDeviceChange(changed: List<AudioDeviceInfo>) {
         val preferredName = preferredOutputName
         val preferredId = preferredOutputDeviceId
@@ -1024,14 +1040,14 @@ class MainActivity : FlutterActivity() {
             if (restoringOutputRoute) return
             restoringOutputRoute = true
             try {
+                findPreferredOutput()?.let(::applyOutputRoute)
+                SystemClock.sleep(250)
                 if (audioTrack != null) {
                     stopAudioTrack()
                     initializeAudioTrack()
                 }
                 findPreferredOutput()?.let { device ->
-                    if (isBluetoothOutput(device)) {
-                        nativeReceiver?.setPreferredOutputDevice(device)
-                    }
+                    nativeReceiver?.setPreferredOutputDevice(device)
                 }
                 Log.i(
                     "SyncAudioOutput",
