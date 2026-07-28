@@ -1222,19 +1222,28 @@ class HostController extends GetxController with WidgetsBindingObserver {
     errorMessage.value = null;
     _nativeHostActive = false;
     final audioService = _audioService;
-    final addresses = _receiverAddresses();
+    final requestedAddresses = _receiverAddresses();
     final port = int.tryParse(audioPortController.text.trim());
     if (audioService == null) {
       return _showError('Audio service is unavailable.');
     }
-    if (addresses.isEmpty) {
+    if (requestedAddresses.isEmpty) {
       return _showError('Enter at least one receiver IP address.');
     }
-    for (final address in addresses) {
+    for (final address in requestedAddresses) {
       final parsedIp = InternetAddress.tryParse(address);
       if (parsedIp == null || parsedIp.type != InternetAddressType.IPv4) {
         return _showError('Enter valid IPv4 receiver addresses.');
       }
+    }
+    final addresses = requestedAddresses
+        .where((address) {
+          final session = receiverSessionFor(address);
+          return session?.controlStatus == ControlConnectionStatus.connected;
+        })
+        .toList(growable: false);
+    if (addresses.isEmpty) {
+      return _showError('Connect to at least one Receiver before starting audio.');
     }
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter an audio port between 1 and 65535.');

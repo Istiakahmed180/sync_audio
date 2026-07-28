@@ -58,7 +58,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       if (event != RawSocketEvent.read) return;
       Datagram? datagram;
       while ((datagram = socket.receive()) != null) {
-        final fields = utf8.decode(datagram!.data).trim().split('|');
+        final decoded = _decodeUtf8(datagram!.data);
+        if (decoded == null) continue;
+        final fields = decoded.trim().split('|');
         if ((fields.length != 6 && fields.length != 7) ||
             fields.first != _response ||
             fields.last != nonce) {
@@ -247,7 +249,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       if (event != RawSocketEvent.read) return;
       Datagram? datagram;
       while ((datagram = socket.receive()) != null) {
-        final request = utf8.decode(datagram!.data).trim().split('|');
+        final decoded = _decodeUtf8(datagram!.data);
+        if (decoded == null) continue;
+        final request = decoded.trim().split('|');
         if (request.length != 2 || request.first != _request) continue;
         final response = [
           _response,
@@ -347,10 +351,23 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       }
 
       if (length > 63 || offset + length > bytes.length) return null;
-      labels.add(utf8.decode(bytes.sublist(offset, offset + length)));
+      final label = _decodeUtf8(bytes.sublist(offset, offset + length));
+      if (label == null) return null;
+      labels.add(label);
       offset += length;
     }
     return null;
+  }
+
+  String? _decodeUtf8(List<int> bytes) {
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      // UDP discovery is best-effort. Ignore packets from other protocols or
+      // truncated datagrams instead of allowing malformed bytes to escape
+      // from the socket listener and terminate the responder callback.
+      return null;
+    }
   }
 
   Uint8List _buildMdnsResponse(String pairingCode) {

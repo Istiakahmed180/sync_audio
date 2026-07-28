@@ -350,6 +350,12 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     try {
       _destinations = ipAddresses
           .map(InternetAddress.new)
+          .fold<List<InternetAddress>>(<InternetAddress>[], (unique, address) {
+            if (!unique.any((item) => item.address == address.address)) {
+              unique.add(address);
+            }
+            return unique;
+          })
           .toList(growable: false);
       _destinationPort = port;
       _packetSequence = 0;
@@ -742,15 +748,16 @@ class UdpAudioService extends GetxService implements AudioStreamService {
 
   void _sendWirePacket(Uint8List wirePacket, RawDatagramSocket socket) {
     for (final destination in _destinations) {
-      if (!_sendHostDatagram(
+      final sent = _sendHostDatagram(
         socket,
         wirePacket,
         destination: destination,
         port: _destinationPort,
-      )) {
-        return;
-      }
-      _totalBytesSent += wirePacket.length;
+        onFailure: (error) => unawaited(
+          _handleDestinationSendFailure(destination.address, error),
+        ),
+      );
+      if (sent) _totalBytesSent += wirePacket.length;
     }
   }
 
@@ -759,17 +766,59 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     Uint8List packet, {
     required InternetAddress destination,
     required int port,
+    void Function(Object error)? onFailure,
   }) {
     try {
       socket.send(packet, destination, port);
       return true;
     } on SocketException catch (error) {
-      unawaited(_handleNetworkSendFailure(error));
+      if (onFailure != null) {
+        onFailure(error);
+      } else {
+        unawaited(_handleNetworkSendFailure(error));
+      }
       return false;
     } on StateError catch (error) {
       // A socket can be closed concurrently by stop/disconnect.
-      unawaited(_handleNetworkSendFailure(error));
+      if (onFailure != null) {
+        onFailure(error);
+      } else {
+        unawaited(_handleNetworkSendFailure(error));
+      }
       return false;
+    }
+  }
+
+  Future<void> _handleDestinationSendFailure(
+    String ipAddress,
+    Object error,
+  ) async {
+    if (!_streaming) return;
+    final remaining = _destinations
+        .where((destination) => destination.address != ipAddress)
+        .toList(growable: false);
+    if (remaining.length == _destinations.length) return;
+    _destinations = remaining;
+    final sessionIds = _sessions.keys
+        .where((id) => id.startsWith('$ipAddress:'))
+        .toList(growable: false);
+    for (final id in sessionIds) {
+      final session = _sessions[id];
+      if (session != null) {
+        _updateSession(
+          session.copyWith(
+            status: ReceiverSessionStatus.reconnecting,
+            reconnectAttempt: session.reconnectAttempt + 1,
+          ),
+        );
+      }
+      synchronizationService.resetSession(id);
+    }
+    _emitError(
+      'Audio connection to $ipAddress was lost; other receivers remain active.',
+    );
+    if (_destinations.isEmpty) {
+      await _handleNetworkSendFailure(error);
     }
   }
 

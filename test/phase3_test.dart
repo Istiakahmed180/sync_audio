@@ -78,4 +78,27 @@ void main() {
       await hostCapture.dispose();
     },
   );
+
+  test(
+    'UDP audio service keeps multiple receiver destinations independent',
+    () async {
+      final hostCapture = FakeAudioCaptureService();
+      final host = UdpAudioService(
+        playbackService: FakeAudioPlaybackService(),
+        captureService: hostCapture,
+      );
+      await host.startStreaming(
+        ipAddresses: const ['192.0.2.10', '192.0.2.11'],
+        port: 5056,
+      );
+      expect(host.receiverSessions, hasLength(2));
+      expect(
+        host.receiverSessions.map((session) => session.ipAddress),
+        containsAll(<String>['192.0.2.10', '192.0.2.11']),
+      );
+
+      await host.dispose();
+      await hostCapture.dispose();
+    },
+  );
 }
