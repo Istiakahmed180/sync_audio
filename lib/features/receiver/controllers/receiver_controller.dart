@@ -12,7 +12,6 @@ import '../../../models/control_command.dart';
 import '../../../models/receiver_session.dart';
 import '../../../services/audio_calibration_service.dart';
 import '../../../services/audio_codec.dart';
-import '../../../services/audio_output_route_service.dart';
 import '../../../services/background_connection_service.dart';
 import '../../../services/battery_optimization_service.dart';
 import '../../../services/connection_service.dart';
@@ -64,19 +63,14 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final DeviceDiscoveryService _discoveryService;
   final PairingStore _pairingStore;
   final NativeAudioRuntime _nativeAudioRuntime;
-  final AudioOutputRouteService _audioOutputRouteService =
-      AudioOutputRouteService();
   final _networkInfoService = NetworkInfoService();
   final _deviceInfoService = DeviceInfoService();
-  Future<void> _audioOutputOperation = Future<void>.value();
   final _deviceIdentityStore = DeviceIdentityStore();
   final _sessionRestoreStore = SessionRestoreStore();
   final _batteryOptimizationService = BatteryOptimizationService();
   final _calibrationService = AudioCalibrationService();
   final isIgnoringBatteryOptimizations = true.obs;
   final isRequestingBatteryOptimization = false.obs;
-  final audioOutputs = <AudioOutputDevice>[].obs;
-  final isLoadingAudioOutputs = false.obs;
   final pairingToken = 'Loading…'.obs;
   final pairingTokenExpiresAt = Rxn<DateTime>();
   final trustedDevices = <String>[].obs;
@@ -105,7 +99,8 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final diagnostics = <String, Object>{}.obs;
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
-  Map<String, Object> get deviceInfoData => Map<String, Object>.from(deviceInfo);
+  Map<String, Object> get deviceInfoData =>
+      Map<String, Object>.from(deviceInfo);
   Timer? _diagnosticTimer;
   late final StreamSubscription<String> _messageSubscription;
   late final StreamSubscription<ConnectionStatus> _statusSubscription;
@@ -137,7 +132,6 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     unawaited(refreshLocalNetworkInfo());
     unawaited(_loadDeviceInfo());
-    unawaited(refreshAudioOutputs());
     unawaited(_loadDeviceName());
     unawaited(_loadDeviceIdentity());
     unawaited(_checkBatteryOptimization());
@@ -214,40 +208,6 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
       'metricsScope': 'receiver',
       ...?rtt == null ? null : <String, Object>{'roundTripTimeMicros': rtt},
     };
-  }
-
-  Future<void> refreshAudioOutputs() async {
-    final operation = _audioOutputOperation.then((_) async {
-      isLoadingAudioOutputs.value = true;
-      try {
-        audioOutputs.value = await _audioOutputRouteService.listOutputs();
-      } catch (_) {
-        // Keep the last known list during a transient route/device change.
-      } finally {
-        isLoadingAudioOutputs.value = false;
-      }
-    });
-    _audioOutputOperation = operation.catchError((_) {});
-    await operation;
-  }
-
-  Future<void> selectAudioOutput(AudioOutputDevice output) async {
-    final operation = _audioOutputOperation.then((_) async {
-      try {
-        await _audioOutputRouteService.selectOutput(output.id);
-        isLoadingAudioOutputs.value = true;
-        try {
-          audioOutputs.value = await _audioOutputRouteService.listOutputs();
-        } finally {
-          isLoadingAudioOutputs.value = false;
-        }
-      } catch (_) {
-        errorMessage.value =
-            'Could not select ${output.name}. Check the device audio settings.';
-      }
-    });
-    _audioOutputOperation = operation.catchError((_) {});
-    await operation;
   }
 
   Future<void> _loadDeviceName() async {
@@ -423,15 +383,6 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     }
     if (isServerRunning.value) {
       await BackgroundConnectionService.start();
-    }
-  }
-
-  Future<void> openAudioOutputSettings() async {
-    try {
-      await _audioOutputRouteService.openSystemOutputSettings();
-    } catch (_) {
-      errorMessage.value =
-          'Open the device Sound settings and select the Bluetooth output.';
     }
   }
 
@@ -686,26 +637,15 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     errorMessage.value = 'Auto-calibration started. Please stay quiet...';
 
     int? detectedOffset;
-    try {
-      detectedOffset = await _calibrationService.listenForChirp(
-        onReady: () => _service.sendControlCommand(
-          receiverId: hostId,
-          command: const ControlCommand(
-            type: ControlCommandType.calibrationReady,
-            arguments: ['0'],
-          ),
+    detectedOffset = await _calibrationService.listenForChirp(
+      onReady: () => _service.sendControlCommand(
+        receiverId: hostId,
+        command: const ControlCommand(
+          type: ControlCommandType.calibrationReady,
+          arguments: ['0'],
         ),
-      );
-    } finally {
-      // Android microphone capture can temporarily move the media stream to
-      // a communication/SCO route. Restore the selected speaker/headset
-      // before the receiver continues normal playback.
-      try {
-        await _audioOutputRouteService.reapplySelectedOutput();
-      } catch (_) {
-        // Calibration result is still useful if route recovery is unsupported.
-      }
-    }
+      ),
+    );
 
     if (detectedOffset == null) {
       errorMessage.value = 'Calibration failed: No signal detected.';

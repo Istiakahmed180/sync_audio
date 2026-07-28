@@ -21,275 +21,201 @@ class ReceiverView extends GetView<ReceiverController> {
     return Scaffold(
       appBar: AppBar(title: const Text('Receiver Device')),
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: controller.refreshAudioOutputs,
-          child: ResponsiveContent(
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              children: [
-                Obx(
-                  () => ConnectionOverviewCard(
-                    title: 'Receiver connection',
-                    state: controller.connectionStatus.value.label,
-                    icon: controller.isConnectedToHost.value
-                        ? Icons.check_circle_outline
-                        : Icons.speaker_group_rounded,
-                    busy:
-                        controller.connectionStatus.value ==
-                        ConnectionStatus.startingServer,
-                    message: controller.networkMismatchWarning.value ?? (!controller.isServerRunning.value
-                        ? 'Start this Receiver first. The Host cannot connect while the server is stopped.'
-                        : controller.isConnectedToHost.value
-                        ? controller.audioStatus.value ==
-                                  AudioStreamStatus.receiving
-                              ? 'Host connected and audio is being received.'
-                              : 'Host connected. Audio will start when the Host starts streaming.'
-                        : 'Waiting for a Host. Share the IP address and pairing code below.'),
-                  ),
+        child: ResponsiveContent(
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            children: [
+              Obx(
+                () => ConnectionOverviewCard(
+                  title: 'Receiver connection',
+                  state: controller.connectionStatus.value.label,
+                  icon: controller.isConnectedToHost.value
+                      ? Icons.check_circle_outline
+                      : Icons.speaker_group_rounded,
+                  busy:
+                      controller.connectionStatus.value ==
+                      ConnectionStatus.startingServer,
+                  message:
+                      controller.networkMismatchWarning.value ??
+                      (!controller.isServerRunning.value
+                          ? 'Start this Receiver first. The Host cannot connect while the server is stopped.'
+                          : controller.isConnectedToHost.value
+                          ? controller.audioStatus.value ==
+                                    AudioStreamStatus.receiving
+                                ? 'Host connected and audio is being received.'
+                                : 'Host connected. Audio will start when the Host starts streaming.'
+                          : 'Waiting for a Host. Share the IP address and pairing code below.'),
                 ),
-                Obx(
-                  () => controller.networkMismatchWarning.value == null
-                      ? const SizedBox.shrink()
-                      : Card(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          child: ListTile(
-                            leading: const Icon(Icons.sync_problem_rounded),
-                            title: const Text('Network changed'),
-                            subtitle: Text(
-                              controller.networkMismatchWarning.value!,
+              ),
+              Obx(
+                () => controller.networkMismatchWarning.value == null
+                    ? const SizedBox.shrink()
+                    : Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: ListTile(
+                          leading: const Icon(Icons.sync_problem_rounded),
+                          title: const Text('Network changed'),
+                          subtitle: Text(
+                            controller.networkMismatchWarning.value!,
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 20),
+              Obx(() {
+                if (controller.isIgnoringBatteryOptimizations.value) {
+                  return const SizedBox.shrink();
+                }
+                return Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.battery_alert_rounded,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Battery optimization is active',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Background audio may stutter or disconnect. Disabling battery optimization is recommended for this app.',
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Obx(
+                            () => TextButton(
+                              onPressed:
+                                  controller
+                                      .isRequestingBatteryOptimization
+                                      .value
+                                  ? null
+                                  : controller
+                                        .requestIgnoreBatteryOptimizations,
+                              child:
+                                  controller
+                                      .isRequestingBatteryOptimization
+                                      .value
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Disable optimization'),
                             ),
                           ),
                         ),
-                ),
-                const SizedBox(height: 20),
-                Obx(() {
-                  if (controller.isIgnoringBatteryOptimizations.value) {
-                    return const SizedBox.shrink();
-                  }
-                  return Card(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.battery_alert_rounded,
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                              const SizedBox(width: 10),
-                              const Expanded(
-                                child: Text(
-                                  'Battery optimization is active',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Background audio may stutter or disconnect. Disabling battery optimization is recommended for this app.',
-                          ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Obx(
-                              () => TextButton(
-                                onPressed:
-                                    controller
-                                        .isRequestingBatteryOptimization
-                                        .value
-                                    ? null
-                                    : controller
-                                          .requestIgnoreBatteryOptimizations,
-                                child:
-                                    controller
-                                        .isRequestingBatteryOptimization
-                                        .value
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text('Disable optimization'),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-                Obx(
-                  () =>
-                      controller.audioStatus.value ==
-                          AudioStreamStatus.receiving
-                      ? _AudioReceivingCard(
-                          audioStatus: controller.audioStatus.value,
-                          visualizerStream: controller.visualizerPcm,
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                const SizedBox(height: 8),
-                Obx(
-                  () => NetworkDiagnosticsCard(
-                    diagnostics: controller.diagnosticsData,
-                    isActive: controller.isAudioReceiverRunning.value,
-                  ),
-                ),
-                Obx(
-                  () => DiagnosticReportButton(
-                    scope: 'receiver',
-                    diagnostics: controller.diagnosticsData,
-                    networkInfo: controller.localNetworkInfo.value,
-                    deviceInfo: controller.deviceInfoData,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: TextFormField(
-                    controller: controller.deviceNameController,
-                    onChanged: controller.setDeviceName,
-                    decoration: const InputDecoration(
-                      labelText: 'Your device name',
-                      hintText: 'Living Room Speaker',
-                      helperText: 'This identifies your device to the Host.',
-                      prefixIcon: Icon(Icons.speaker_rounded),
+                      ],
                     ),
                   ),
+                );
+              }),
+              Obx(
+                () =>
+                    controller.audioStatus.value == AudioStreamStatus.receiving
+                    ? _AudioReceivingCard(
+                        audioStatus: controller.audioStatus.value,
+                        visualizerStream: controller.visualizerPcm,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 8),
+              Obx(
+                () => NetworkDiagnosticsCard(
+                  diagnostics: controller.diagnosticsData,
+                  isActive: controller.isAudioReceiverRunning.value,
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.bluetooth_audio),
-                              const SizedBox(width: 10),
-                              const Expanded(
-                                child: Text(
-                                  'Audio output',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Refresh outputs',
-                                onPressed: controller.refreshAudioOutputs,
-                                icon: const Icon(Icons.refresh),
-                              ),
-                              IconButton(
-                                tooltip: 'Open sound settings',
-                                onPressed: controller.openAudioOutputSettings,
-                                icon: const Icon(Icons.settings_outlined),
-                              ),
-                            ],
-                          ),
-                          const Text(
-                            'Select a paired Bluetooth speaker or headphone for this Receiver.',
-                          ),
-                          if (controller.isLoadingAudioOutputs.value)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 12),
-                              child: SizedBox(
-                                height: 4,
-                                child: LinearProgressIndicator(),
-                              ),
-                            )
-                          else if (controller.audioOutputs.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 10),
-                              child: Text(
-                                'No output list available. Pair Bluetooth in system settings, then refresh.',
-                              ),
-                            )
-                          else
-                            ...controller.audioOutputs.map(
-                              (output) => ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(
-                                  output.isBluetooth
-                                      ? Icons.bluetooth
-                                      : Icons.speaker,
-                                ),
-                                title: Text(output.name),
-                                subtitle: Text(output.kind),
-                                trailing: output.isSelected
-                                    ? const Icon(Icons.check_circle)
-                                    : null,
-                                onTap: () =>
-                                    controller.selectAudioOutput(output),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+              ),
+              Obx(
+                () => DiagnosticReportButton(
+                  scope: 'receiver',
+                  diagnostics: controller.diagnosticsData,
+                  networkInfo: controller.localNetworkInfo.value,
+                  deviceInfo: controller.deviceInfoData,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: TextFormField(
+                  controller: controller.deviceNameController,
+                  onChanged: controller.setDeviceName,
+                  decoration: const InputDecoration(
+                    labelText: 'Your device name',
+                    hintText: 'Living Room Speaker',
+                    helperText: 'This identifies your device to the Host.',
+                    prefixIcon: Icon(Icons.speaker_rounded),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => AppPrimaryButton(
-                    label:
-                        controller.connectionStatus.value ==
-                            ConnectionStatus.startingServer
-                        ? 'Starting…'
-                        : 'Start Receiver',
-                    icon: Icons.play_arrow_rounded,
-                    isLoading:
-                        controller.connectionStatus.value ==
-                        ConnectionStatus.startingServer,
-                    onPressed: controller.isServerRunning.value
-                        ? null
-                        : controller.startServer,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              Obx(
+                () => AppPrimaryButton(
+                  label:
+                      controller.connectionStatus.value ==
+                          ConnectionStatus.startingServer
+                      ? 'Starting…'
+                      : 'Start Receiver',
+                  icon: Icons.play_arrow_rounded,
+                  isLoading:
+                      controller.connectionStatus.value ==
+                      ConnectionStatus.startingServer,
+                  onPressed: controller.isServerRunning.value
+                      ? null
+                      : controller.startServer,
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => AppPrimaryButton(
-                    label: 'Stop Receiver',
-                    icon: Icons.stop_rounded,
-                    onPressed: controller.isServerRunning.value
-                        ? controller.stopServer
-                        : null,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              Obx(
+                () => AppPrimaryButton(
+                  label: 'Stop Receiver',
+                  icon: Icons.stop_rounded,
+                  onPressed: controller.isServerRunning.value
+                      ? controller.stopServer
+                      : null,
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => _ConnectionInfoCard(
-                    deviceName: controller.deviceName.value,
-                    ipAddress: controller.localIpAddress.value,
-                    pairingCode: controller.pairingToken.value,
-                    deviceId: controller.deviceId.value,
-                    expiresAt: controller.pairingTokenExpiresAt.value,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              Obx(
+                () => _ConnectionInfoCard(
+                  deviceName: controller.deviceName.value,
+                  ipAddress: controller.localIpAddress.value,
+                  pairingCode: controller.pairingToken.value,
+                  deviceId: controller.deviceId.value,
+                  expiresAt: controller.pairingTokenExpiresAt.value,
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => _ReceiverNetworkCard(
-                    networkInfo: controller.localNetworkInfo.value,
-                    onRefresh: controller.refreshLocalNetworkInfo,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              Obx(
+                () => _ReceiverNetworkCard(
+                  networkInfo: controller.localNetworkInfo.value,
+                  onRefresh: controller.refreshLocalNetworkInfo,
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => _TrustedDevicesCard(
-                    devices: controller.trustedDevices.toList(growable: false),
-                    names: Map<String, String>.from(
-                      controller.trustedDeviceNames,
-                    ),
-                    onRevoke: controller.revokeTrustedDevice,
+              ),
+              const SizedBox(height: 12),
+              Obx(
+                () => _TrustedDevicesCard(
+                  devices: controller.trustedDevices.toList(growable: false),
+                  names: Map<String, String>.from(
+                    controller.trustedDeviceNames,
                   ),
+                  onRevoke: controller.revokeTrustedDevice,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
