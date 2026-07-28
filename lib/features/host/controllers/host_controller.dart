@@ -122,9 +122,12 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   final diagnostics = <String, Object>{}.obs;
   final receiverWarnings = <String, String>{}.obs;
+  final Map<String, int> _previousReceiverUnderruns = {};
+  final Map<String, int> _previousReceiverOverruns = {};
   Map<String, Object> get diagnosticsData =>
       Map<String, Object>.from(diagnostics);
-  Map<String, Object> get deviceInfoData => Map<String, Object>.from(deviceInfo);
+  Map<String, Object> get deviceInfoData =>
+      Map<String, Object>.from(deviceInfo);
   Map<String, Object> get preflightReportData => {
     for (final entry in preflightResults.entries)
       entry.key: entry.value.toJson(),
@@ -207,7 +210,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
       if (isDiscoveryPolling.value) await discoverReceivers();
       for (final address in configuredReceiverIps.toList(growable: false)) {
         final session = receiverSessionFor(address);
-        final needsReconnect = session == null ||
+        final needsReconnect =
+            session == null ||
             session.controlStatus == ControlConnectionStatus.disconnected ||
             session.controlStatus == ControlConnectionStatus.error;
         final code = receiverPairingControllers[address]?.text.trim() ?? '';
@@ -855,7 +859,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
         .toSet()
         .length;
     final addresses = _receiverAddresses();
-    final muted = addresses.isNotEmpty &&
+    final muted =
+        addresses.isNotEmpty &&
         addresses.every((address) => receiverMuted[address] == true);
     return DesktopTrayService.updateHostState(
       isStreaming: isAudioStreaming,
@@ -886,13 +891,12 @@ class HostController extends GetxController with WidgetsBindingObserver {
           : discoveredDeviceNames[session.ipAddress] ?? 'Receiver',
       address: session.ipAddress,
       timestamp: DateTime.now(),
-      details: type == ConnectionActivityType.error
-          ? 'Connection error'
-          : null,
+      details: type == ConnectionActivityType.error ? 'Connection error' : null,
     );
-    final entries = [entry, ...connectionActivity].take(
-      ConnectionActivityStore.maxEntries,
-    );
+    final entries = [
+      entry,
+      ...connectionActivity,
+    ].take(ConnectionActivityStore.maxEntries);
     connectionActivity.assignAll(entries);
     unawaited(_activityStore.save(connectionActivity));
   }
@@ -988,13 +992,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
     isDiscoveryPolling.value = true;
     discoveryStatus.value = 'Searching for Receivers…';
     unawaited(discoverReceivers());
-    _discoveryTimer = Timer.periodic(
-      const Duration(seconds: 4),
-      (_) {
-        unawaited(refreshLocalNetworkInfo());
-        unawaited(discoverReceivers());
-      },
-    );
+    _discoveryTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      unawaited(refreshLocalNetworkInfo());
+      unawaited(discoverReceivers());
+    });
   }
 
   void stopDiscoveryPolling() {
@@ -1243,7 +1244,9 @@ class HostController extends GetxController with WidgetsBindingObserver {
         })
         .toList(growable: false);
     if (addresses.isEmpty) {
-      return _showError('Connect to at least one Receiver before starting audio.');
+      return _showError(
+        'Connect to at least one Receiver before starting audio.',
+      );
     }
     if (port == null || port < 1 || port > 65535) {
       return _showError('Enter an audio port between 1 and 65535.');
@@ -1490,11 +1493,21 @@ class HostController extends GetxController with WidgetsBindingObserver {
       final rttMs = number('roundTripTimeMicros') / 1000;
       final underruns = number('packetUnderrunCount');
       final overruns = number('packetOverrunCount');
+      final underrunDelta = _counterDelta(
+        _previousReceiverUnderruns,
+        entry.key,
+        underruns.toInt(),
+      );
+      final overrunDelta = _counterDelta(
+        _previousReceiverOverruns,
+        entry.key,
+        overruns.toInt(),
+      );
       final poorNetwork =
-          loss >= 2 || jitterMs >= 50 || rttMs >= 120 || underruns >= 5;
+          loss >= 2 || jitterMs >= 50 || rttMs >= 120 || underrunDelta >= 5;
       final fairNetwork =
-          loss > 0 || jitterMs >= 20 || rttMs >= 60 || underruns > 0;
-      final playbackBacklog = overruns >= 25;
+          loss > 0 || jitterMs >= 20 || rttMs >= 60 || underrunDelta > 0;
+      final playbackBacklog = overrunDelta >= 5;
       if (poorNetwork) {
         poorReceivers.add(entry.key);
         receiverWarnings[entry.key] = playbackBacklog
@@ -1570,6 +1583,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
     } finally {
       _automaticAdaptationInProgress = false;
     }
+  }
+
+  int _counterDelta(Map<String, int> previous, String id, int current) {
+    final old = previous[id];
+    previous[id] = current;
+    if (old == null || current < old) return 0;
+    return current - old;
   }
 
   Future<void> _restartAfterAutomaticAdaptation() async {
@@ -1927,7 +1947,8 @@ class HostController extends GetxController with WidgetsBindingObserver {
           _autoConnectDiscoveredReceiver(device);
         }
       }
-      final autoPairingLabel = autoPairingEnabled.value &&
+      final autoPairingLabel =
+          autoPairingEnabled.value &&
               visibleDevices.any(
                 (device) =>
                     device.pairingCode != null &&
@@ -1987,9 +2008,9 @@ class HostController extends GetxController with WidgetsBindingObserver {
     }
     if (!_autoPairingInProgress.add(address)) return;
     unawaited(
-      connectReceiver(address).whenComplete(
-        () => _autoPairingInProgress.remove(address),
-      ),
+      connectReceiver(
+        address,
+      ).whenComplete(() => _autoPairingInProgress.remove(address)),
     );
   }
 
