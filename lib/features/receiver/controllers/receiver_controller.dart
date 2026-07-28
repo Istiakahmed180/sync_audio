@@ -752,12 +752,22 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(refreshLocalNetworkInfo());
+      unawaited(_resumeActiveReceiver());
     }
     if (state != AppLifecycleState.resumed ||
         !_batteryOptimizationSettingsOpen) {
       return;
     }
     unawaited(_finishBatteryOptimizationRequest());
+  }
+
+  Future<void> _resumeActiveReceiver() async {
+    if (!isServerRunning.value) return;
+    await BackgroundConnectionService.start();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!isServerRunning.value || !isConnectedToHost.value) return;
+    if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) return;
+    await _ensureAudioReceiverStarted();
   }
 
   Future<void> refreshLocalNetworkInfo() async {
