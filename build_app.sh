@@ -116,6 +116,10 @@ if [ "$BUILD_APP" = true ]; then
       exit 1
     fi
 
+    MACOS_APP_OUTPUT_PATH="$PWD/$OUTPUT_DIR/${APP_NAME}.app"
+    cp -R "$MACOS_APP_PATH" "$OUTPUT_DIR/"
+    echo "📦 macOS app created: $MACOS_APP_OUTPUT_PATH"
+
     if [ "$CREATE_MACOS_DMG" = true ]; then
       DMG_STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sync-audio-dmg.XXXXXX")
       trap 'rm -rf "$DMG_STAGING_DIR"' EXIT
