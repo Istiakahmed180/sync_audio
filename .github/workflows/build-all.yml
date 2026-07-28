@@ -52,6 +52,7 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -108,6 +109,8 @@ jobs:
     needs: quality
     if: ${{ inputs.build_target == 'all' || inputs.build_target == 'macos' }}
     runs-on: macos-latest
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -140,6 +143,8 @@ jobs:
     needs: quality
     if: ${{ inputs.build_target == 'all' || inputs.build_target == 'windows' }}
     runs-on: windows-latest
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -25,6 +25,13 @@ Configure these repository secrets before publishing a release:
 - `ANDROID_STORE_PASSWORD`
 - `ANDROID_KEY_PASSWORD`
 - `ANDROID_KEY_ALIAS`
+- `SENTRY_AUTH_TOKEN`
+
+`SENTRY_AUTH_TOKEN` is used by `sentry_dart_plugin` during the Flutter build
+to upload Android, iOS/macOS, and Windows debug symbols to the configured
+Sentry organization/project. Create the token with the minimum release-upload
+scope required by Sentry and add it only as a GitHub Actions repository secret;
+do not commit it to `pubspec.yaml` or `sentry.properties`.
 
 The workflow decodes the keystore only inside the ephemeral runner and uploads
 the resulting AAB as an artifact.

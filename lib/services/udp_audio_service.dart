@@ -497,14 +497,15 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         final cutoff = now - syncInterval.inMicroseconds * 5;
         _clockRequests.removeWhere((_, r) => r.sentAtMicros < cutoff);
       }
-      socket.send(
+      _sendHostDatagram(
+        socket,
         AudioPacketCodec.encode(
           type: AudioPacketType.clockSyncRequest,
           sequence: requestId,
           timestampMicros: now,
         ),
-        destination,
-        _destinationPort,
+        destination: destination,
+        port: _destinationPort,
       );
       if (session.lastSyncMicros != null &&
           now - session.lastSyncMicros! > syncInterval.inMicroseconds * 3) {
@@ -740,16 +741,35 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   }
 
   void _sendWirePacket(Uint8List wirePacket, RawDatagramSocket socket) {
-    try {
-      for (final destination in _destinations) {
-        socket.send(wirePacket, destination, _destinationPort);
-        _totalBytesSent += wirePacket.length;
+    for (final destination in _destinations) {
+      if (!_sendHostDatagram(
+        socket,
+        wirePacket,
+        destination: destination,
+        port: _destinationPort,
+      )) {
+        return;
       }
+      _totalBytesSent += wirePacket.length;
+    }
+  }
+
+  bool _sendHostDatagram(
+    RawDatagramSocket socket,
+    Uint8List packet, {
+    required InternetAddress destination,
+    required int port,
+  }) {
+    try {
+      socket.send(packet, destination, port);
+      return true;
     } on SocketException catch (error) {
       unawaited(_handleNetworkSendFailure(error));
+      return false;
     } on StateError catch (error) {
       // A socket can be closed concurrently by stop/disconnect.
       unawaited(_handleNetworkSendFailure(error));
+      return false;
     }
   }
 
@@ -832,15 +852,16 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   void _sendClockOffset(ReceiverSession session, int sequence) {
     final socket = _hostSocket;
     if (socket == null) return;
-    socket.send(
+    _sendHostDatagram(
+      socket,
       AudioPacketCodec.encode(
         type: AudioPacketType.clockOffset,
         sequence: sequence,
         timestampMicros:
             session.clockOffsetMicros + session.playbackCalibrationMicros,
       ),
-      InternetAddress(session.ipAddress),
-      session.port,
+      destination: InternetAddress(session.ipAddress),
+      port: session.port,
     );
   }
 
@@ -851,14 +872,15 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   ) {
     final socket = _hostSocket;
     if (socket == null) return;
-    socket.send(
+    _sendHostDatagram(
+      socket,
       AudioPacketCodec.encode(
         type: AudioPacketType.clockDrift,
         sequence: sequence,
         timestampMicros: appliedDriftPpm,
       ),
-      InternetAddress(session.ipAddress),
-      session.port,
+      destination: InternetAddress(session.ipAddress),
+      port: session.port,
     );
   }
 
@@ -958,15 +980,21 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         final socket = _receiverSocket;
         if (socket == null || !_receiving) return;
         final now = _receiverClock.elapsedMicroseconds;
-        socket.send(
-          AudioPacketCodec.encode(
-            type: AudioPacketType.clockSyncResponse,
-            sequence: packet.sequence,
-            timestampMicros: now,
-          ),
-          source.address,
-          source.port,
-        );
+        try {
+          socket.send(
+            AudioPacketCodec.encode(
+              type: AudioPacketType.clockSyncResponse,
+              sequence: packet.sequence,
+              timestampMicros: now,
+            ),
+            source.address,
+            source.port,
+          );
+        } on SocketException catch (_) {
+          unawaited(_handleReceiverNetworkFailure());
+        } on StateError catch (_) {
+          unawaited(_handleReceiverNetworkFailure());
+        }
       case AudioPacketType.clockOffset:
         _hostToLocalOffsetMicros = packet.timestampMicros;
         _clockSynchronized = true;
@@ -1185,6 +1213,15 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         'No audio packets received for 5 seconds. Check the Host and Wi-Fi connection.',
       );
     }
+  }
+
+  Future<void> _handleReceiverNetworkFailure() async {
+    if (!_receiving) return;
+    await _stopReceiver();
+    _emitError(
+      'Audio receiver stopped because the network connection was lost. Check Wi‑Fi and try again.',
+    );
+    _setStatus(AudioStreamStatus.error);
   }
 
   Uint8List _applyPlaybackVolume(Uint8List pcm) {
