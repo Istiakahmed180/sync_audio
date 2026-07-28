@@ -8,7 +8,7 @@ BUILD_TYPE="apk"   # apk | appbundle
 BUILD_TARGET="${1:-android}" # android | macos | windows
 ANDROID_BUILD_MODE="${ANDROID_BUILD_MODE:-release}" # release | debug
 OUTPUT_DIR="${OUTPUT_DIR:-dist}"
-CREATE_MACOS_DMG=false
+CREATE_MACOS_DMG=true
 CREATE_WINDOWS_INSTALLER=false
 WINDOWS_INSTALLER_NAME="SyncAudioSetup"
 ISCC_PATH=""
@@ -115,10 +115,6 @@ if [ "$BUILD_APP" = true ]; then
       echo "❌ macOS app not found: $MACOS_APP_PATH"
       exit 1
     fi
-
-    MACOS_APP_OUTPUT_PATH="$PWD/$OUTPUT_DIR/${APP_NAME}.app"
-    cp -R "$MACOS_APP_PATH" "$OUTPUT_DIR/"
-    echo "📦 macOS app created: $MACOS_APP_OUTPUT_PATH"
 
     if [ "$CREATE_MACOS_DMG" = true ]; then
       DMG_STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sync-audio-dmg.XXXXXX")
