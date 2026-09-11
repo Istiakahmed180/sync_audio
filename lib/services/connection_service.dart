@@ -587,7 +587,7 @@ class TcpConnectionService implements ConnectionService {
         type: ControlCommandType.hello,
         arguments: [
           _localSessionId,
-          if (token != null) token,
+          ?token,
           if (_localDeviceName.isNotEmpty) _localDeviceName,
         ],
       ).line,

@@ -60,6 +60,7 @@ class AudioCalibrationService {
         if (!completer.isCompleted) completer.complete(result);
       }
 
+      Future<int?>? result;
       try {
         final stream = await record.startStream(
           const RecordConfig(
@@ -116,11 +117,12 @@ class AudioCalibrationService {
 
         if (onReady != null) await onReady();
         _timeoutTimer = Timer(timeout, () => unawaited(finish(null)));
-        return completer.future;
+        result = completer.future;
       } catch (_) {
         await finish(null);
-        return null;
+        result = null;
       }
+      return result;
     });
     _lifecycle = operation.then<void>((_) {}).catchError((_) {});
     return operation;
