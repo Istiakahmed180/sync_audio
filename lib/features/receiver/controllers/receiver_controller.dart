@@ -18,7 +18,6 @@ import '../../../services/connection_service.dart';
 import '../../../services/device_discovery_service.dart';
 import '../../../services/device_identity_store.dart';
 import '../../../services/device_info_service.dart';
-import '../../../services/firebase_telemetry.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
 import '../../../services/network_info_service.dart';
@@ -438,9 +437,6 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     }
     await audioService.startReceiver(port: AppConstants.audioPort);
     isAudioReceiverRunning.value = audioService.isReceiving;
-    if (isAudioReceiverRunning.value) {
-      unawaited(FirebaseTelemetry.logEvent('receiver_started'));
-    }
   }
 
   Future<void> stopAudioReceiver() async {

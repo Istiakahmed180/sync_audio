@@ -163,7 +163,7 @@ class TcpConnectionService implements ConnectionService {
         onDone: _handleServerDone,
       );
       _setStatus(ConnectionStatus.waiting);
-      return _ipAddressService.findPrivateIpv4Address();
+      return await _ipAddressService.findPrivateIpv4Address();
     } on SocketException catch (error) {
       _server = null;
       _emitError(
@@ -587,7 +587,7 @@ class TcpConnectionService implements ConnectionService {
         type: ControlCommandType.hello,
         arguments: [
           _localSessionId,
-          ?token,
+          if (token != null) token,
           if (_localDeviceName.isNotEmpty) _localDeviceName,
         ],
       ).line,

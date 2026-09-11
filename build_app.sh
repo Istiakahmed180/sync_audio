@@ -12,7 +12,6 @@ CREATE_MACOS_DMG=true
 CREATE_WINDOWS_INSTALLER=false
 WINDOWS_INSTALLER_NAME="SyncAudioSetup"
 ISCC_PATH=""
-UPLOAD_FIREBASE="${UPLOAD_FIREBASE:-false}"
 
 # GitHub Actions can select debug/release without changing local settings.
 if [ "${BUILD_SINGLE_TARGET:-false}" = true ]; then
@@ -187,23 +186,6 @@ if [ "$BUILD_APP" = true ]; then
     if [ -f "$APK_PATH" ]; then
       mv "$APK_PATH" "$TARGET_PATH"
       echo "📦 APK created: $TARGET_PATH"
-      if [ "$UPLOAD_FIREBASE" = true ]; then
-        if ! command -v firebase >/dev/null 2>&1; then
-          echo "❌ Firebase CLI is required for automatic App Distribution upload."
-          echo "   Install it and run: firebase login"
-          exit 1
-        fi
-        if [ ! -x "tool/firebase_distribute.sh" ]; then
-          echo "❌ Firebase upload helper is missing or not executable."
-          exit 1
-        fi
-        echo "☁️ Uploading APK to Firebase App Distribution..."
-        RELEASE_NOTES="${RELEASE_NOTES:-$APP_NAME release $(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
-          ./tool/firebase_distribute.sh "$TARGET_PATH"
-        echo "☁️ Firebase App Distribution upload completed."
-      else
-        echo "ℹ️ Firebase upload skipped (UPLOAD_FIREBASE=false)."
-      fi
     else
       echo "❌ APK not found"
       exit 1

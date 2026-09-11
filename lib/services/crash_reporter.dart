@@ -2,9 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
-
-import 'firebase_telemetry.dart';
 
 /// Stores a small, privacy-filtered crash trail locally for support exports.
 ///
@@ -41,16 +38,6 @@ class CrashReporter {
     StackTrace stack, {
     String source = 'uncaught',
   }) async {
-    try {
-      await Sentry.captureException(
-        error,
-        stackTrace: stack,
-        withScope: (scope) => scope.setTag('error_source', source),
-      );
-    } catch (_) {
-      // Sentry must never become a second source of app failures.
-    }
-    await FirebaseTelemetry.recordError(error, stack, reason: source);
     try {
       final prefs = await SharedPreferences.getInstance();
       final existing = prefs.getStringList(_storageKey) ?? <String>[];
