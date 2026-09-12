@@ -280,6 +280,8 @@ class HostView extends GetView<HostController> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: _ReceiverTargetCard(
                             address: address,
+                            pairingCodeController:
+                                controller.receiverPairingControllers[address],
                             calibrationMicros: controller
                                 .calibrationForReceiver(address),
                             deviceName: deviceName,
@@ -1030,6 +1032,7 @@ class _ManualEntryForm extends StatelessWidget {
 class _ReceiverTargetCard extends StatelessWidget {
   const _ReceiverTargetCard({
     required this.address,
+    this.pairingCodeController,
     required this.calibrationMicros,
     required this.onRemove,
     required this.onRename,
@@ -1059,6 +1062,7 @@ class _ReceiverTargetCard extends StatelessWidget {
   });
 
   final String address;
+  final TextEditingController? pairingCodeController;
   final int calibrationMicros;
   final String? deviceName;
   final int? latencyMs;
@@ -1242,6 +1246,22 @@ class _ReceiverTargetCard extends StatelessWidget {
                   ),
                 ),
               ),
+            if (pairingCodeController != null &&
+                session?.controlStatus != ControlConnectionStatus.connected) ...[
+              const SizedBox(height: 4),
+              TextField(
+                controller: pairingCodeController,
+                keyboardType: TextInputType.number,
+                maxLength: 8,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: 'Receiver pairing code',
+                  hintText: '12345678',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.vpn_key_rounded, size: 18),
+                ),
+              ),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

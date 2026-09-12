@@ -117,6 +117,13 @@ class HostController extends GetxController with WidgetsBindingObserver {
   // this a stale USB-tethering IP (10.x rndis) can never be migrated to the
   // Wi-Fi IP (192.168.x.x) of the same physical phone.
   final _knownDeviceAddressesById = <String, String>{};
+  // Pairing codes learned from discovery, QR, manual entry, saved groups, or
+  // session restore. A Receiver only advertises its current code while its
+  // responder is alive, so remembering the last known code lets a discovered
+  // Receiver still connect (and lets the reconnect path refresh a rotated
+  // code) instead of sitting "offline" until the user re-adds it by hand.
+  final _knownPairingCodesByAddress = <String, String>{};
+  final _knownPairingCodesByDeviceId = <String, String>{};
 
   bool get isAudioStreaming =>
       _nativeHostActive || (_audioService?.isStreaming ?? false);
@@ -437,6 +444,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
       receiverPairingControllers[ip] = TextEditingController(
         text: group.pairingCodes[savedIp] ?? '',
       );
+      _rememberPairingCode(ip, group.pairingCodes[savedIp]);
       final volume = group.receiverVolumes[savedIp];
       if (volume != null) {
         receiverVolumes[ip] = volume.clamp(0.0, 1.5).toDouble();
@@ -957,6 +965,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
         receiverPairingControllers[address] = TextEditingController(
           text: receiver.pairingCode,
         );
+        _rememberPairingCode(address, receiver.pairingCode);
         unawaited(_resolveReceiverName(address));
       }
       await connect();
@@ -1096,6 +1105,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
       return _showError('Enter the 8-digit pairing code for $address.');
     }
+    _rememberPairingCode(address, pairingCode);
     unawaited(_warnIfNotOnLocalSubnet([address]));
     _service.setPairingToken(null);
     _service.setPairingTokens({address: pairingCode});
@@ -1818,6 +1828,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     receiverPairingControllers[address] = TextEditingController(
       text: pairingTokenController.text.trim(),
     );
+    _rememberPairingCode(address, pairingTokenController.text);
     receiverIpInputController.clear();
     pairingTokenController.clear();
     errorMessage.value = null;
@@ -1840,6 +1851,38 @@ class HostController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  bool _isValidPairingCode(String? code) =>
+      code != null && RegExp(r'^\d{8}$').hasMatch(code.trim());
+
+  /// Records a known-good pairing code so a later discovery cycle can still
+  /// connect when the Receiver has stopped advertising the code.
+  void _rememberPairingCode(String address, String? code) {
+    final trimmed = code?.trim();
+    if (!_isValidPairingCode(trimmed)) return;
+    _knownPairingCodesByAddress[address] = trimmed!;
+    final deviceId = discoveredDeviceIds[address];
+    if (deviceId != null && deviceId.isNotEmpty) {
+      _knownPairingCodesByDeviceId[deviceId] = trimmed;
+    }
+  }
+
+  /// Chooses the pairing code to use for a discovered Receiver: prefer the
+  /// code the Receiver just advertised, then fall back to any code learned
+  /// earlier for the same device id or address.
+  String? _pairingCodeFor(AudioDevice device) {
+    final discovered = device.pairingCode;
+    if (_isValidPairingCode(discovered)) {
+      _knownPairingCodesByAddress[device.ipAddress] = discovered!.trim();
+      _knownPairingCodesByDeviceId[device.id] = discovered.trim();
+      return discovered.trim();
+    }
+    final byAddress = _knownPairingCodesByAddress[device.ipAddress];
+    if (_isValidPairingCode(byAddress)) return byAddress!.trim();
+    final byDeviceId = _knownPairingCodesByDeviceId[device.id];
+    if (_isValidPairingCode(byDeviceId)) return byDeviceId!.trim();
+    return null;
+  }
+
   void removeReceiverIp(String address) {
     configuredReceiverIps.remove(address);
     discoveredDeviceNames.remove(address);
@@ -1847,6 +1890,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     discoveredDeviceLatencyMs.remove(address);
     receiverCalibrationMicros.remove(address);
     receiverPairingControllers.remove(address)?.dispose();
+    _knownPairingCodesByAddress.remove(address);
     preflightResults.remove(address);
     preflightRunning.remove(address);
     unawaited(_saveSessionConfiguration());
@@ -1889,13 +1933,14 @@ class HostController extends GetxController with WidgetsBindingObserver {
     }
     receiverPairingControllers[address] ??= TextEditingController();
     receiverPairingControllers[address]!.text = pairingCode;
+    if (deviceId.isNotEmpty) discoveredDeviceIds[address] = deviceId;
+    _rememberPairingCode(address, pairingCode);
     if (deviceName.isNotEmpty) {
       discoveredDeviceNames[address] = deviceName;
     } else {
       // Keep older QR codes (without a name field) working as well.
       unawaited(_resolveReceiverName(address));
     }
-    if (deviceId.isNotEmpty) discoveredDeviceIds[address] = deviceId;
     errorMessage.value = null;
     unawaited(_saveSessionConfiguration());
     return true;
@@ -1969,19 +2014,20 @@ class HostController extends GetxController with WidgetsBindingObserver {
           receiverPairingControllers[device.ipAddress] =
               TextEditingController();
         }
-        final pairingCode = device.pairingCode;
-        if (pairingCode != null && RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
+        final previousCode =
+            receiverPairingControllers[device.ipAddress]?.text.trim() ?? '';
+        final pairingCode = _pairingCodeFor(device);
+        if (pairingCode != null) {
           receiverPairingControllers[device.ipAddress]?.text = pairingCode;
-          _autoConnectDiscoveredReceiver(device);
+          _autoConnectDiscoveredReceiver(
+            device,
+            codeChanged: previousCode != pairingCode,
+          );
         }
       }
       final autoPairingLabel =
           autoPairingEnabled.value &&
-              visibleDevices.any(
-                (device) =>
-                    device.pairingCode != null &&
-                    RegExp(r'^\d{8}$').hasMatch(device.pairingCode!),
-              )
+              visibleDevices.any((device) => _pairingCodeFor(device) != null)
           ? ' • Auto-pairing enabled'
           : '';
       discoveryStatus.value = visibleDevices.isEmpty
@@ -2031,6 +2077,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
         receiverPairingControllers[newAddress]?.text = code;
       }
     }
+    _rememberPairingCode(
+      newAddress,
+      receiverPairingControllers[newAddress]?.text,
+    );
+    _knownPairingCodesByAddress.remove(previousAddress);
     discoveredDeviceNames.remove(previousAddress);
     discoveredDeviceIds.remove(previousAddress);
     discoveredDeviceLatencyMs.remove(previousAddress);
@@ -2101,14 +2152,20 @@ class HostController extends GetxController with WidgetsBindingObserver {
         ?.deviceId;
   }
 
-  void _autoConnectDiscoveredReceiver(AudioDevice device) {
+  void _autoConnectDiscoveredReceiver(
+    AudioDevice device, {
+    bool codeChanged = false,
+  }) {
     if (!autoPairingEnabled.value || !isDiscoveryPolling.value) return;
     final address = device.ipAddress;
     final session = receiverSessionFor(address);
-    if (session != null &&
-        (session.controlStatus == ControlConnectionStatus.connected ||
-            session.controlStatus == ControlConnectionStatus.connecting ||
-            session.controlStatus == ControlConnectionStatus.reconnecting)) {
+    final status = session?.controlStatus;
+    // Never interrupt a live connection. A session that is still connecting is
+    // left alone unless the advertised pairing code changed, because a rotated
+    // code must replace the stale one or the reconnect never succeeds.
+    if (status == ControlConnectionStatus.connected) return;
+    if (status == ControlConnectionStatus.connecting && !codeChanged) return;
+    if (status == ControlConnectionStatus.reconnecting && !codeChanged) {
       return;
     }
     if (!_autoPairingInProgress.add(address)) return;
