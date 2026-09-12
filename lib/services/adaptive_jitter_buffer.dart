@@ -60,9 +60,15 @@ class AdaptiveJitterBuffer {
       final interval = packet.arrivalMicros - previous;
       final expected = 20000;
       final deviation = (interval - expected).abs();
-      _jitterMicros = _jitterMicros == 0
-          ? deviation
-          : ((_jitterMicros * 7) + deviation) ~/ 8;
+      if (_jitterMicros == 0) {
+        _jitterMicros = deviation;
+      } else if (deviation < _jitterMicros) {
+        // Recover faster than we grow so latency does not stay inflated after
+        // a temporary jitter spike (for example when the phone screen wakes).
+        _jitterMicros = ((_jitterMicros * 3) + deviation) ~/ 4;
+      } else {
+        _jitterMicros = ((_jitterMicros * 7) + deviation) ~/ 8;
+      }
     }
     _lastArrivalMicros = packet.arrivalMicros;
     if (nextSequence != null && _isBehind(packet.sequence, nextSequence!)) {

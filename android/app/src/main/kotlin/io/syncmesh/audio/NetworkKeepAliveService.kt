@@ -24,11 +24,24 @@ class NetworkKeepAliveService : Service() {
             "sync_audio:connection",
         ).apply { setReferenceCounted(false) }
         val wifiManager = applicationContext.getSystemService(WifiManager::class.java)
-        @Suppress("DEPRECATION")
-        wifiLock = wifiManager.createWifiLock(
-            WifiManager.WIFI_MODE_FULL_HIGH_PERF,
-            "sync_audio:connection_wifi",
-        ).apply { setReferenceCounted(false) }
+        // WIFI_MODE_FULL_HIGH_PERF is deprecated since Android 10 and no longer
+        // reliably disables Wi-Fi power save. When the screen turns off the
+        // driver then buffers/aggregates packets, the jitter buffer grows and
+        // the audio sounds like it is "buffering" until Wi-Fi wakes up again.
+        // WIFI_MODE_FULL_LOW_LATENCY keeps the radio in the low-latency state
+        // for real-time audio.
+        wifiLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            wifiManager.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+                "sync_audio:connection_wifi",
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            wifiManager.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "sync_audio:connection_wifi",
+            )
+        }.apply { setReferenceCounted(false) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(

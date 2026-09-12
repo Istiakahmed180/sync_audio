@@ -867,9 +867,12 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
       if (prefer != null && prefer.isNotEmpty && prefer != 'Not available') {
         localIpAddress.value = prefer;
       } else if (addresses.isNotEmpty) {
+        final previousAddress = localIpAddress.value;
         localIpAddress.value = addresses.first;
-        // Keep the advertised address in sync when Wi-Fi changes.
-        if (isServerRunning.value) {
+        // Only restart the responder when the advertised address actually
+        // changed. Restarting it every network-monitor tick (3s) dropped
+        // incoming discovery broadcasts and churned the Wi-Fi multicast lock.
+        if (isServerRunning.value && previousAddress != localIpAddress.value) {
           await _discoveryService.startResponder(
             deviceId: deviceId.value,
             deviceName: deviceName.value,

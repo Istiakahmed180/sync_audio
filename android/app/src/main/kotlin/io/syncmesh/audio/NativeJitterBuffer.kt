@@ -70,7 +70,16 @@ internal class NativeJitterBuffer(
         receivedPackets++
         lastArrivalMicros?.let { previous ->
             val deviation = abs(packet.arrivalMicros - previous - 20_000)
-            jitterMicros = if (jitterMicros == 0L) deviation else (jitterMicros * 7 + deviation) / 8
+            jitterMicros = if (jitterMicros == 0L) {
+                deviation
+            } else if (deviation < jitterMicros) {
+                // Decay faster than we grow so latency recovers quickly once
+                // Wi-Fi is awake again (for example after the screen turns on)
+                // instead of staying inflated at the screen-off target.
+                (jitterMicros * 3 + deviation) / 4
+            } else {
+                (jitterMicros * 7 + deviation) / 8
+            }
         }
         lastArrivalMicros = packet.arrivalMicros
         val highest = highestSequence
