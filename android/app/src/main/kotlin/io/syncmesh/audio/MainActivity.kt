@@ -67,6 +67,9 @@ class MainActivity : FlutterActivity() {
     private var preferredOutputName: String? = null
     private var preferredOutputType: Int? = null
     private var restoringOutputRoute = false
+    // The Receiver is used as a speaker, so default to the built-in speaker
+    // instead of silently routing to a connected Bluetooth device.
+    private var preferPhoneSpeaker = true
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             restoreOutputAfterDeviceChange(addedDevices.toList())
@@ -505,6 +508,21 @@ class MainActivity : FlutterActivity() {
                     "stop" -> {
                         stopAudioTrack()
                         result.success(null)
+                    }
+
+                    "outputDevice" -> {
+                        result.success(describeActiveOutput())
+                    }
+
+                    "setOutputRoute" -> {
+                        val route = call.argument<String>("route")
+                        preferPhoneSpeaker = route != "bluetooth"
+                        applyOutputPreference()
+                        result.success(describeActiveOutput())
+                    }
+
+                    "outputRoute" -> {
+                        result.success(if (preferPhoneSpeaker) "speaker" else "bluetooth")
                     }
 
                     else -> result.notImplemented()
@@ -976,27 +994,80 @@ class MainActivity : FlutterActivity() {
                 }
             }
             audioTrack?.play()
-            findPreferredOutput()?.let { device ->
-                val applied = if (isBluetoothOutput(device)) {
-                    audioTrack?.setPreferredDevice(device)
-                } else {
-                    true
+            if (preferPhoneSpeaker) {
+                findBuiltInSpeaker()?.let { speaker ->
+                    val applied = audioTrack?.setPreferredDevice(speaker) == true
+                    Log.i("SyncAudioOutput", "Phone speaker preferred applied=$applied")
                 }
-                Log.i(
-                    "SyncAudioOutput",
-                    "Preferred output ${device.productName} (${device.id}) applied=$applied"
-                )
+                @Suppress("DEPRECATION")
+                audioManager.setBluetoothA2dpOn(false)
+            } else {
+                findPreferredOutput()?.let { device ->
+                    val applied = if (isBluetoothOutput(device)) {
+                        audioTrack?.setPreferredDevice(device)
+                    } else {
+                        true
+                    }
+                    Log.i(
+                        "SyncAudioOutput",
+                        "Preferred output ${device.productName} (${device.id}) applied=$applied"
+                    )
+                }
             }
             return preferredApplied
         }
     }
 
     private fun currentBluetoothOutput(audioManager: AudioManager): AudioDeviceInfo? {
+        if (preferPhoneSpeaker) return null
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         if (preferredOutputDeviceId != null || preferredOutputName != null) {
             return findPreferredOutput(outputs)?.takeIf(::isBluetoothOutput)
         }
         return outputs.firstOrNull(::isBluetoothOutput)
+    }
+
+    private fun findBuiltInSpeaker(): AudioDeviceInfo? =
+        getSystemService(AudioManager::class.java)
+            ?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            ?.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+
+    private fun applyOutputPreference() {
+        val audioManager = getSystemService(AudioManager::class.java) ?: return
+        @Suppress("DEPRECATION")
+        audioManager.setBluetoothA2dpOn(!preferPhoneSpeaker)
+        synchronized(audioLock) {
+            if (audioTrack != null) {
+                stopAudioTrack()
+                initializeAudioTrack()
+            }
+        }
+    }
+
+    /**
+     * Human-readable name of the route the receiver audio actually uses. The
+     * receiver prefers Bluetooth when one is connected (see
+     * [initializeAudioTrack]), so mirror that decision here.
+     */
+    private fun describeActiveOutput(): String {
+        val audioManager = getSystemService(AudioManager::class.java)
+        currentBluetoothOutput(audioManager)?.let { device ->
+            val name = device.productName?.toString()?.trim().orEmpty()
+            return if (name.isNotEmpty()) "Bluetooth: $name" else "Bluetooth"
+        }
+        val outputs = audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            ?: return "Phone speaker"
+        val wired = outputs.firstOrNull {
+            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_USB_DEVICE
+        }
+        if (wired != null) {
+            val name = wired.productName?.toString()?.trim().orEmpty()
+            return if (name.isNotEmpty()) "Wired: $name" else "Wired device"
+        }
+        return "Phone speaker"
     }
 
     private fun findPreferredOutput(

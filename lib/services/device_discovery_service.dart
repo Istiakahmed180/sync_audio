@@ -135,9 +135,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     required Map<String, AudioDevice> devices,
   }) async {
     // multicast_dns currently requests reusePort internally, which Dart does
-    // not support on Android. Broadcast discovery above remains the Android
-    // fallback; keep mDNS for desktop platforms where it is supported.
-    if (Platform.isAndroid) return;
+    // not support on Android or Windows. Broadcast discovery above remains the
+    // fallback there; keep mDNS for platforms where reusePort is supported.
+    if (Platform.isAndroid || Platform.isWindows) return;
 
     final client = MDnsClient();
     try {
@@ -269,9 +269,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
   }
 
   Future<void> _startMdnsResponder(String pairingCode) async {
-    // multicast_dns/RawDatagramSocket reusePort is unsupported on Android.
-    // The legacy UDP discovery responder remains active there.
-    if (Platform.isAndroid) return;
+    // multicast_dns/RawDatagramSocket reusePort is unsupported on Android and
+    // Windows. The legacy UDP discovery responder remains active there.
+    if (Platform.isAndroid || Platform.isWindows) return;
 
     try {
       final socket = await RawDatagramSocket.bind(

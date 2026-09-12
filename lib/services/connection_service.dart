@@ -106,6 +106,10 @@ class TcpConnectionService implements ConnectionService {
   final Map<int, _PingRequest> _pendingPings = <int, _PingRequest>{};
   final Stopwatch _controlClock = Stopwatch()..start();
   final Map<String, Future<void>> _lineQueues = <String, Future<void>>{};
+  // Dart's Socket IOSink is not safe for overlapping write/flush calls: a
+  // second write while a flush is pending throws "StreamSink is bound to a
+  // stream" and tears the connection down. Serialize every write per socket.
+  final Map<String, Future<void>> _writeQueues = <String, Future<void>>{};
   final String _localSessionId =
       'sync-${DateTime.now().microsecondsSinceEpoch}';
   int _pingSequence = 0;
@@ -188,7 +192,9 @@ class TcpConnectionService implements ConnectionService {
 
   void _registerSocket(String id, Socket socket, {required bool desired}) {
     final oldSocket = _sockets[id];
-    if (oldSocket != null && !identical(oldSocket, socket)) oldSocket.destroy();
+    if (oldSocket != null && !identical(oldSocket, socket)) {
+      oldSocket.destroy();
+    }
     _sockets[id] = socket;
     if (desired) _establishedConnections.add(id);
     final existing = _sessions[id];
@@ -214,11 +220,13 @@ class TcpConnectionService implements ConnectionService {
         .transform(const LineSplitter())
         .listen(
           (line) {
-            _lineQueues[id] = (_lineQueues[id] ?? Future.value()).then(
-              (_) => _handleLine(id, line),
-            );
+            _lineQueues[id] = (_lineQueues[id] ?? Future.value())
+                .then((_) => _handleLine(id, line))
+                // A malformed line must not permanently poison the queue and
+                // silently drop every later control message on this socket.
+                .catchError((Object _) {});
           },
-          onError: (_) => _handleSocketClosed(id, socket),
+          onError: (Object _) => _handleSocketClosed(id, socket),
           onDone: () => _handleSocketClosed(id, socket),
         );
     _setGlobalStatus(ConnectionStatus.connected);
@@ -228,7 +236,7 @@ class TcpConnectionService implements ConnectionService {
           _sendHello(
             receiverId: id,
             token: _pairingTokens[id] ?? _pairingToken,
-          ).catchError((_) {
+          ).catchError((Object _) {
             _emitError(
               'Connection to receiver failed. Check the pairing code and try again.',
             );
@@ -307,9 +315,13 @@ class TcpConnectionService implements ConnectionService {
       } else {
         socket.destroy();
       }
-    } on SocketException {
+    } on SocketException catch (error) {
       _emitError(
-        'Could not connect to ${target.ipAddress}:${target.port}. Check the address and try again.',
+        _friendlySocketError(
+          error,
+          'Could not connect to ${target.ipAddress}:${target.port}. Put both devices on the same Wi‑Fi (turn off mobile data/VPN on the Receiver), verify the Receiver shows Start→Stop running, and allow the app in Windows Firewall',
+          target.port,
+        ),
       );
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
@@ -320,7 +332,7 @@ class TcpConnectionService implements ConnectionService {
       if (_desiredReceivers.containsKey(id)) _scheduleReconnect(id);
     } on TimeoutException {
       _emitError(
-        'Connection to ${target.ipAddress} timed out. Make sure the device is on the same Wi‑Fi network.',
+        'Connection to ${target.ipAddress} timed out. Both devices must be on the same Wi‑Fi: on the Receiver turn off mobile data/VPN, use its 192.168.x.x address, keep the Receiver screen on, and check Windows Firewall.',
       );
       _updateSession(
         existing.copyWith(controlStatus: ControlConnectionStatus.error),
@@ -410,7 +422,21 @@ class TcpConnectionService implements ConnectionService {
   Future<void> sendMessageTo({
     required String receiverId,
     required String message,
-  }) async {
+  }) {
+    final previous = _writeQueues[receiverId] ?? Future<void>.value();
+    final chained = previous.then(
+      (_) => _writeMessage(receiverId, message.trim()),
+    );
+    // Keep the chain alive even when one write fails so later writes are not
+    // skipped. The caller still receives the real result through |chained|.
+    _writeQueues[receiverId] = chained.then<void>(
+      (_) {},
+      onError: (Object _) {},
+    );
+    return chained;
+  }
+
+  Future<void> _writeMessage(String receiverId, String message) async {
     final socket = _sockets[receiverId];
     if (socket == null) {
       _emitError('Receiver is not connected.');
@@ -421,7 +447,7 @@ class TcpConnectionService implements ConnectionService {
       // Capture the endpoint before writing. Once a socket is closed,
       // reading remotePort can itself throw SocketException.
       remotePort = socket.remotePort;
-      socket.write('${message.trim()}\n');
+      socket.write('$message\n');
       await socket.flush();
     } on SocketException catch (error) {
       _emitError(
@@ -493,21 +519,24 @@ class TcpConnectionService implements ConnectionService {
         final suppliedDeviceName = command.arguments.length >= 3
             ? command.arguments[2].trim()
             : '';
+        // A trusted Host may reconnect without re-entering the current code,
+        // which is the behaviour promised by the "Trusted Hosts" list. An
+        // untrusted peer still has to present the exact active pairing code.
         final pairingAccepted =
             _pairingToken == null ||
-            (trusted && suppliedToken != null) ||
+            trusted ||
             suppliedToken == _pairingToken;
         if (!pairingAccepted) {
-          unawaited(
-            sendMessageTo(
-              receiverId: sourceId,
-              message: const ControlCommand(
-                type: ControlCommandType.error,
-                arguments: ['PAIRING_REQUIRED', 'Pairing token rejected'],
-              ).line,
-            ),
+          // Flush the rejection before closing, otherwise the peer only sees
+          // an unexpected disconnect and reconnects forever.
+          await sendMessageTo(
+            receiverId: sourceId,
+            message: const ControlCommand(
+              type: ControlCommandType.error,
+              arguments: ['PAIRING_REQUIRED', 'Pairing token rejected'],
+            ).line,
           );
-          unawaited(disconnectFrom(sourceId));
+          await disconnectFrom(sourceId);
           return;
         }
         if (suppliedToken != null) {
@@ -720,6 +749,7 @@ class TcpConnectionService implements ConnectionService {
     if (!identical(_sockets[id], socket)) return;
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id);
+    _writeQueues.remove(id);
     socket.destroy();
     final session = _sessions[id];
     if (session != null) {
@@ -742,6 +772,7 @@ class TcpConnectionService implements ConnectionService {
 
   Future<void> _closeSocket(String id) async {
     _lineQueues.remove(id);
+    _writeQueues.remove(id);
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id)?.destroy();
     _secureChannels.remove(id);
@@ -822,15 +853,23 @@ class TcpConnectionService implements ConnectionService {
     String fallback,
     int port,
   ) {
-    if (error.osError?.errorCode == 111 ||
-        error.message.toLowerCase().contains('refused')) {
-      return 'Cannot connect on port $port. Make sure the Receiver is running.';
+    final message = error.message.toLowerCase();
+    if (error.osError?.errorCode == 111 || message.contains('refused')) {
+      return 'Port $port refused the connection. On the Receiver tap Start Receiver (Stop must be enabled), then enter the exact Wi‑Fi IP + current 8-digit code.';
     }
     if (error.osError?.errorCode == 98 ||
-        error.message.toLowerCase().contains('address already in use')) {
+        message.contains('address already in use')) {
       return 'Port $port is in use. Try restarting the app.';
     }
-    return '$fallback. Check the IP address, port, and Wi‑Fi connection.';
+    if (message.contains('unreachable') ||
+        message.contains('no route') ||
+        message.contains('host')) {
+      return 'Receiver is unreachable on port $port. Both devices must be on the same Wi‑Fi (Receiver: mobile data/VPN off, use 192.168.x.x). Also check AP isolation and Windows Firewall.';
+    }
+    if (message.contains('timed out') || message.contains('timeout')) {
+      return '$fallback (timeout). The Receiver IP is probably wrong or on a different network.';
+    }
+    return '$fallback.';
   }
 
   Future<void> dispose() async {

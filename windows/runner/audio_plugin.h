@@ -20,8 +20,17 @@
 
 class AudioPlugin {
  public:
-  explicit AudioPlugin(flutter::BinaryMessenger* messenger);
+  // |host_window| is the top-level window used to marshal audio buffers onto
+  // the platform thread before they are sent to Flutter.
+  AudioPlugin(flutter::BinaryMessenger* messenger, HWND host_window);
   ~AudioPlugin();
+
+  // Drains PCM captured on the audio thread and forwards it to Flutter. Only
+  // call this from the platform thread.
+  void DrainPendingCapture();
+
+  // Posted from the audio thread when captured PCM is ready to be delivered.
+  static constexpr UINT kCaptureDataMessage = WM_APP + 1;
 
  private:
   void SetupCaptureChannel(flutter::BinaryMessenger* messenger);
@@ -49,6 +58,10 @@ class AudioPlugin {
   std::thread capture_thread_;
   std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> capture_sink_;
   std::atomic<bool> capturing_{false};
+  HWND host_window_ = nullptr;
+  std::mutex capture_queue_mutex_;
+  std::vector<std::vector<uint8_t>> capture_queue_;
+  std::atomic<bool> capture_message_posted_{false};
 
   // Playback
   HWAVEOUT wave_out_ = nullptr;

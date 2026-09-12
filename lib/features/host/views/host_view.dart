@@ -243,6 +243,9 @@ class HostView extends GetView<HostController> {
                   // Subscribe this receiver list to live diagnostics updates.
                   final diagnosticsCount = controller.diagnostics.length;
                   final nearbyCount = controller.discoveredDevices.length;
+                  final nearbyIps = controller.discoveredDevices
+                      .map((d) => d.ipAddress)
+                      .join(',');
                   final addresses = controller.configuredReceiverIps
                       .where(
                         (a) => controller.receiverPairingControllers
@@ -253,7 +256,7 @@ class HostView extends GetView<HostController> {
                     return const _EmptyReceiverState();
                   }
                   return Column(
-                    key: ValueKey('$diagnosticsCount-$nearbyCount'),
+                    key: ValueKey('$diagnosticsCount-$nearbyCount-$nearbyIps'),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _ReceiverBulkActions(controller: controller),
@@ -345,6 +348,17 @@ class HostView extends GetView<HostController> {
                                 .contains(address),
                             onRunPreflight: () =>
                                 controller.runNetworkTest(address),
+                            wifiSuggestion: controller
+                                .wifiIpSuggestionFor(address),
+                            onSwitchToWifi: controller
+                                        .wifiIpSuggestionFor(address) ==
+                                    null
+                                ? null
+                                : () => controller.switchReceiverIp(
+                                    fromAddress: address,
+                                    toAddress: controller
+                                        .wifiIpSuggestionFor(address)!,
+                                  ),
                           ),
                         );
                       }),
@@ -1040,6 +1054,8 @@ class _ReceiverTargetCard extends StatelessWidget {
     this.reconnectPriority = 0,
     this.onReconnectPriorityChanged,
     this.isStreaming = false,
+    this.wifiSuggestion,
+    this.onSwitchToWifi,
   });
 
   final String address;
@@ -1067,6 +1083,8 @@ class _ReceiverTargetCard extends StatelessWidget {
   final Future<void> Function() onRunPreflight;
   final bool isPreflightRunning;
   final NetworkPreflightResult? preflightResult;
+  final String? wifiSuggestion;
+  final Future<void> Function()? onSwitchToWifi;
 
   String get _displayName =>
       (deviceName != null && deviceName!.isNotEmpty) ? deviceName! : address;
@@ -1189,6 +1207,41 @@ class _ReceiverTargetCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 4),
+            if (wifiSuggestion != null && onSwitchToWifi != null)
+              Card(
+                margin: const EdgeInsets.only(bottom: 6),
+                color: scheme.tertiaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.wifi_rounded,
+                        size: 18,
+                        color: scheme.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This looks like a USB-tethering address. The same Receiver is on Wi‑Fi at $wifiSuggestion, which carries audio UDP reliably.',
+                          style: TextStyle(
+                            color: scheme.onTertiaryContainer,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: onSwitchToWifi,
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                        label: Text('Use $wifiSuggestion'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

@@ -20,6 +20,7 @@ import '../../../services/device_identity_store.dart';
 import '../../../services/device_info_service.dart';
 import '../../../services/latency_metrics.dart';
 import '../../../services/native_audio_runtime.dart';
+import '../../../services/ip_address_service.dart';
 import '../../../services/network_info_service.dart';
 import '../../../services/pairing_store.dart';
 import '../../../services/scheduled_streaming_service.dart';
@@ -28,6 +29,7 @@ import '../../../services/udp_audio_service.dart';
 
 class ReceiverController extends GetxController with WidgetsBindingObserver {
   static const _deviceInfoChannel = MethodChannel('sync_audio/device_info');
+  static const _playbackChannel = MethodChannel('sync_audio/audio_track');
   ReceiverController({
     ConnectionService? connectionService,
     AudioStreamService? audioService,
@@ -76,6 +78,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final trustedDeviceNames = <String, String>{}.obs;
   final connectionStatus = ConnectionStatus.disconnected.obs;
   final localIpAddress = 'Not available'.obs;
+  final localIpCandidates = <String>[].obs;
   final localNetworkInfo = 'Checking network…'.obs;
   final deviceInfo = <String, Object>{}.obs;
   final networkMismatchWarning = RxnString();
@@ -91,6 +94,13 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   final lastSentMessage = ''.obs;
   final audioStatus = AudioStreamStatus.idle.obs;
   final isAudioReceiverRunning = false.obs;
+  /// Where the receiver audio is actually routed (e.g. Bluetooth or the
+  /// built-in speaker). Android prefers Bluetooth when one is connected, so
+  /// this tells the user why they may not hear it on the phone speaker.
+  final audioOutputLabel = RxnString();
+
+  /// User-selected output route: `'speaker'` (default) or `'bluetooth'`.
+  final audioOutputRoute = 'speaker'.obs;
 
   Stream<Uint8List> get visualizerPcm =>
       _audioService?.visualizerPcm ?? const Stream.empty();
@@ -134,6 +144,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     unawaited(_loadDeviceName());
     unawaited(_loadDeviceIdentity());
     unawaited(_checkBatteryOptimization());
+    unawaited(_loadAudioOutputRoute());
     if (Get.isRegistered<ScheduledStreamingService>()) {
       Get.find<ScheduledStreamingService>().start();
     }
@@ -177,10 +188,11 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     });
     final audioService = _audioService;
     if (audioService != null) {
-      _diagnosticTimer = Timer.periodic(
-        const Duration(seconds: 1),
-        (_) => unawaited(_refreshDiagnostics(audioService)),
-      );
+      unawaited(_refreshAudioOutput());
+      _diagnosticTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        unawaited(_refreshDiagnostics(audioService));
+        unawaited(_refreshAudioOutput());
+      });
       _audioStatusSubscription = audioService.statusChanges.listen((status) {
         audioStatus.value = status;
         isAudioReceiverRunning.value = audioService.isReceiving;
@@ -207,6 +219,60 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
       'metricsScope': 'receiver',
       ...?rtt == null ? null : <String, Object>{'roundTripTimeMicros': rtt},
     };
+  }
+
+  Future<void> _refreshAudioOutput() async {
+    try {
+      final label = await _playbackChannel.invokeMethod<String>('outputDevice');
+      if (label != null && label.trim().isNotEmpty) {
+        audioOutputLabel.value = label.trim();
+      }
+    } on MissingPluginException {
+      // Only Android reports the active output route.
+      audioOutputLabel.value = null;
+    } catch (_) {
+      // Informational only; never disrupt playback for this.
+    }
+  }
+
+  static const _outputRoutePrefKey = 'receiver_output_route';
+
+  Future<void> _loadAudioOutputRoute() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_outputRoutePrefKey);
+      if (saved == 'speaker' || saved == 'bluetooth') {
+        audioOutputRoute.value = saved!;
+      }
+    } catch (_) {
+      // Default to the phone speaker.
+    }
+    await _applyAudioOutputRoute();
+  }
+
+  Future<void> _applyAudioOutputRoute() async {
+    try {
+      await _playbackChannel.invokeMethod<String>('setOutputRoute', {
+        'route': audioOutputRoute.value,
+      });
+    } on MissingPluginException {
+      // Desktop receivers have no Bluetooth routing to manage.
+    } catch (_) {
+      // Best-effort; playback continues on the platform default.
+    }
+    unawaited(_refreshAudioOutput());
+  }
+
+  Future<void> setAudioOutputRoute(String route) async {
+    if (route != 'speaker' && route != 'bluetooth') return;
+    audioOutputRoute.value = route;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_outputRoutePrefKey, route);
+    } catch (_) {
+      // Preference persistence is best-effort.
+    }
+    await _applyAudioOutputRoute();
   }
 
   Future<void> _loadDeviceName() async {
@@ -365,6 +431,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     _service.setLocalDeviceName(deviceName.value);
     final address = await _service.startServer(port: defaultPort);
     localIpAddress.value = address ?? 'Not available';
+    unawaited(_refreshLocalIpCandidates(prefer: address));
     isServerRunning.value = _service.isServerRunning;
     if (isServerRunning.value) {
       await _sessionRestoreStore.setReceiverServerRunning(true);
@@ -783,6 +850,34 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _refreshLocalIpCandidates({String? prefer}) async {
+    try {
+      final candidates = await IpAddressService().listPrivateIpv4Addresses();
+      final addresses = [for (final c in candidates) c.address];
+      if (prefer != null && prefer.isNotEmpty && prefer != 'Not available') {
+        addresses.remove(prefer);
+        addresses.insert(0, prefer);
+      }
+      localIpCandidates.assignAll(addresses);
+      if (prefer != null && prefer.isNotEmpty && prefer != 'Not available') {
+        localIpAddress.value = prefer;
+      } else if (addresses.isNotEmpty) {
+        localIpAddress.value = addresses.first;
+        // Keep the advertised address in sync when Wi-Fi changes.
+        if (isServerRunning.value) {
+          await _discoveryService.startResponder(
+            deviceId: deviceId.value,
+            deviceName: deviceName.value,
+            controlPort: defaultPort,
+            pairingCode: _pairingTokenValue ?? '',
+          );
+        }
+      }
+    } catch (_) {
+      // Candidate list is best-effort; the primary address is enough.
+    }
+  }
+
   Future<void> refreshLocalNetworkInfo() async {
     if (_networkCheckInProgress) return;
     _networkCheckInProgress = true;
@@ -791,6 +886,7 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
       final previousSignature = _networkSignature;
       _networkSignature = snapshot.signature;
       localNetworkInfo.value = snapshot.display;
+      unawaited(_refreshLocalIpCandidates());
       if (previousSignature != null &&
           previousSignature != 'unavailable' &&
           snapshot.signature != 'unavailable' &&

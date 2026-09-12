@@ -45,12 +45,24 @@ void main() {
     final service = FakeConnectionService();
     Get.put(ReceiverController(connectionService: service));
     await tester.pumpWidget(const GetMaterialApp(home: ReceiverView()));
-    await tester.drag(find.byType(ListView), const Offset(0, -500));
-    await tester.pump();
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, 'Start Receiver'),
+      500,
+      scrollable: scrollable,
+    );
     expect(find.widgetWithText(FilledButton, 'Start Receiver'), findsOneWidget);
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
-    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, 'Stop Receiver'),
+      500,
+      scrollable: scrollable,
+    );
     expect(find.widgetWithText(FilledButton, 'Stop Receiver'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Share with Host'),
+      500,
+      scrollable: scrollable,
+    );
     expect(find.text('Share with Host'), findsOneWidget);
   });
 

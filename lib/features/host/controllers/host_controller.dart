@@ -112,6 +112,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final microphoneMixEnabled = false.obs;
   final _autoPairingInProgress = <String>{};
   final _lastSessionStatuses = <String, ControlConnectionStatus>{};
+  // Remembers every deviceId -> IP seen via discovery, across polling cycles.
+  // The per-cycle discoveredDeviceIds map is pruned each round, so without
+  // this a stale USB-tethering IP (10.x rndis) can never be migrated to the
+  // Wi-Fi IP (192.168.x.x) of the same physical phone.
+  final _knownDeviceAddressesById = <String, String>{};
 
   bool get isAudioStreaming =>
       _nativeHostActive || (_audioService?.isStreaming ?? false);
@@ -1040,6 +1045,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
         'Enter the 8-digit Receiver pairing code, or one code per IP address.',
       );
     }
+    unawaited(_warnIfNotOnLocalSubnet(addresses));
     _service.setPairingToken(pairingText);
     final perReceiverTokens = <String, String>{};
     for (final entry in pairingText.split(',')) {
@@ -1090,6 +1096,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     if (!RegExp(r'^\d{8}$').hasMatch(pairingCode)) {
       return _showError('Enter the 8-digit pairing code for $address.');
     }
+    unawaited(_warnIfNotOnLocalSubnet([address]));
     _service.setPairingToken(null);
     _service.setPairingTokens({address: pairingCode});
     final calibration = await _calibrationStore.read(address) ?? 0;
@@ -1934,9 +1941,28 @@ class HostController extends GetxController with WidgetsBindingObserver {
         discoveredDeviceNames[device.ipAddress] = device.name;
         discoveredDeviceIds[device.ipAddress] = device.id;
         discoveredDeviceLatencyMs[device.ipAddress] = device.latencyMs;
-        final previousAddress = previousAddressesById[device.id];
+        final previousAddress =
+            previousAddressesById[device.id] ??
+            _knownDeviceAddressesById[device.id];
         if (previousAddress != null && previousAddress != device.ipAddress) {
           await _migrateDiscoveredReceiver(previousAddress, device.ipAddress);
+        }
+        _knownDeviceAddressesById[device.id] = device.ipAddress;
+        // A manually added / recently used entry for the SAME phone can be
+        // stuck on its USB-tethering address (10.x rndis) while discovery
+        // now reports its Wi-Fi address (192.168.x.x). Migrate it so the
+        // user does not stay on an audio-broken path forever.
+        final staleManual = configuredReceiverIps
+            .where(
+              (ip) =>
+                  ip != device.ipAddress &&
+                  _isLikelyUsbTetheringAddress(ip) &&
+                  (discoveredDeviceIds[ip] == device.id ||
+                      _pairedDeviceIdForIp(ip) == device.id),
+            )
+            .toList(growable: false);
+        for (final stale in staleManual) {
+          await _migrateDiscoveredReceiver(stale, device.ipAddress);
         }
         if (!configuredReceiverIps.contains(device.ipAddress)) {
           configuredReceiverIps.add(device.ipAddress);
@@ -1991,11 +2017,88 @@ class HostController extends GetxController with WidgetsBindingObserver {
     }
     if (pairingController != null) {
       receiverPairingControllers[newAddress] = pairingController;
+    } else if (configuredReceiverIps.contains(newAddress)) {
+      receiverPairingControllers[newAddress] ??= TextEditingController();
+    }
+    // Carry the pairing code hint over so the migrated card can connect
+    // without retyping when discovery already supplied the current code.
+    final migratedCode = receiverPairingControllers[newAddress]?.text.trim();
+    if (migratedCode == null || migratedCode.isEmpty) {
+      final discovered =
+          discoveredDevices.firstWhereOrNull((d) => d.ipAddress == newAddress);
+      final code = discovered?.pairingCode;
+      if (code != null && RegExp(r'^\d{8}$').hasMatch(code)) {
+        receiverPairingControllers[newAddress]?.text = code;
+      }
     }
     discoveredDeviceNames.remove(previousAddress);
     discoveredDeviceIds.remove(previousAddress);
     discoveredDeviceLatencyMs.remove(previousAddress);
     await _service.disconnectFrom(previousAddress);
+    unawaited(_saveSessionConfiguration());
+  }
+
+  /// Manual one-tap move from a stale (usually USB-tethering 10.x) address
+  /// to the Wi-Fi address of the same physical Receiver.
+  Future<void> switchReceiverIp({
+    required String fromAddress,
+    required String toAddress,
+  }) async {
+    errorMessage.value = null;
+    final parsed = InternetAddress.tryParse(toAddress);
+    if (parsed == null || parsed.type != InternetAddressType.IPv4) {
+      return _showError('Invalid Wi‑Fi address.');
+    }
+    await _service.disconnectFrom(fromAddress);
+    await _migrateDiscoveredReceiver(fromAddress, toAddress);
+    final code = receiverPairingControllers[toAddress]?.text.trim() ?? '';
+    if (RegExp(r'^\d{8}$').hasMatch(code)) {
+      await connectReceiver(toAddress);
+    }
+  }
+
+  /// Returns a Wi-Fi IP suggestion when [address] looks like a USB-tethering
+  /// address but the same device is also known on a 192.168/172.16 address.
+  String? wifiIpSuggestionFor(String address) {
+    if (!_isLikelyUsbTetheringAddress(address)) return null;
+    final deviceId =
+        discoveredDeviceIds[address] ?? _pairedDeviceIdForIp(address);
+    for (final device in discoveredDevices) {
+      if (deviceId != null &&
+          device.id == deviceId &&
+          device.ipAddress != address &&
+          _isLikelyWifiAddress(device.ipAddress)) {
+        return device.ipAddress;
+      }
+    }
+    // Fallback: any visible Wi-Fi device with the same advertised name.
+    final name = discoveredDeviceNames[address];
+    if (name != null && name.isNotEmpty) {
+      for (final device in discoveredDevices) {
+        if (device.name == name &&
+            device.ipAddress != address &&
+            _isLikelyWifiAddress(device.ipAddress)) {
+          return device.ipAddress;
+        }
+      }
+    }
+    return null;
+  }
+
+  bool _isLikelyUsbTetheringAddress(String address) {
+    // USB RNDIS / emulator user-network addresses rarely carry audio UDP
+    // correctly, while the same phone is reachable on Wi-Fi.
+    return address.startsWith('10.') || address.startsWith('192.168.137.');
+  }
+
+  bool _isLikelyWifiAddress(String address) {
+    return address.startsWith('192.168.') || address.startsWith('172.');
+  }
+
+  String? _pairedDeviceIdForIp(String address) {
+    return pairedDevices
+        .firstWhereOrNull((device) => device.ipAddress == address)
+        ?.deviceId;
   }
 
   void _autoConnectDiscoveredReceiver(AudioDevice device) {
@@ -2028,6 +2131,43 @@ class HostController extends GetxController with WidgetsBindingObserver {
           .toSet();
     } catch (_) {
       return const <String>{};
+    }
+  }
+
+  /// Warns immediately when the Receiver IP is on a different /24 than every
+  /// local interface. This is the #1 real-device failure: the Receiver shows
+  /// a mobile-data 10.x address while the Windows Host is on 192.168.x.x.
+  Future<void> _warnIfNotOnLocalSubnet(List<String> addresses) async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      final localSubnets = <String>{};
+      for (final network in interfaces) {
+        for (final address in network.addresses) {
+          final parts = address.address.split('.');
+          if (parts.length == 4) localSubnets.add(parts.sublist(0, 3).join('.'));
+        }
+      }
+      if (localSubnets.isEmpty) return;
+      final offSubnet = addresses.where((address) {
+        final parts = address.split('.');
+        if (parts.length != 4) return false;
+        return !localSubnets.contains(parts.sublist(0, 3).join('.'));
+      }).toList(growable: false);
+      if (offSubnet.isEmpty) {
+        // Only clear our own subnet warning, not a "network changed" banner
+        // from refreshLocalNetworkInfo.
+        if (networkMismatchWarning.value?.contains('same Wi‑Fi') == true) {
+          networkMismatchWarning.value = null;
+        }
+        return;
+      }
+      networkMismatchWarning.value =
+          'Receiver ${offSubnet.join(', ')} is not on your Wi‑Fi subnet (${localSubnets.join(', ')}). On the Receiver turn off mobile data/VPN, connect to the same Wi‑Fi as this Host, then use its 192.168.x.x address.';
+    } catch (_) {
+      // Best-effort only.
     }
   }
 

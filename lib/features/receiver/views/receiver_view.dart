@@ -129,6 +129,9 @@ class ReceiverView extends GetView<ReceiverController> {
                     ? _AudioReceivingCard(
                         audioStatus: controller.audioStatus.value,
                         visualizerStream: controller.visualizerPcm,
+                        outputLabel: controller.audioOutputLabel.value,
+                        outputRoute: controller.audioOutputRoute.value,
+                        onOutputRouteChanged: controller.setAudioOutputRoute,
                       )
                     : const SizedBox.shrink(),
               ),
@@ -193,9 +196,13 @@ class ReceiverView extends GetView<ReceiverController> {
                 () => _ConnectionInfoCard(
                   deviceName: controller.deviceName.value,
                   ipAddress: controller.localIpAddress.value,
+                  ipCandidates: controller.localIpCandidates.toList(
+                    growable: false,
+                  ),
                   pairingCode: controller.pairingToken.value,
                   deviceId: controller.deviceId.value,
                   expiresAt: controller.pairingTokenExpiresAt.value,
+                  networkInfo: controller.localNetworkInfo.value,
                 ),
               ),
               const SizedBox(height: 12),
@@ -275,16 +282,20 @@ class _ConnectionInfoCard extends StatelessWidget {
   const _ConnectionInfoCard({
     required this.deviceName,
     required this.ipAddress,
+    required this.ipCandidates,
     required this.pairingCode,
     required this.deviceId,
     required this.expiresAt,
+    required this.networkInfo,
   });
 
   final String deviceName;
   final String ipAddress;
+  final List<String> ipCandidates;
   final String pairingCode;
   final String deviceId;
   final DateTime? expiresAt;
+  final String networkInfo;
 
   String get _connectionInfo =>
       '$ipAddress:5050:$pairingCode:${Uri.encodeComponent(deviceName)}:$deviceId';
@@ -346,10 +357,39 @@ class _ConnectionInfoCard extends StatelessWidget {
               const SizedBox(height: 20),
             ],
             _CopyableRow(
-              label: 'IP Address',
+              label: 'IP Address (use the Wi‑Fi one)',
               value: ipAddress,
               icon: Icons.wifi_rounded,
             ),
+            if (ipCandidates.length > 1) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Also on this device: ${ipCandidates.where((ip) => ip != ipAddress).join(', ')}',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Host + Receiver must use the same Wi‑Fi. If the Host cannot connect, turn off mobile data/VPN on this phone and pick the 192.168.x.x address. ($networkInfo)',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Both devices must be on the same Wi‑Fi (mobile data/VPN off).',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             _CopyableRow(
               label: 'Pairing Code',
@@ -515,10 +555,16 @@ class _AudioReceivingCard extends StatelessWidget {
   const _AudioReceivingCard({
     required this.audioStatus,
     required this.visualizerStream,
+    this.outputLabel,
+    this.outputRoute = 'speaker',
+    this.onOutputRouteChanged,
   });
 
   final AudioStreamStatus audioStatus;
   final Stream<Uint8List> visualizerStream;
+  final String? outputLabel;
+  final String outputRoute;
+  final ValueChanged<String>? onOutputRouteChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -586,6 +632,57 @@ class _AudioReceivingCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       const Text('Audio is playing in sync from the Host.'),
+                      if (isReceiving && outputLabel != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              outputLabel!.startsWith('Bluetooth')
+                                  ? Icons.bluetooth_audio_rounded
+                                  : outputLabel!.startsWith('Wired')
+                                  ? Icons.headphones_rounded
+                                  : Icons.speaker_rounded,
+                              size: 16,
+                              color: color,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Playing through $outputLabel',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: color),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (isReceiving && onOutputRouteChanged != null) ...[
+                        const SizedBox(height: 10),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment<String>(
+                              value: 'speaker',
+                              icon: Icon(Icons.speaker_rounded, size: 16),
+                              label: Text('Phone speaker'),
+                            ),
+                            ButtonSegment<String>(
+                              value: 'bluetooth',
+                              icon: Icon(
+                                Icons.bluetooth_audio_rounded,
+                                size: 16,
+                              ),
+                              label: Text('Bluetooth'),
+                            ),
+                          ],
+                          selected: {outputRoute},
+                          showSelectedIcon: false,
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onSelectionChanged: (selection) =>
+                              onOutputRouteChanged?.call(selection.first),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -42,7 +42,8 @@ static flutter::EncodableList ListWaveOutDevices(UINT selected_device) {
   return devices;
 }
 
-AudioPlugin::AudioPlugin(flutter::BinaryMessenger* messenger) {
+AudioPlugin::AudioPlugin(flutter::BinaryMessenger* messenger, HWND host_window)
+    : host_window_(host_window) {
   SetupCaptureChannel(messenger);
   SetupPlaybackChannel(messenger);
   SetupDeviceInfoChannel(messenger);
@@ -241,7 +242,25 @@ void AudioPlugin::StopCapture(
   if (capture_event_) SetEvent(capture_event_);
   if (capture_thread_.joinable()) capture_thread_.join();
   ReleaseWasapiLoopback();
+  {
+    std::lock_guard<std::mutex> lock(capture_queue_mutex_);
+    capture_queue_.clear();
+    capture_message_posted_ = false;
+  }
   if (result) result->Success();
+}
+
+void AudioPlugin::DrainPendingCapture() {
+  std::vector<std::vector<uint8_t>> pending;
+  {
+    std::lock_guard<std::mutex> lock(capture_queue_mutex_);
+    pending.swap(capture_queue_);
+    capture_message_posted_ = false;
+  }
+  if (!capture_sink_) return;
+  for (auto& pcm : pending) {
+    capture_sink_->Success(flutter::EncodableValue(pcm));
+  }
 }
 
 bool AudioPlugin::StartWasapiLoopback(std::string* error) {
@@ -351,7 +370,21 @@ void AudioPlugin::CaptureLoop() {
           pcm[frame * 2 + 1] = static_cast<uint8_t>((sample >> 8) & 0xff);
         }
       }
-      if (capture_sink_ && !pcm.empty()) capture_sink_->Success(flutter::EncodableValue(pcm));
+      if (!pcm.empty()) {
+        // The event sink must be invoked on the platform thread, so hand the
+        // buffer to the window thread instead of calling it from here.
+        {
+          std::lock_guard<std::mutex> lock(capture_queue_mutex_);
+          capture_queue_.push_back(std::move(pcm));
+        }
+        bool expected = false;
+        if (host_window_ &&
+            capture_message_posted_.compare_exchange_strong(expected, true)) {
+          if (!PostMessage(host_window_, kCaptureDataMessage, 0, 0)) {
+            capture_message_posted_ = false;
+          }
+        }
+      }
       capture_reader_->ReleaseBuffer(frames);
     }
   }

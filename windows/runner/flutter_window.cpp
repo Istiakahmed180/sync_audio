@@ -26,7 +26,7 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
 
   audio_plugin_ = std::make_unique<AudioPlugin>(
-      flutter_controller_->engine()->messenger());
+      flutter_controller_->engine()->messenger(), GetHandle());
 
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
@@ -62,6 +62,13 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     if (result) {
       return *result;
     }
+  }
+
+  if (message == AudioPlugin::kCaptureDataMessage) {
+    if (audio_plugin_) {
+      audio_plugin_->DrainPendingCapture();
+    }
+    return 0;
   }
 
   switch (message) {

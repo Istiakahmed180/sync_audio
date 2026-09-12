@@ -191,7 +191,7 @@ class NetworkPreflightService {
           label: 'UDP audio port',
           state: PreflightCheckState.failed,
           detail:
-              'No UDP response from port $port. Start the Receiver audio service or check Wi‑Fi isolation/firewall.',
+              'No UDP response from port $port. 1) On the Receiver keep Start running (audio service on). 2) Press Connect with the current pairing code first. 3) Use the Wi‑Fi IP (192.168.x.x), not a USB-tethering 10.x address. 4) Allow UDP in Windows Firewall / disable AP isolation.',
         );
       }
       return PreflightCheck(
