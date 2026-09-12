@@ -81,3 +81,31 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// `integration_test` is a dev dependency, but running integration tests
+// rewrites the generated Android plugin registrant to include it. Flutter only
+// filters dev dependencies when it regenerates the file, so a later release
+// build can reuse the stale registrant and fail to compile (the debug-only
+// plugin is not on the release classpath). Strip it before release compilation.
+tasks.configureEach {
+    if (name.startsWith("compile") && name.contains("Release") &&
+        name.endsWith("JavaWithJavac")
+    ) {
+        doFirst {
+            val registrant = file(
+                "src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+            )
+            if (registrant.exists()) {
+                val lines = registrant.readLines()
+                if (lines.any { it.contains("IntegrationTestPlugin") }) {
+                    registrant.writeText(
+                        lines.filterNot {
+                            it.contains("integration_test") ||
+                                it.contains("IntegrationTestPlugin")
+                        }.joinToString("\n")
+                    )
+                }
+            }
+        }
+    }
+}

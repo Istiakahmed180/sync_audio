@@ -573,7 +573,12 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
           if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) {
             await stopAudioReceiver();
           }
-          final token = _pairingTokenValue;
+          // Derive the audio key from the token negotiated for this Host (the
+          // same one used by the control channel). Using the receiver's own
+          // current code would break audio whenever a trusted Host reconnects
+          // with a code that has since rotated.
+          final token =
+              _service.negotiatedTokenFor(event.sourceId) ?? _pairingTokenValue;
           if (token != null) {
             await _audioService?.setSessionSecurity(
               pairingToken: token,

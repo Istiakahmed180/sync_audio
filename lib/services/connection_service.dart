@@ -103,6 +103,11 @@ class TcpConnectionService implements ConnectionService {
   final Map<String, Timer> _pingTimers = <String, Timer>{};
   final Map<String, EncryptedControlChannel> _secureChannels =
       <String, EncryptedControlChannel>{};
+  // The token actually negotiated for a peer during the HELLO handshake. A
+  // trusted peer may connect with an older code, so the audio session key must
+  // use this negotiated token (not the receiver's current pairing code) to
+  // stay identical to the control-channel key.
+  final Map<String, String> _negotiatedTokens = <String, String>{};
   final Map<int, _PingRequest> _pendingPings = <int, _PingRequest>{};
   final Stopwatch _controlClock = Stopwatch()..start();
   final Map<String, Future<void>> _lineQueues = <String, Future<void>>{};
@@ -566,6 +571,10 @@ class TcpConnectionService implements ConnectionService {
             'receiver',
           );
         }
+        final negotiatedToken = suppliedToken ?? _pairingToken;
+        if (negotiatedToken != null) {
+          _negotiatedTokens[sourceId] = negotiatedToken;
+        }
       case ControlCommandType.ping:
         final receivedAt = _controlClock.elapsedMicroseconds;
         final sentAt = _controlClock.elapsedMicroseconds;
@@ -674,6 +683,11 @@ class TcpConnectionService implements ConnectionService {
       ..addAll(addresses.map(_normalizePeerAddress));
   }
 
+  /// The token negotiated with [receiverId] during the HELLO handshake, or
+  /// null when the peer connected before pairing or without a token.
+  String? negotiatedTokenFor(String receiverId) =>
+      _negotiatedTokens[receiverId];
+
   void revokeTrustedDeviceAddress(String address) {
     final normalized = _normalizePeerAddress(address);
     _trustedDeviceAddresses.remove(normalized);
@@ -776,6 +790,7 @@ class TcpConnectionService implements ConnectionService {
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id)?.destroy();
     _secureChannels.remove(id);
+    _negotiatedTokens.remove(id);
     _pingTimers.remove(id)?.cancel();
   }
 
@@ -893,6 +908,18 @@ extension ConnectionServiceSecurity on ConnectionService {
     if (this is TcpConnectionService) {
       (this as TcpConnectionService).revokeTrustedDeviceAddress(address);
     }
+  }
+}
+
+extension ConnectionServiceNegotiatedToken on ConnectionService {
+  /// Token negotiated for [receiverId] during HELLO, used to derive the audio
+  /// session key so it matches the control channel even when a trusted peer
+  /// reconnects with an older pairing code.
+  String? negotiatedTokenFor(String receiverId) {
+    if (this is TcpConnectionService) {
+      return (this as TcpConnectionService).negotiatedTokenFor(receiverId);
+    }
+    return null;
   }
 }
 
