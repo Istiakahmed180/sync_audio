@@ -22,7 +22,14 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#AppExeName}
-SetupIconFile=..\windows\runner\resources\app_icon.ico
+; Keep the icon next to this script and resolve it from the script's own
+; directory so the compiler always finds it, no matter which directory the
+; build is invoked from.
+SetupIconFile={#SourcePath}\app_icon.ico
+VersionInfoCompany={#AppPublisher}
+VersionInfoDescription={#AppName} Setup
+VersionInfoProductName={#AppName}
+VersionInfoVersion={#AppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
