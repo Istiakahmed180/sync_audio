@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
 import '../models/audio_device.dart';
@@ -34,6 +34,12 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
   static const _mdnsAddress = '224.0.0.251';
   static const _mdnsPort = 5353;
   static const _mdnsTtlSeconds = 120;
+  // Android's Wi-Fi power saving drops incoming broadcast/multicast datagrams
+  // unless a WifiManager.MulticastLock is held. The native discovery channel
+  // toggles that lock; the reference count keeps it held for the whole time
+  // discovery or the responder is active. Other platforms are a no-op.
+  static const _discoveryChannel = MethodChannel('sync_audio/discovery');
+  static int _multicastRefCount = 0;
   final IpAddressService _ipAddressService;
   RawDatagramSocket? _responder;
   StreamSubscription<RawSocketEvent>? _responderSubscription;
@@ -44,10 +50,42 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
   int? _controlPort;
   String? _responderAddress;
 
+  static Future<void> _acquireMulticastLock() async {
+    if (!Platform.isAndroid) return;
+    _multicastRefCount++;
+    if (_multicastRefCount != 1) return;
+    try {
+      await _discoveryChannel.invokeMethod<void>('acquireMulticastLock');
+    } catch (_) {
+      // Best-effort: platforms that do not need the lock still discover.
+    }
+  }
+
+  static Future<void> _releaseMulticastLock() async {
+    if (!Platform.isAndroid) return;
+    if (_multicastRefCount == 0) return;
+    _multicastRefCount--;
+    if (_multicastRefCount != 0) return;
+    try {
+      await _discoveryChannel.invokeMethod<void>('releaseMulticastLock');
+    } catch (_) {
+      // Best-effort cleanup.
+    }
+  }
+
   @override
   Future<List<AudioDevice>> discover({
     Duration timeout = const Duration(milliseconds: 1800),
   }) async {
+    await _acquireMulticastLock();
+    try {
+      return await _discover(timeout: timeout);
+    } finally {
+      await _releaseMulticastLock();
+    }
+  }
+
+  Future<List<AudioDevice>> _discover({required Duration timeout}) async {
     final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     socket.broadcastEnabled = true;
     final devices = <String, AudioDevice>{};
@@ -237,6 +275,9 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
       discoveryPort,
       reuseAddress: true,
     );
+    // Hold the Wi-Fi multicast lock so the Host's broadcast request is actually
+    // delivered to this socket instead of being filtered by Wi-Fi power save.
+    await _acquireMulticastLock();
     // Resolve the Receiver address before starting the responder. The
     // datagram's address below is the request sender (the Host), not the
     // local Receiver address.
@@ -480,6 +521,7 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     _responder = null;
     _responderAddress = null;
     await _stopMdnsResponder();
+    await _releaseMulticastLock();
   }
 
   Future<void> _stopMdnsResponder() async {

@@ -146,6 +146,14 @@ class DesktopTrayService with WindowListener, TrayListener {
   }
 
   @override
+  void onTrayIconRightMouseDown() {
+    // tray_manager does not pop the context menu by itself; on Windows a
+    // right-click only fires this callback, so the menu (including Quit) never
+    // appeared until we explicitly asked for it.
+    unawaited(trayManager.popUpContextMenu());
+  }
+
+  @override
   void onTrayMenuItemClick(MenuItem menuItem) {
     if (menuItem.key == 'show_window') {
       _showWindow();

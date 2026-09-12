@@ -48,6 +48,7 @@ class MainActivity : FlutterActivity() {
     private val pairingChannelName = "sync_audio/pairing"
     private val nativeAudioChannelName = "sync_audio/native_audio"
     private val audioOutputChannelName = "sync_audio/audio_output"
+    private val discoveryChannelName = "sync_audio/discovery"
     private val projectionRequestCode = 7002
     private val microphonePermissionRequestCode = 7003
     private val notificationPermissionRequestCode = 7004
@@ -70,6 +71,12 @@ class MainActivity : FlutterActivity() {
     // The Receiver is used as a speaker, so default to the built-in speaker
     // instead of silently routing to a connected Bluetooth device.
     private var preferPhoneSpeaker = true
+    // Android's Wi-Fi power saving filters incoming broadcast/multicast packets
+    // unless a MulticastLock is held. Without this the LAN discovery responder
+    // never sees the Host's SYNC_AUDIO_DISCOVER broadcast, so the Host cannot
+    // find the Receiver. Debug builds often worked because the Wi-Fi radio was
+    // kept fully awake by the debugger/foreground session.
+    private var multicastLock: WifiManager.MulticastLock? = null
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             restoreOutputAfterDeviceChange(addedDevices.toList())
@@ -329,6 +336,22 @@ class MainActivity : FlutterActivity() {
                         } else {
                             result.success(currentWifiSsid())
                         }
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, discoveryChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "acquireMulticastLock" -> {
+                        setMulticastLock(true)
+                        result.success(null)
+                    }
+
+                    "releaseMulticastLock" -> {
+                        setMulticastLock(false)
+                        result.success(null)
                     }
 
                     else -> result.notImplemented()
@@ -1224,11 +1247,30 @@ class MainActivity : FlutterActivity() {
         else -> 120_000L
     }
 
+    private fun setMulticastLock(enabled: Boolean) {
+        try {
+            val wifiManager = getSystemService(WIFI_SERVICE) as? WifiManager ?: return
+            if (enabled) {
+                val lock = multicastLock
+                    ?: wifiManager.createMulticastLock("sync_audio_discovery").also {
+                        it.setReferenceCounted(false)
+                        multicastLock = it
+                    }
+                if (!lock.isHeld) lock.acquire()
+            } else {
+                multicastLock?.let { if (it.isHeld) it.release() }
+            }
+        } catch (error: Exception) {
+            Log.w("SyncAudioDiscovery", "Could not change multicast lock", error)
+        }
+    }
+
     override fun onDestroy() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             getSystemService(AudioManager::class.java)
                 .unregisterAudioDeviceCallback(audioDeviceCallback)
         }
+        setMulticastLock(false)
         nativeSender?.stop()
         pendingNativeSender?.stop()
         nativeReceiver?.stop()

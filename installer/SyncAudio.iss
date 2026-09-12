@@ -48,12 +48,18 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 ; Allow LAN control + audio traffic. Without these, Windows Firewall silently
 ; drops UDP audio (port 5051) and discovery (port 5054) on Ethernet/Wi-Fi,
 ; which looks like "TCP reachable but no audio / cannot connect".
+; Discovery replies are sent back to the Host's ephemeral source port, not to
+; 5054, so the program needs a blanket inbound UDP allow as well, otherwise
+; release installs cannot find Receivers while debug builds (which got an
+; "allow all" firewall prompt) can.
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""SyncMesh Audio LAN Discovery"" dir=in action=allow protocol=UDP program=""{app}\{#AppExeName}"""; Flags: runhidden
 Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""SyncMesh Audio TCP Control"" dir=in action=allow protocol=TCP localport=5050 program=""{app}\{#AppExeName}"""; Flags: runhidden
 Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""SyncMesh Audio UDP Audio"" dir=in action=allow protocol=UDP localport=5051 program=""{app}\{#AppExeName}"""; Flags: runhidden
 Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""SyncMesh Audio UDP Discovery"" dir=in action=allow protocol=UDP localport=5054 program=""{app}\{#AppExeName}"""; Flags: runhidden
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""SyncMesh Audio LAN Discovery"""; Flags: runhidden
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""SyncMesh Audio TCP Control"""; Flags: runhidden
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""SyncMesh Audio UDP Audio"""; Flags: runhidden
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""SyncMesh Audio UDP Discovery"""; Flags: runhidden
