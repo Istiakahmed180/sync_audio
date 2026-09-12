@@ -24,6 +24,15 @@ class DesktopTrayService with WindowListener, TrayListener {
   static Future<void> initialize() async {
     if (!isSupported) return;
     await windowManager.ensureInitialized();
+    // Initializes the native taskbar COM object used by setSkipTaskbar. The
+    // window_manager plugin crashes (null taskbar pointer) if hidden/show or
+    // skip-taskbar APIs run before this. Some desktops (kiosk shells) have no
+    // usable taskbar, so this must stay best-effort.
+    try {
+      await windowManager.waitUntilReadyToShow();
+    } catch (_) {
+      // Tray support is best-effort; the window can still hide without it.
+    }
     instance._registerListeners();
     await instance._configureTray();
     await windowManager.setPreventClose(true);
@@ -90,7 +99,14 @@ class DesktopTrayService with WindowListener, TrayListener {
 
   String? _findIconPath() {
     final candidates = <String>[
+      if (Platform.isWindows)
+        // A packaged Windows build ships Flutter assets under
+        // <exe dir>/data/flutter_assets, not at the working directory. Use a
+        // real .ico because the tray plugin loads it as a Windows icon.
+        ..._bundledAssetCandidates('assets/branding/sync_audio_app_icon.ico'),
       if (Platform.isWindows) 'windows/runner/resources/app_icon.ico',
+      if (Platform.isWindows)
+        ..._bundledAssetCandidates('assets/branding/sync_audio_app_icon.png'),
       'assets/branding/sync_audio_app_icon.png',
       if (Platform.isMacOS)
         'macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png',
@@ -103,13 +119,25 @@ class DesktopTrayService with WindowListener, TrayListener {
     return null;
   }
 
+  Iterable<String> _bundledAssetCandidates(String assetPath) sync* {
+    try {
+      final executableDir = File(Platform.resolvedExecutable).parent.path;
+      final separator = Platform.pathSeparator;
+      yield '$executableDir$separator' 'data$separator'
+          'flutter_assets$separator'
+          '${assetPath.replaceAll('/', separator)}';
+    } catch (_) {
+      // Fall back to the working-directory candidates below.
+    }
+  }
+
   @override
   void onWindowClose() {
     if (_quitting) return;
     // Hide instead of destroying the Flutter engine. Active TCP/UDP audio
     // streams therefore continue while the app is in the tray.
-    windowManager.hide();
-    windowManager.setSkipTaskbar(true);
+    unawaited(windowManager.hide());
+    unawaited(windowManager.setSkipTaskbar(true));
   }
 
   @override
