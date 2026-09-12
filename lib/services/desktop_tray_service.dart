@@ -13,6 +13,7 @@ class DesktopTrayService with WindowListener, TrayListener {
 
   static final DesktopTrayService instance = DesktopTrayService._();
   bool _quitting = false;
+  bool _iconApplied = false;
   Future<void> Function(String action)? _actionHandler;
   bool _isStreaming = false;
   bool _isMuted = false;
@@ -48,6 +49,15 @@ class DesktopTrayService with WindowListener, TrayListener {
     required int receiverCount,
   }) async {
     if (!isSupported) return;
+    // The host pushes its state on every session/ping update (about every two
+    // seconds). Rebuilding the tray icon and context menu that often made the
+    // open menu flicker and look like it was toggling on/off, so only touch
+    // the tray when something actually changed.
+    if (instance._isStreaming == isStreaming &&
+        instance._isMuted == isMuted &&
+        instance._receiverCount == receiverCount) {
+      return;
+    }
     instance
       .._isStreaming = isStreaming
       .._isMuted = isMuted
@@ -62,9 +72,12 @@ class DesktopTrayService with WindowListener, TrayListener {
 
   Future<void> _configureTray() async {
     try {
-      final iconPath = _findIconPath();
-      if (iconPath != null) {
-        await trayManager.setIcon(iconPath);
+      if (!_iconApplied) {
+        final iconPath = _findIconPath();
+        if (iconPath != null) {
+          await trayManager.setIcon(iconPath);
+          _iconApplied = true;
+        }
       }
       await trayManager.setToolTip('SyncMesh Audio');
       await trayManager.setContextMenu(
@@ -150,7 +163,11 @@ class DesktopTrayService with WindowListener, TrayListener {
     // tray_manager does not pop the context menu by itself; on Windows a
     // right-click only fires this callback, so the menu (including Quit) never
     // appeared until we explicitly asked for it.
-    unawaited(trayManager.popUpContextMenu());
+    // `bringAppToFront` is deprecated but required on Windows: the native
+    // TrackPopupMenu needs a foreground owner window, otherwise the menu stays
+    // open and never dismisses when the user clicks elsewhere.
+    // ignore: deprecated_member_use
+    unawaited(trayManager.popUpContextMenu(bringAppToFront: true));
   }
 
   @override
