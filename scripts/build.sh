@@ -97,6 +97,12 @@ if [ "$BUILD_APP" = true ]; then
 
   mkdir -p "$OUTPUT_DIR"
 
+  # Kill stale Java/Gradle processes that can lock build artifacts and cause OOM.
+  if [ "$BUILD_TARGET" = "android" ]; then
+    taskkill //F //IM java.exe 2>/dev/null || true
+    sleep 2
+  fi
+
   flutter clean
   flutter pub get
 
