@@ -7,9 +7,10 @@ import 'audio_capture_service.dart';
 class IosAudioCaptureService implements AudioCaptureService {
   static const _controlChannel = MethodChannel('sync_audio/ios_audio_capture');
   static const _streamChannel = EventChannel('sync_audio/ios_audio_stream');
+  Stream<Uint8List>? _pcmChunksCached;
 
   @override
-  Stream<Uint8List> get pcmChunks => _streamChannel
+  Stream<Uint8List> get pcmChunks => _pcmChunksCached ??= _streamChannel
       .receiveBroadcastStream()
       .map((chunk) {
         try {

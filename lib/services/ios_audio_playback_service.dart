@@ -26,7 +26,9 @@ class IosAudioPlaybackService implements AudioPlaybackService {
   @override
   Future<void> stop() async {
     if (!_isPlaying) return;
-    await _channel.invokeMethod<void>('stop');
     _isPlaying = false;
+    try {
+      await _channel.invokeMethod<void>('stop');
+    } catch (_) {}
   }
 }

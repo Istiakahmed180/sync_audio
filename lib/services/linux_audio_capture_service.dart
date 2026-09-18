@@ -7,9 +7,10 @@ class LinuxAudioCaptureService implements AudioCaptureService {
     'sync_audio/linux_audio_capture',
   );
   static const _streamChannel = EventChannel('sync_audio/linux_audio_stream');
+  Stream<Uint8List>? _pcmChunksCached;
 
   @override
-  Stream<Uint8List> get pcmChunks => _streamChannel
+  Stream<Uint8List> get pcmChunks => _pcmChunksCached ??= _streamChannel
       .receiveBroadcastStream()
       .map((chunk) {
         try {
