@@ -125,6 +125,12 @@ class FakeConnectionService implements ConnectionService {
   @override
   void setPairingTokens(Map<String, String> tokens) {}
 
+  @override
+  Future<String?> ensureServerRunning({required int port}) async {
+    if (_serverRunning) return null;
+    return startServer(port: port);
+  }
+
   void emitMessage(String message) => _messages.add(message);
 
   Future<void> dispose() async {

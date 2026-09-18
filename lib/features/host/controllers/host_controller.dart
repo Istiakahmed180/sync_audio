@@ -1240,6 +1240,18 @@ class HostController extends GetxController with WidgetsBindingObserver {
     _nativeHostActive = false;
     final audioService = _audioService;
     final requestedAddresses = _receiverAddresses();
+    // Heal the UI session list from the authoritative connection state
+    // before filtering. After a Stop/disconnect/reconnect cycle this list
+    // can be empty or stale while the control socket is actually connected;
+    // without this the filter below finds nothing, PREPARE/START are never
+    // sent, and the reconnected receiver stays silent. Reentrancy is safe:
+    // _updateSession -> _autoStart is guarded by _startingSystemAudio.
+    for (final session in _service.controlSessions) {
+      if (session.port == AppConstants.audioPort) continue;
+      if (receiverSessionFor(session.ipAddress) == null) {
+        _updateSession(session);
+      }
+    }
     final port = int.tryParse(audioPortController.text.trim());
     if (audioService == null) {
       return _showError('Audio service is unavailable.');
@@ -1744,7 +1756,11 @@ class HostController extends GetxController with WidgetsBindingObserver {
     receiverCount.value = 0;
     _streamingReceiverAddresses.clear();
     _readyReceiverStreamAddresses.clear();
-    receiverSessions.clear();
+    // Do NOT clear receiverSessions here. That list reflects CONNECTION
+    // state, not stream state. Clearing it orphans _findControlSession and
+    // the connected-filter in start, so after Stop (or a disconnect /
+    // reconnect) pressing Start finds no receiver, PREPARE/START are never
+    // sent, and the reconnected receiver stays silent.
     unawaited(_updateMediaNotification());
     unawaited(_updateDesktopTray());
   }

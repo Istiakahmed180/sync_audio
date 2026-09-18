@@ -55,6 +55,8 @@ abstract class ConnectionService {
   void setPairingToken(String? token);
 
   void setPairingTokens(Map<String, String> tokens);
+
+  Future<String?> ensureServerRunning({required int port});
 }
 
 extension ConnectionServiceDeviceName on ConnectionService {
@@ -126,6 +128,13 @@ class TcpConnectionService implements ConnectionService {
   ServerSocket? _server;
   ConnectionStatus _status = ConnectionStatus.disconnected;
   bool _serverRunning = false;
+  // Last inbound control line per socket (both Host and Receiver sides).
+  // Used to detect half-open TCP connections where no FIN arrives (Doze,
+  // router NAT timeout, Wi-Fi sleep). Without this a dead peer looks
+  // "connected" forever and neither side reconnects.
+  final Map<String, int> _lastRxMicros = <String, int>{};
+  final Map<String, int> _lastPongMicros = <String, int>{};
+  Timer? _staleConnectionTimer;
 
   @override
   Stream<String> get receivedMessages => _receivedMessagesController.stream;
@@ -171,6 +180,7 @@ class TcpConnectionService implements ConnectionService {
         onError: _handleServerError,
         onDone: _handleServerDone,
       );
+      _startStaleConnectionTimer();
       _setStatus(ConnectionStatus.waiting);
       return await _ipAddressService.findPrivateIpv4Address();
     } on SocketException catch (error) {
@@ -201,7 +211,11 @@ class TcpConnectionService implements ConnectionService {
       oldSocket.destroy();
     }
     _sockets[id] = socket;
-    if (desired) _establishedConnections.add(id);
+    _lastRxMicros[id] = _controlClock.elapsedMicroseconds;
+    if (desired) {
+      _establishedConnections.add(id);
+      _lastPongMicros[id] = _controlClock.elapsedMicroseconds;
+    }
     final existing = _sessions[id];
     final targetIpAddress = existing?.ipAddress ?? socket.remoteAddress.address;
     final targetPort = existing?.port ?? socket.remotePort;
@@ -259,6 +273,7 @@ class TcpConnectionService implements ConnectionService {
     _establishedConnections.clear();
     _cancelReconnectTimers();
     _cancelPingTimers();
+    _stopStaleConnectionTimer();
     await _closeAllSockets();
     await _server?.close();
     _server = null;
@@ -292,6 +307,7 @@ class TcpConnectionService implements ConnectionService {
         receiver.copyWith(controlStatus: ControlConnectionStatus.connecting),
       );
     }
+    _startStaleConnectionTimer();
     await Future.wait(
       receivers.map((receiver) => _connectTarget(receiver.id)),
       eagerError: false,
@@ -401,6 +417,7 @@ class TcpConnectionService implements ConnectionService {
     _establishedConnections.clear();
     _cancelReconnectTimers();
     _cancelPingTimers();
+    _stopStaleConnectionTimer();
     await _closeAllSockets();
     for (final session in _sessions.values) {
       _emitSession(
@@ -489,6 +506,7 @@ class TcpConnectionService implements ConnectionService {
   }
 
   Future<void> _handleLine(String sourceId, String line) async {
+    _lastRxMicros[sourceId] = _controlClock.elapsedMicroseconds;
     if (line.startsWith('ENC:')) {
       final channel = _secureChannels[sourceId];
       if (channel == null) {
@@ -705,6 +723,7 @@ class TcpConnectionService implements ConnectionService {
   }
 
   void _handlePong(String sourceId, ControlCommand command) {
+    if (command.arguments.length < 3) return;
     final requestId = int.tryParse(command.arguments[0]);
     final receiverReceived = int.tryParse(command.arguments[1]);
     final receiverSent = int.tryParse(command.arguments[2]);
@@ -712,6 +731,7 @@ class TcpConnectionService implements ConnectionService {
     if (request == null || receiverReceived == null || receiverSent == null) {
       return;
     }
+    _lastPongMicros[sourceId] = _controlClock.elapsedMicroseconds;
     final hostReceived = _controlClock.elapsedMicroseconds;
     final session = _sessions[sourceId];
     if (session == null) return;
@@ -740,7 +760,17 @@ class TcpConnectionService implements ConnectionService {
   }
 
   void _sendPing(String id) {
-    if (!_sockets.containsKey(id)) return;
+    final socket = _sockets[id];
+    if (socket == null) return;
+    // Dead peer with no TCP FIN looks "connected" forever. If no PONG
+    // arrived for a while, tear the socket down so the normal
+    // reconnect path (_handleSocketClosed -> _scheduleReconnect) runs.
+    final lastPong = _lastPongMicros[id];
+    if (lastPong != null &&
+        _controlClock.elapsedMicroseconds - lastPong > 12000000) {
+      unawaited(_handleSocketClosed(id, socket));
+      return;
+    }
     final requestId = _pingSequence++;
     final sentAt = _controlClock.elapsedMicroseconds;
     _pendingPings[requestId] = _PingRequest(
@@ -764,6 +794,9 @@ class TcpConnectionService implements ConnectionService {
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id);
     _writeQueues.remove(id);
+    _lastRxMicros.remove(id);
+    _lastPongMicros.remove(id);
+    _pingTimers.remove(id)?.cancel();
     socket.destroy();
     final session = _sessions[id];
     if (session != null) {
@@ -787,6 +820,8 @@ class TcpConnectionService implements ConnectionService {
   Future<void> _closeSocket(String id) async {
     _lineQueues.remove(id);
     _writeQueues.remove(id);
+    _lastRxMicros.remove(id);
+    _lastPongMicros.remove(id);
     await _socketSubscriptions.remove(id)?.cancel();
     _sockets.remove(id)?.destroy();
     _secureChannels.remove(id);
@@ -821,8 +856,52 @@ class TcpConnectionService implements ConnectionService {
 
   void _handleServerDone() {
     _serverRunning = false;
+    _server = null;
     if (_status != ConnectionStatus.stopped) {
       _setStatus(ConnectionStatus.stopped);
+    }
+  }
+
+  /// Re-binds the receiver server after Wi-Fi drop / Doze killed the
+  /// ServerSocket. Returns the advertised IP or null when still down.
+  @override
+  Future<String?> ensureServerRunning({required int port}) async {
+    if (_serverRunning && _server != null) return null;
+    _serverRunning = false;
+    _server = null;
+    return startServer(port: port);
+  }
+
+  void _startStaleConnectionTimer() {
+    if (_staleConnectionTimer != null) return;
+    _staleConnectionTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _evictStaleConnections(),
+    );
+  }
+
+  void _stopStaleConnectionTimer() {
+    _staleConnectionTimer?.cancel();
+    _staleConnectionTimer = null;
+  }
+
+  void _evictStaleConnections() {
+    if (_sockets.isEmpty) {
+      if (_desiredReceivers.isEmpty && !_serverRunning) {
+        _stopStaleConnectionTimer();
+      }
+      return;
+    }
+    final now = _controlClock.elapsedMicroseconds;
+    for (final entry in Map<String, Socket>.from(_sockets).entries) {
+      final lastRx = _lastRxMicros[entry.key];
+      if (lastRx == null) continue;
+      // Host sends PING every 2s; receiver replies PONG + BUFFER_STATUS
+      // every 2s. 15s without any line means the TCP connection is
+      // half-open (screen off, NAT timeout) — close it so reconnect runs.
+      if (now - lastRx > 15000000) {
+        unawaited(_handleSocketClosed(entry.key, entry.value));
+      }
     }
   }
 

@@ -210,15 +210,19 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
-    final values = _nativeReceiverActive
-        ? await _nativeAudioRuntime.diagnostics()
-        : audioService.diagnosticsSnapshot;
-    final rtt = _hostRoundTripTimeMicros;
-    diagnostics.value = <String, Object>{
-      ...values,
-      'metricsScope': 'receiver',
-      ...?rtt == null ? null : <String, Object>{'roundTripTimeMicros': rtt},
-    };
+    try {
+      final values = _nativeReceiverActive
+          ? await _nativeAudioRuntime.diagnostics()
+          : audioService.diagnosticsSnapshot;
+      final rtt = _hostRoundTripTimeMicros;
+      diagnostics.value = <String, Object>{
+        ...values,
+        'metricsScope': 'receiver',
+        ...?rtt == null ? null : <String, Object>{'roundTripTimeMicros': rtt},
+      };
+    } catch (_) {
+      // Diagnostics are informational; never tear down playback for this.
+    }
   }
 
   Future<void> _refreshAudioOutput() async {
@@ -764,36 +768,41 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _sendDiagnosticsToHost(String hostId) async {
-    final audioService = _audioService;
-    if (audioService == null && !_nativeReceiverActive) return;
-    final values = _nativeReceiverActive
-        ? await _nativeAudioRuntime.diagnostics()
-        : audioService!.diagnosticsSnapshot;
-    num number(String key, [String? fallback]) {
-      final value = values[key] ?? (fallback == null ? null : values[fallback]);
-      return value is num ? value : 0;
-    }
+    try {
+      final audioService = _audioService;
+      if (audioService == null && !_nativeReceiverActive) return;
+      final values = _nativeReceiverActive
+          ? await _nativeAudioRuntime.diagnostics()
+          : audioService!.diagnosticsSnapshot;
+      num number(String key, [String? fallback]) {
+        final value =
+            values[key] ?? (fallback == null ? null : values[fallback]);
+        return value is num ? value : 0;
+      }
 
-    await _service.sendControlCommand(
-      receiverId: hostId,
-      command: ControlCommand(
-        type: ControlCommandType.bufferStatus,
-        // Keep the first two legacy fields, then append the diagnostics
-        // payload. All values are numeric and safe for the line protocol.
-        arguments: [
-          '${number('bufferedDurationMicros')}',
-          '${number('currentJitterBufferPackets', 'bufferPackets')}',
-          '${number('packetLossPercent')}',
-          '${number('packetUnderrunCount', 'underruns')}',
-          '${number('packetOverrunCount', 'overruns')}',
-          '${number('roundTripTimeMicros')}',
-          '${number('targetJitterBufferMicros', 'targetBufferMicros')}',
-          '${number('networkJitterMicros')}',
-          '${number('clockOffsetMicros')}',
-          '${number('estimatedTotalLatencyMicros')}',
-        ],
-      ),
-    );
+      await _service.sendControlCommand(
+        receiverId: hostId,
+        command: ControlCommand(
+          type: ControlCommandType.bufferStatus,
+          // Keep the first two legacy fields, then append the diagnostics
+          // payload. All values are numeric and safe for the line protocol.
+          arguments: [
+            '${number('bufferedDurationMicros')}',
+            '${number('currentJitterBufferPackets', 'bufferPackets')}',
+            '${number('packetLossPercent')}',
+            '${number('packetUnderrunCount', 'underruns')}',
+            '${number('packetOverrunCount', 'overruns')}',
+            '${number('roundTripTimeMicros')}',
+            '${number('targetJitterBufferMicros', 'targetBufferMicros')}',
+            '${number('networkJitterMicros')}',
+            '${number('clockOffsetMicros')}',
+            '${number('estimatedTotalLatencyMicros')}',
+          ],
+        ),
+      );
+    } catch (_) {
+      // A closed/broken control socket must not crash the periodic timer.
+    }
   }
 
   void _handleStatus(ConnectionStatus status) {
@@ -835,24 +844,51 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
 
   Future<void> _resumeActiveReceiver() async {
     if (!isServerRunning.value) return;
-    await BackgroundConnectionService.start();
+    try {
+      await BackgroundConnectionService.start();
+    } catch (_) {}
+    // Wi-Fi drop / Doze may have killed the ServerSocket while the UI still
+    // shows running. Re-bind so the Host can reconnect without manual Stop.
+    if (!_service.isServerRunning) {
+      try {
+        final address = await _service.ensureServerRunning(port: defaultPort);
+        if (address != null && address.isNotEmpty) {
+          localIpAddress.value = address;
+        }
+        isServerRunning.value = _service.isServerRunning;
+        if (isServerRunning.value) {
+          try {
+            await _discoveryService.startResponder(
+              deviceId: deviceId.value,
+              deviceName: deviceName.value,
+              controlPort: defaultPort,
+              pairingCode: _pairingTokenValue ?? '',
+            );
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
     await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!isServerRunning.value || !isConnectedToHost.value) return;
     if ((_audioService?.isReceiving ?? false) || _nativeReceiverActive) return;
-    await _ensureAudioReceiverStarted();
-    await _notifyHostReceiverReady();
+    try {
+      await _ensureAudioReceiverStarted();
+      await _notifyHostReceiverReady();
+    } catch (_) {}
   }
 
   Future<void> _notifyHostReceiverReady() async {
     final hostId = _hostSessionId;
     if (hostId == null || !isConnectedToHost.value) return;
-    await _service.sendControlCommand(
-      receiverId: hostId,
-      command: const ControlCommand(
-        type: ControlCommandType.receiverReady,
-        arguments: [],
-      ),
-    );
+    try {
+      await _service.sendControlCommand(
+        receiverId: hostId,
+        command: const ControlCommand(
+          type: ControlCommandType.receiverReady,
+          arguments: [],
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> _refreshLocalIpCandidates({String? prefer}) async {
@@ -890,6 +926,23 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     if (_networkCheckInProgress) return;
     _networkCheckInProgress = true;
     try {
+      // Server watchdog: re-bind if Android/Wi-Fi killed the ServerSocket.
+      if (isServerRunning.value && !_service.isServerRunning) {
+        try {
+          final address = await _service.ensureServerRunning(
+            port: defaultPort,
+          );
+          if (address != null && address.isNotEmpty) {
+            localIpAddress.value = address;
+          }
+          isServerRunning.value = _service.isServerRunning;
+          if (isServerRunning.value) {
+            try {
+              await BackgroundConnectionService.start();
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
       final snapshot = await _networkInfoService.readSnapshot();
       final previousSignature = _networkSignature;
       _networkSignature = snapshot.signature;
@@ -903,13 +956,17 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
             ? 'Receiver network changed. Waiting for the Host to reconnect on this Wi‑Fi.'
             : 'Receiver is not connected to a local network. Host connection is paused.';
         if (snapshot.hasActiveInterface && isServerRunning.value) {
-          await _discoveryService.startResponder(
-            deviceId: deviceId.value,
-            deviceName: deviceName.value,
-            controlPort: defaultPort,
-            pairingCode: _pairingTokenValue ?? '',
-          );
-          await BackgroundConnectionService.start();
+          try {
+            await _discoveryService.startResponder(
+              deviceId: deviceId.value,
+              deviceName: deviceName.value,
+              controlPort: defaultPort,
+              pairingCode: _pairingTokenValue ?? '',
+            );
+          } catch (_) {}
+          try {
+            await BackgroundConnectionService.start();
+          } catch (_) {}
         }
       } else if (previousSignature == snapshot.signature) {
         networkMismatchWarning.value = null;

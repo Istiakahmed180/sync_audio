@@ -348,15 +348,20 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     }
     _setStatus(AudioStreamStatus.starting);
     try {
-      _destinations = ipAddresses
-          .map(InternetAddress.new)
-          .fold<List<InternetAddress>>(<InternetAddress>[], (unique, address) {
-            if (!unique.any((item) => item.address == address.address)) {
-              unique.add(address);
-            }
-            return unique;
-          })
-          .toList(growable: false);
+      final parsed = <InternetAddress>[];
+      for (final raw in ipAddresses) {
+        final address = InternetAddress.tryParse(raw.trim());
+        if (address == null) continue;
+        if (!parsed.any((item) => item.address == address.address)) {
+          parsed.add(address);
+        }
+      }
+      if (parsed.isEmpty) {
+        _emitError('Receiver IP address is invalid.');
+        _setStatus(AudioStreamStatus.error);
+        return;
+      }
+      _destinations = parsed.toList(growable: false);
       _destinationPort = port;
       _packetSequence = 0;
       _fecFrames.clear();
@@ -445,10 +450,16 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   }) async {
     if (!_streaming || ipAddresses.isEmpty) return;
     final existing = _destinations.map((address) => address.address).toSet();
-    final additions = ipAddresses
-        .where((address) => !existing.contains(address))
-        .map(InternetAddress.new)
-        .toList(growable: false);
+    final additions = <InternetAddress>[];
+    for (final raw in ipAddresses) {
+      final trimmed = raw.trim();
+      if (existing.contains(trimmed)) continue;
+      final parsed = InternetAddress.tryParse(trimmed);
+      if (parsed == null) continue;
+      if (existing.contains(parsed.address)) continue;
+      if (additions.any((item) => item.address == parsed.address)) continue;
+      additions.add(parsed);
+    }
     if (additions.isEmpty) return;
 
     _destinations = [..._destinations, ...additions];
@@ -696,12 +707,14 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       codecType: encoder.codecType,
       payload: encoded,
     );
-    final wirePacket = _sessionKey == null
+    final sessionKey = _sessionKey;
+    final securitySessionId = _securitySessionId;
+    final wirePacket = sessionKey == null || securitySessionId == null
         ? packet
         : await EncryptedAudioPacketCodec.encrypt(
             packet: packet,
-            key: _sessionKey!,
-            sessionId: _securitySessionId!,
+            key: sessionKey,
+            sessionId: securitySessionId,
           );
     _sendWirePacket(wirePacket, socket);
     if (encoder.codecType == AudioCodecType.pcm16) {
@@ -728,12 +741,14 @@ class UdpAudioService extends GetxService implements AudioStreamService {
             payloads: group.map((frame) => frame.payload).toList(),
           ),
         );
-        final wireParity = _sessionKey == null
+        final parityKey = _sessionKey;
+        final paritySessionId = _securitySessionId;
+        final wireParity = parityKey == null || paritySessionId == null
             ? parity
             : await EncryptedAudioPacketCodec.encrypt(
                 packet: parity,
-                key: _sessionKey!,
-                sessionId: _securitySessionId!,
+                key: parityKey,
+                sessionId: paritySessionId,
               );
         _sendWirePacket(wireParity, socket);
       }
@@ -901,6 +916,8 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   void _sendClockOffset(ReceiverSession session, int sequence) {
     final socket = _hostSocket;
     if (socket == null) return;
+    final destination = InternetAddress.tryParse(session.ipAddress.trim());
+    if (destination == null) return;
     _sendHostDatagram(
       socket,
       AudioPacketCodec.encode(
@@ -909,7 +926,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         timestampMicros:
             session.clockOffsetMicros + session.playbackCalibrationMicros,
       ),
-      destination: InternetAddress(session.ipAddress),
+      destination: destination,
       port: session.port,
     );
   }
@@ -921,6 +938,8 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   ) {
     final socket = _hostSocket;
     if (socket == null) return;
+    final destination = InternetAddress.tryParse(session.ipAddress.trim());
+    if (destination == null) return;
     _sendHostDatagram(
       socket,
       AudioPacketCodec.encode(
@@ -928,7 +947,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         sequence: sequence,
         timestampMicros: appliedDriftPpm,
       ),
-      destination: InternetAddress(session.ipAddress),
+      destination: destination,
       port: session.port,
     );
   }
@@ -951,6 +970,11 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       _receiverSocket = await RawDatagramSocket.bind(
         InternetAddress.anyIPv4,
         port,
+        // A quick Stop -> Start (or disconnect -> auto-restart) can rebind
+        // while the OS still holds the port from the just-closed socket.
+        // Without reuse the bind throws, the receiver stays silent, and the
+        // Host keeps streaming into the void.
+        reuseAddress: true,
       );
       _receiving = true;
       _playbackQueue = Future<void>.value();

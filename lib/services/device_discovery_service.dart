@@ -269,41 +269,60 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     required int controlPort,
     required String pairingCode,
   }) async {
-    await stopResponder();
-    final socket = await RawDatagramSocket.bind(
-      InternetAddress.anyIPv4,
-      discoveryPort,
-      reuseAddress: true,
-    );
+    try {
+      await stopResponder();
+    } catch (_) {}
+    RawDatagramSocket? socket;
+    try {
+      socket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        discoveryPort,
+        reuseAddress: true,
+      );
+    } on SocketException {
+      // Port still held after a fast network change / restart. The old
+      // socket will be released shortly; skip this refresh instead of
+      // throwing into the 3s network-monitor timer and crashing the app.
+      return;
+    }
     // Hold the Wi-Fi multicast lock so the Host's broadcast request is actually
     // delivered to this socket instead of being filtered by Wi-Fi power save.
     await _acquireMulticastLock();
     // Resolve the Receiver address before starting the responder. The
     // datagram's address below is the request sender (the Host), not the
     // local Receiver address.
-    _responderAddress = await _ipAddressService.findPrivateIpv4Address();
+    try {
+      _responderAddress = await _ipAddressService.findPrivateIpv4Address();
+    } catch (_) {
+      _responderAddress = null;
+    }
     _deviceId = deviceId;
     _deviceName = deviceName;
     _controlPort = controlPort;
-    _responder = socket;
-    _responderSubscription = socket.listen((event) {
+    final bound = socket;
+    _responder = bound;
+    _responderSubscription = bound.listen((event) {
       if (event != RawSocketEvent.read) return;
       Datagram? datagram;
-      while ((datagram = socket.receive()) != null) {
-        final decoded = _decodeUtf8(datagram!.data);
-        if (decoded == null) continue;
-        final request = decoded.trim().split('|');
-        if (request.length != 2 || request.first != _request) continue;
-        final response = [
-          _response,
-          _deviceId,
-          _deviceName,
-          _responderAddress ?? datagram.address.address,
-          '$_controlPort',
-          pairingCode,
-          request[1],
-        ].join('|');
-        socket.send(utf8.encode(response), datagram.address, datagram.port);
+      while ((datagram = bound.receive()) != null) {
+        try {
+          final decoded = _decodeUtf8(datagram!.data);
+          if (decoded == null) continue;
+          final request = decoded.trim().split('|');
+          if (request.length != 2 || request.first != _request) continue;
+          final response = [
+            _response,
+            _deviceId,
+            _deviceName,
+            _responderAddress ?? datagram.address.address,
+            '$_controlPort',
+            pairingCode,
+            request[1],
+          ].join('|');
+          bound.send(utf8.encode(response), datagram.address, datagram.port);
+        } catch (_) {
+          // One malformed discovery packet must not kill the responder.
+        }
       }
     });
     await _startMdnsResponder(pairingCode);
@@ -515,9 +534,13 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
 
   @override
   Future<void> stopResponder() async {
-    await _responderSubscription?.cancel();
+    try {
+      await _responderSubscription?.cancel();
+    } catch (_) {}
     _responderSubscription = null;
-    _responder?.close();
+    try {
+      _responder?.close();
+    } catch (_) {}
     _responder = null;
     _responderAddress = null;
     await _stopMdnsResponder();
@@ -525,9 +548,13 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
   }
 
   Future<void> _stopMdnsResponder() async {
-    await _mdnsResponderSubscription?.cancel();
+    try {
+      await _mdnsResponderSubscription?.cancel();
+    } catch (_) {}
     _mdnsResponderSubscription = null;
-    _mdnsResponder?.close();
+    try {
+      _mdnsResponder?.close();
+    } catch (_) {}
     _mdnsResponder = null;
   }
 }

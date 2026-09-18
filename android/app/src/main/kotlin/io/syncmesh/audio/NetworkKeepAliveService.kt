@@ -91,9 +91,10 @@ class NetworkKeepAliveService : Service() {
         if (wakeLock?.isHeld != true) wakeLock?.acquire()
         @Suppress("DEPRECATION")
         if (wifiLock?.isHeld != true) wifiLock?.acquire()
-        // Do not let Android restart the service after rejected foreground
-        // promotion; the next user-initiated connection can start it.
-        return START_NOT_STICKY
+        // Keep the connection alive when Android kills the process (Doze,
+        // memory pressure, screen off for a long time). The Dart side
+        // re-enters the receiver/host state on restart via session restore.
+        return START_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
