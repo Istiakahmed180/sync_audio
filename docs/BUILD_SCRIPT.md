@@ -16,7 +16,7 @@ bash scripts/build.sh all       # All platforms
 
 - Android: `dist/SyncMesh Audio.apk` or `dist/SyncMesh Audio.aab`
 - macOS: `dist/SyncMesh Audio.dmg`
-- Windows: `dist/SyncAudioSetup.exe` and `dist/windows-portable/`
+- Windows: `dist/SyncAudioSetup.exe`
 
 ## Android APK
 
@@ -58,16 +58,7 @@ Run on Windows, Git Bash, or a Windows CI runner with Inno Setup installed:
 bash scripts/build.sh windows
 ```
 
-Outputs:
-
-- `dist/SyncAudioSetup.exe`
-- `dist/windows-portable/`
-
-To skip the installer and build only the portable release:
-
-```bash
-CREATE_WINDOWS_INSTALLER=false bash scripts/build.sh windows
-```
+Output: `dist/SyncAudioSetup.exe`
 
 Install Inno Setup if not present:
 

@@ -140,14 +140,10 @@ if [ "$BUILD_APP" = true ]; then
     flutter build windows --release
 
     WINDOWS_RELEASE_PATH="build/windows/x64/runner/Release"
-    WINDOWS_PORTABLE_PATH="$PWD/$OUTPUT_DIR/windows-portable"
     if [ ! -d "$WINDOWS_RELEASE_PATH" ]; then
       echo "❌ Windows release not found: $WINDOWS_RELEASE_PATH"
       exit 1
     fi
-    mkdir -p "$WINDOWS_PORTABLE_PATH"
-    cp -R "$WINDOWS_RELEASE_PATH/." "$WINDOWS_PORTABLE_PATH/"
-    echo "📦 Windows portable build created: $WINDOWS_PORTABLE_PATH"
 
     if [ "$CREATE_WINDOWS_INSTALLER" = true ]; then
       if [ -z "$ISCC_PATH" ]; then
@@ -155,6 +151,9 @@ if [ "$BUILD_APP" = true ]; then
       fi
       if [ -z "$ISCC_PATH" ] && [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
         ISCC_PATH="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+      fi
+      if [ -z "$ISCC_PATH" ] && [ -f "$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe" ]; then
+        ISCC_PATH="$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe"
       fi
       if [ -z "$ISCC_PATH" ]; then
         echo "❌ Inno Setup compiler (ISCC.exe) was not found."
