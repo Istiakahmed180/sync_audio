@@ -111,7 +111,9 @@ class UdpAudioService extends GetxService implements AudioStreamService {
     AudioDecoder? decoder,
     SynchronizationService? synchronizationService,
     this.jitterBuffer = const Duration(milliseconds: 120),
-    this.syncInterval = const Duration(seconds: 1),
+    // 500 ms clock-sync keeps per-receiver clock offsets fresh so all
+    // receivers play the same packet at the same wall-clock moment.
+    this.syncInterval = const Duration(milliseconds: 500),
   }) : encoder = encoder ?? Pcm16AudioEncoder(),
        decoder = decoder ?? Pcm16AudioDecoder(),
        synchronizationService =
@@ -125,6 +127,10 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   final Duration syncInterval;
   final SynchronizationService synchronizationService;
   LatencyMode _latencyMode = LatencyMode.stable;
+  // The mode the Host configured for this stream. Auto-adjust may step the
+  // effective mode down on a bad link, but it always steps back up toward
+  // this mode so every receiver on the Host converges (no permanent echo).
+  LatencyMode _hostLatencyMode = LatencyMode.stable;
   bool _adaptiveJitterEnabled = true;
   bool _driftCorrectionEnabled = true;
   int _maximumDriftCorrectionPpm = 200;
@@ -325,6 +331,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       return;
     }
     _latencyMode = mode;
+    _hostLatencyMode = mode;
     _adaptiveJitterEnabled = adaptiveJitter;
     _driftCorrectionEnabled = driftCorrection;
     _maximumDriftCorrectionPpm = maximumDriftCorrectionPpm.clamp(0, 300);
@@ -992,7 +999,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         ..reset()
         ..start();
       _playbackTimer = Timer.periodic(
-        const Duration(milliseconds: 5),
+        const Duration(milliseconds: 3),
         (_) => _drainPlaybackBuffer(),
       );
       _receiverWatchdogTimer = Timer.periodic(
@@ -1187,28 +1194,61 @@ class UdpAudioService extends GetxService implements AudioStreamService {
 
   void _autoAdjustLatency() {
     if (!_autoLatencyEnabled || !_adaptiveJitterEnabled) return;
-    if (_consecutiveUnderruns >= 10 && _latencyMode != LatencyMode.stable) {
-      _latencyMode = LatencyMode.stable;
-      _jitter.configure(mode: LatencyMode.stable, enabled: true);
+    if (_consecutiveUnderruns >= 10) {
+      // Step down ONE level at a time. Jumping straight to Stable makes this
+      // receiver lag every other receiver (up to ~150 ms echo between
+      // speakers), so diverge as little as the network forces.
+      final stepped = _stepLatencyDown(_latencyMode);
       _consecutiveUnderruns = 0;
       _healthySinceMicros = 0;
+      if (stepped != _latencyMode) {
+        _latencyMode = stepped;
+        _jitter.configure(mode: stepped, enabled: true);
+      }
       return;
     }
-    // Stay in Stable long enough to prove the path has recovered, then lower
-    // latency again. Use the receiver clock so this is independent of the
-    // audio frame size and packet arrival rate.
-    if (_latencyMode == LatencyMode.stable && _consecutiveUnderruns == 0) {
+    // Stay at the lowered level long enough to prove the path recovered,
+    // then step back up toward the Host's configured mode — never above it.
+    // All receivers converge on the same Host mode, so there is no permanent
+    // echo between speakers. Uses the receiver clock so this is independent
+    // of audio frame size and packet arrival rate.
+    if (_consecutiveUnderruns == 0 &&
+        _modeLevel(_latencyMode) < _modeLevel(_hostLatencyMode)) {
       final now = _receiverClock.elapsedMicroseconds;
       _healthySinceMicros = _healthySinceMicros == 0
           ? now
           : _healthySinceMicros;
       if (now - _healthySinceMicros >= 5 * 1000000) {
-        _latencyMode = LatencyMode.balanced;
-        _jitter.configure(mode: LatencyMode.balanced, enabled: true);
+        final stepped = _stepLatencyUp(_latencyMode);
         _healthySinceMicros = 0;
+        if (stepped != _latencyMode &&
+            _modeLevel(stepped) <= _modeLevel(_hostLatencyMode)) {
+          _latencyMode = stepped;
+          _jitter.configure(mode: stepped, enabled: true);
+        }
       }
     }
   }
+
+  /// Latency levels ordered low -> high. All receivers on one Host converge
+  /// on the Host's mode so speakers stay time-aligned with each other.
+  static int _modeLevel(LatencyMode mode) => switch (mode) {
+    LatencyMode.ultraLow => 0,
+    LatencyMode.balanced => 1,
+    LatencyMode.stable => 2,
+  };
+
+  static LatencyMode _stepLatencyDown(LatencyMode mode) => switch (mode) {
+    LatencyMode.ultraLow => LatencyMode.balanced,
+    LatencyMode.balanced => LatencyMode.stable,
+    LatencyMode.stable => LatencyMode.stable,
+  };
+
+  static LatencyMode _stepLatencyUp(LatencyMode mode) => switch (mode) {
+    LatencyMode.stable => LatencyMode.balanced,
+    LatencyMode.balanced => LatencyMode.ultraLow,
+    LatencyMode.ultraLow => LatencyMode.ultraLow,
+  };
 
   void _drainPlaybackBuffer() {
     if (!_receiving || !_clockSynchronized) return;
@@ -1219,7 +1259,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       _droppedPackets = _jitter.underruns;
       // A packet can be present but not ready yet because it is still inside
       // the configured jitter target. Count only an actual jitter-buffer
-      // timeout, otherwise the 5 ms playback timer marks healthy streams as
+      // timeout, otherwise the playback timer marks healthy streams as
       // continuously underrunning and the UI reports Poor network health.
       if (_jitter.underruns > underrunsBefore) {
         _metrics.packetUnderrun();

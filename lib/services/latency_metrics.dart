@@ -23,8 +23,11 @@ class LatencyModeConfig {
 
   static LatencyModeConfig forMode(LatencyMode mode) => switch (mode) {
     LatencyMode.ultraLow => const LatencyModeConfig(
-      minimumMicros: 15000,
-      normalMicros: 30000,
+      // Tightest floor: ~1 audio frame. Needs clean 5 GHz Wi-Fi; the
+      // receiver auto-steps to Balanced/Stable on sustained underruns and
+      // steps back when the network recovers (see _autoAdjustLatency).
+      minimumMicros: 10000,
+      normalMicros: 20000,
       maximumMicros: 90000,
     ),
     LatencyMode.balanced => const LatencyModeConfig(
