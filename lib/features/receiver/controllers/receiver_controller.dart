@@ -458,6 +458,10 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
 
   Future<void> stopServer() async {
     errorMessage.value = null;
+    // Mark stopped BEFORE async teardown so the network-monitor watchdog
+    // (refreshLocalNetworkInfo) cannot re-bind the server socket in the gap
+    // between _service.stopServer() completing and isServerRunning being set.
+    isServerRunning.value = false;
     await _service.stopServer();
     await _discoveryService.stopResponder();
     _pairingExpiryTimer?.cancel();
@@ -467,7 +471,6 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     if (_audioService?.isReceiving ?? false) {
       await stopAudioReceiver();
     }
-    isServerRunning.value = false;
     isConnectedToHost.value = false;
     connectionStatus.value = ConnectionStatus.stopped;
     await _sessionRestoreStore.setReceiverServerRunning(false);

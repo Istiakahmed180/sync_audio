@@ -23,12 +23,14 @@ class AndroidSystemAudioCaptureService implements AudioCaptureService {
     'sync_audio/system_audio_capture',
   );
   static const _streamChannel = EventChannel('sync_audio/system_audio_stream');
+  Stream<Uint8List>? _pcmChunksCached;
 
   @override
-  Stream<Uint8List> get pcmChunks => _streamChannel
-      .receiveBroadcastStream()
-      .map(_decodeChunk)
-      .where((bytes) => bytes.isNotEmpty);
+  Stream<Uint8List> get pcmChunks =>
+      _pcmChunksCached ??= _streamChannel
+          .receiveBroadcastStream()
+          .map(_decodeChunk)
+          .where((bytes) => bytes.isNotEmpty);
 
   Uint8List _decodeChunk(dynamic chunk) {
     if (chunk is Uint8List) return chunk;
@@ -116,7 +118,10 @@ class MicrophoneMixAudioCaptureService
   Future<void> _startMicrophone() async {
     await _stopMicrophone();
     final recorder = AudioRecorder();
-    if (!await recorder.hasPermission()) return;
+    if (!await recorder.hasPermission()) {
+      await recorder.dispose();
+      return;
+    }
     try {
       final stream = await recorder.startStream(
         const RecordConfig(

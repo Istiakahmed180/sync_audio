@@ -292,6 +292,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   ConnectionStatus? _lastNotifiedConnectionStatus;
   bool _startingSystemAudio = false;
   bool _autoStreamInProgress = false;
+  bool _disposed = false;
   final _receiverDiagnostics = <String, Map<String, Object>>{};
   final _receiverDiagnosticsUpdatedAt = <String, DateTime>{};
   final _batteryOptimizationService = BatteryOptimizationService();
@@ -1228,7 +1229,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> startSystemAudioStream() async {
-    if (_startingSystemAudio) return;
+    if (_disposed || _startingSystemAudio) return;
     _startingSystemAudio = true;
     try {
       await _startSystemAudioStream();
@@ -1631,6 +1632,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   void _handleControlEvent(ControlEvent event) {
+    if (_disposed) return;
     if (event.command.type == ControlCommandType.receiverReady) {
       // A Receiver may be backgrounded/restarted while the Host still sees
       // the old control socket as connected. Force a fresh stream handshake
@@ -2476,7 +2478,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _autoStartForConnectedReceivers() async {
-    if (_autoStreamInProgress) return;
+    if (_disposed || _autoStreamInProgress) return;
     if (_nativeHostActive) {
       final addresses = _receiverAddresses();
       final additions = addresses
@@ -2610,6 +2612,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     DesktopTrayService.setActionHandler(null);
     _statusSubscription.cancel();

@@ -288,44 +288,51 @@ class UdpDeviceDiscoveryService implements DeviceDiscoveryService {
     // Hold the Wi-Fi multicast lock so the Host's broadcast request is actually
     // delivered to this socket instead of being filtered by Wi-Fi power save.
     await _acquireMulticastLock();
-    // Resolve the Receiver address before starting the responder. The
-    // datagram's address below is the request sender (the Host), not the
-    // local Receiver address.
     try {
-      _responderAddress = await _ipAddressService.findPrivateIpv4Address();
-    } catch (_) {
-      _responderAddress = null;
-    }
-    _deviceId = deviceId;
-    _deviceName = deviceName;
-    _controlPort = controlPort;
-    final bound = socket;
-    _responder = bound;
-    _responderSubscription = bound.listen((event) {
-      if (event != RawSocketEvent.read) return;
-      Datagram? datagram;
-      while ((datagram = bound.receive()) != null) {
-        try {
-          final decoded = _decodeUtf8(datagram!.data);
-          if (decoded == null) continue;
-          final request = decoded.trim().split('|');
-          if (request.length != 2 || request.first != _request) continue;
-          final response = [
-            _response,
-            _deviceId,
-            _deviceName,
-            _responderAddress ?? datagram.address.address,
-            '$_controlPort',
-            pairingCode,
-            request[1],
-          ].join('|');
-          bound.send(utf8.encode(response), datagram.address, datagram.port);
-        } catch (_) {
-          // One malformed discovery packet must not kill the responder.
-        }
+      // Resolve the Receiver address before starting the responder. The
+      // datagram's address below is the request sender (the Host), not the
+      // local Receiver address.
+      try {
+        _responderAddress = await _ipAddressService.findPrivateIpv4Address();
+      } catch (_) {
+        _responderAddress = null;
       }
-    });
-    await _startMdnsResponder(pairingCode);
+      _deviceId = deviceId;
+      _deviceName = deviceName;
+      _controlPort = controlPort;
+      final bound = socket;
+      _responder = bound;
+      _responderSubscription = bound.listen((event) {
+        if (event != RawSocketEvent.read) return;
+        Datagram? datagram;
+        while ((datagram = bound.receive()) != null) {
+          try {
+            final decoded = _decodeUtf8(datagram!.data);
+            if (decoded == null) continue;
+            final request = decoded.trim().split('|');
+            if (request.length != 2 || request.first != _request) continue;
+            final response = [
+              _response,
+              _deviceId,
+              _deviceName,
+              _responderAddress ?? datagram.address.address,
+              '$_controlPort',
+              pairingCode,
+              request[1],
+            ].join('|');
+            bound.send(utf8.encode(response), datagram.address, datagram.port);
+          } catch (_) {
+            // One malformed discovery packet must not kill the responder.
+          }
+        }
+      });
+      await _startMdnsResponder(pairingCode);
+    } catch (_) {
+      // Release the multicast lock if setup fails so the reference count
+      // does not grow unboundedly on repeated failed starts.
+      await _releaseMulticastLock();
+      rethrow;
+    }
   }
 
   Future<void> _startMdnsResponder(String pairingCode) async {

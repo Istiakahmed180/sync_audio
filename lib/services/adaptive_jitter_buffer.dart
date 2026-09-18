@@ -40,7 +40,7 @@ class AdaptiveJitterBuffer {
   int get length => _packets.length;
   int get bufferedDurationMicros {
     if (_packets.length < 2) return 0;
-    return _maxTimestamp - _minTimestamp;
+    return (_maxTimestamp - _minTimestamp).clamp(0, 0x7FFFFFFFFFFFFFFF);
   }
 
   int get targetDelayMicros => _config.normalMicros + _jitterMicros * 2;

@@ -128,6 +128,7 @@ class TcpConnectionService implements ConnectionService {
   ServerSocket? _server;
   ConnectionStatus _status = ConnectionStatus.disconnected;
   bool _serverRunning = false;
+  bool _startingServer = false;
   // Last inbound control line per socket (both Host and Receiver sides).
   // Used to detect half-open TCP connections where no FIN arrives (Doze,
   // router NAT timeout, Wi-Fi sleep). Without this a dead peer looks
@@ -167,10 +168,11 @@ class TcpConnectionService implements ConnectionService {
 
   @override
   Future<String?> startServer({required int port}) async {
-    if (_serverRunning) {
+    if (_serverRunning || _startingServer) {
       _emitError('The receiver server is already running.');
       return null;
     }
+    _startingServer = true;
     _setStatus(ConnectionStatus.startingServer);
     try {
       _server = await ServerSocket.bind(InternetAddress.anyIPv4, port);
@@ -194,6 +196,8 @@ class TcpConnectionService implements ConnectionService {
       );
       _setStatus(ConnectionStatus.error);
       return null;
+    } finally {
+      _startingServer = false;
     }
   }
 
@@ -881,6 +885,7 @@ class TcpConnectionService implements ConnectionService {
   @override
   Future<String?> ensureServerRunning({required int port}) async {
     if (_serverRunning && _server != null) return null;
+    if (_startingServer) return null;
     _serverRunning = false;
     _server = null;
     return startServer(port: port);
