@@ -2,6 +2,7 @@
 #include <flutter/event_stream_handler_functions.h>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <cwctype>
 #include <shellapi.h>
 #include <wlanapi.h>
@@ -345,8 +346,10 @@ void AudioPlugin::CaptureLoop() {
       DWORD flags = 0;
       if (FAILED(capture_reader_->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) break;
 
+      if (!capture_format_) break;
       const int channels = std::max<int>(capture_format_->nChannels, 1);
-      const int bytes_per_sample = std::max<int>(capture_format_->wBitsPerSample / 8, 2);
+      const int bits_per_sample = capture_format_->wBitsPerSample;
+      const int bytes_per_sample = std::max<int>(bits_per_sample / 8, 1);
       bool is_float = capture_format_->wFormatTag == WAVE_FORMAT_IEEE_FLOAT;
       if (capture_format_->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
         const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(capture_format_);
@@ -359,9 +362,26 @@ void AudioPlugin::CaptureLoop() {
           for (int channel = 0; channel < channels; ++channel) {
             const size_t offset = (static_cast<size_t>(frame) * channels + channel) * bytes_per_sample;
             if (is_float) {
-              mixed += static_cast<double>(*reinterpret_cast<float*>(data + offset));
+              float sample = 0.0f;
+              memcpy(&sample, data + offset, sizeof(sample));
+              mixed += static_cast<double>(sample);
+            } else if (bits_per_sample == 8) {
+              // 8-bit WASAPI samples are unsigned (offset binary).
+              mixed += (static_cast<double>(*(data + offset)) - 128.0) / 128.0;
+            } else if (bits_per_sample <= 16) {
+              int16_t sample = 0;
+              memcpy(&sample, data + offset, sizeof(sample));
+              mixed += static_cast<double>(sample) / 32768.0;
+            } else if (bits_per_sample <= 24) {
+              // 24-bit packed little-endian, sign-extended to 32 bits.
+              int32_t sample = 0;
+              memcpy(&sample, data + offset, 3);
+              if (sample & 0x800000) sample |= ~0xffffff;
+              mixed += static_cast<double>(sample) / 8388608.0;
             } else {
-              mixed += static_cast<double>(*reinterpret_cast<int16_t*>(data + offset)) / 32768.0;
+              int32_t sample = 0;
+              memcpy(&sample, data + offset, sizeof(sample));
+              mixed += static_cast<double>(sample) / 2147483648.0;
             }
           }
           const double normalized = std::max(-1.0, std::min(1.0, mixed / channels));

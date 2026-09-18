@@ -19,16 +19,27 @@ class CrashReporter {
     if (_initialized) return;
     _initialized = true;
 
+    // Chain (don't replace) any previously installed handlers so Flutter's
+    // default console output and other plugins keep working.
+    final previousFlutterHandler = FlutterError.onError;
     FlutterError.onError = (details) {
-      FlutterError.presentError(details);
       record(
         details.exception,
         details.stack ?? StackTrace.current,
         source: 'flutter',
       );
+      if (previousFlutterHandler != null) {
+        previousFlutterHandler(details);
+      } else {
+        FlutterError.presentError(details);
+      }
     };
+    final previousPlatformHandler = PlatformDispatcher.instance.onError;
     PlatformDispatcher.instance.onError = (error, stack) {
       record(error, stack, source: 'platform');
+      if (previousPlatformHandler != null) {
+        return previousPlatformHandler(error, stack);
+      }
       return true;
     };
   }

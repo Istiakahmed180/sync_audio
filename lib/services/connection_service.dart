@@ -488,6 +488,11 @@ class TcpConnectionService implements ConnectionService {
       // SocketException. Treat it as a stale connection and let the normal
       // cleanup/reconnect path handle it without leaking an async exception.
       await _handleSocketClosed(receiverId, socket);
+    } catch (_) {
+      // Any other write failure (rare platform errors) must follow the same
+      // teardown path instead of surfacing as an unhandled async exception
+      // in unawaited callers such as the BUFFER_STATUS reply loop.
+      await _handleSocketClosed(receiverId, socket);
     }
   }
 
@@ -497,12 +502,21 @@ class TcpConnectionService implements ConnectionService {
     required ControlCommand command,
   }) async {
     final channel = _secureChannels[receiverId];
-    await sendMessageTo(
-      receiverId: receiverId,
-      message: channel == null
-          ? command.line
-          : await channel.encrypt(command.line),
-    );
+    String line;
+    if (channel == null) {
+      line = command.line;
+    } else {
+      try {
+        line = await channel.encrypt(command.line);
+      } catch (_) {
+        // A broken crypto state must not throw into unawaited callers.
+        // Drop this one command with an error; the next HELLO handshake
+        // re-establishes the channel.
+        _emitError('Could not encrypt the control message.');
+        return;
+      }
+    }
+    await sendMessageTo(receiverId: receiverId, message: line);
   }
 
   Future<void> _handleLine(String sourceId, String line) async {

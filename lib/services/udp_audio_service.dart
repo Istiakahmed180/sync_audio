@@ -169,6 +169,10 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   AudioStreamStatus _status = AudioStreamStatus.idle;
   bool _streaming = false;
   bool _handlingNetworkSendFailure = false;
+  // Consecutive UDP send failures per destination IP. A single failed send
+  // on flaky Wi-Fi must not drop the receiver; it is removed only after
+  // repeated failures (see _noteDestinationSendFailure).
+  final Map<String, int> _destinationSendFailures = {};
   bool _receiving = false;
   List<InternetAddress> _destinations = const [];
   final Map<String, ReceiverSession> _sessions = <String, ReceiverSession>{};
@@ -532,6 +536,10 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         ),
         destination: destination,
         port: _destinationPort,
+        // A single failed clock ping must not kill the whole stream;
+        // count it per destination like audio failures.
+        onFailure: (error) =>
+            _noteDestinationSendFailure(destination.address, error),
       );
       if (session.lastSyncMicros != null &&
           now - session.lastSyncMicros! > syncInterval.inMicroseconds * 3) {
@@ -571,6 +579,8 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         reconnectAttempt: 0,
       );
       _updateSession(updated);
+      // The receiver answered: its path is healthy, clear failure counts.
+      _destinationSendFailures.remove(session.ipAddress);
       _metrics.clockSample(
         rttMicros: estimate.roundTripTimeMicros,
         offsetMicros: estimate.offsetMicros,
@@ -777,11 +787,13 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         wirePacket,
         destination: destination,
         port: _destinationPort,
-        onFailure: (error) => unawaited(
-          _handleDestinationSendFailure(destination.address, error),
-        ),
+        onFailure: (error) =>
+            _noteDestinationSendFailure(destination.address, error),
       );
-      if (sent) _totalBytesSent += wirePacket.length;
+      if (sent) {
+        _totalBytesSent += wirePacket.length;
+        _destinationSendFailures.remove(destination.address);
+      }
     }
   }
 
@@ -811,6 +823,21 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       }
       return false;
     }
+  }
+
+  /// Counts a failed UDP send toward dropping a destination. Transient
+  /// Wi-Fi hiccups fail individual sends, so a receiver is declared lost
+  /// only after 3 consecutive failures. Any successful send or clock-sync
+  /// response clears the count.
+  void _noteDestinationSendFailure(String ipAddress, Object error) {
+    if (!_streaming) return;
+    final count = (_destinationSendFailures[ipAddress] ?? 0) + 1;
+    if (count < 3) {
+      _destinationSendFailures[ipAddress] = count;
+      return;
+    }
+    _destinationSendFailures.remove(ipAddress);
+    unawaited(_handleDestinationSendFailure(ipAddress, error));
   }
 
   Future<void> _handleDestinationSendFailure(
@@ -885,6 +912,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       );
     }
     _sessions.clear();
+    _destinationSendFailures.clear();
     _hostListener?.cancel();
     _hostListener = null;
     _hostSocket?.close();
@@ -937,6 +965,8 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       ),
       destination: destination,
       port: session.port,
+      onFailure: (error) =>
+          _noteDestinationSendFailure(session.ipAddress, error),
     );
   }
 
@@ -958,6 +988,8 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       ),
       destination: destination,
       port: session.port,
+      onFailure: (error) =>
+          _noteDestinationSendFailure(session.ipAddress, error),
     );
   }
 

@@ -834,6 +834,9 @@ class ReceiverController extends GetxController with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(refreshLocalNetworkInfo());
       unawaited(_resumeActiveReceiver());
+      // Re-check so the battery-optimization banner reflects the choice the
+      // user just made in system settings.
+      unawaited(_checkBatteryOptimization());
     }
     if (state != AppLifecycleState.resumed ||
         !_batteryOptimizationSettingsOpen) {

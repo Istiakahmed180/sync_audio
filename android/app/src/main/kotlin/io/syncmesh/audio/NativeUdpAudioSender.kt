@@ -112,6 +112,11 @@ internal class NativeUdpAudioSender(
             // Normal shutdown.
         } catch (error: Exception) {
             SystemAudioPcmBus.emitError("NATIVE_UDP_SEND_FAILED", error.message ?: "UDP sender failed")
+            // Release the socket/encoder and mark stopped. Without this the
+            // worker thread is dead while running stays true, so the next
+            // Start is a no-op and the Host silently streams nothing.
+            // stop() is safe here: it never joins the calling thread.
+            stop()
         }
     }
 
