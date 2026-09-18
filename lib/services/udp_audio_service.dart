@@ -126,16 +126,16 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   final Duration jitterBuffer;
   final Duration syncInterval;
   final SynchronizationService synchronizationService;
-  LatencyMode _latencyMode = LatencyMode.stable;
+  LatencyMode _latencyMode = LatencyMode.balanced;
   // The mode the Host configured for this stream. Auto-adjust may step the
   // effective mode down on a bad link, but it always steps back up toward
   // this mode so every receiver on the Host converges (no permanent echo).
-  LatencyMode _hostLatencyMode = LatencyMode.stable;
+  LatencyMode _hostLatencyMode = LatencyMode.balanced;
   bool _adaptiveJitterEnabled = true;
   bool _driftCorrectionEnabled = true;
   int _maximumDriftCorrectionPpm = 200;
   final _metrics = LatencyMetricsTracker();
-  final _jitter = AdaptiveJitterBuffer(mode: LatencyMode.stable);
+  final _jitter = AdaptiveJitterBuffer(mode: LatencyMode.balanced);
   final _statusController = StreamController<AudioStreamStatus>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _sessionController = StreamController<ReceiverSession>.broadcast();
@@ -197,6 +197,8 @@ class UdpAudioService extends GetxService implements AudioStreamService {
   final bool _autoLatencyEnabled = true;
   int _consecutiveUnderruns = 0;
   int _healthySinceMicros = 0;
+  // Receiver-clock moments of recent real underruns (rolling 3 s window).
+  final List<int> _underrunWindowMicros = [];
 
   @override
   Stream<AudioStreamStatus> get statusChanges => _statusController.stream;
@@ -993,6 +995,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       _lastDriftUpdateMicros = 0;
       _consecutiveUnderruns = 0;
       _healthySinceMicros = 0;
+      _underrunWindowMicros.clear();
       _jitter.reset();
       _receivedFecFrames.clear();
       _receiverClock
@@ -1194,12 +1197,20 @@ class UdpAudioService extends GetxService implements AudioStreamService {
 
   void _autoAdjustLatency() {
     if (!_autoLatencyEnabled || !_adaptiveJitterEnabled) return;
-    if (_consecutiveUnderruns >= 10) {
+    _pruneUnderrunWindow(_receiverClock.elapsedMicroseconds);
+    // Step down on sustained OR frequent-intermittent underruns. Intermittent
+    // loss resets the consecutive counter on every good packet, so without
+    // the window check a stuttering link would never step down and the user
+    // hears endless "buffering".
+    if (_consecutiveUnderruns >= 10 ||
+        (_underrunWindowMicros.length >= 8 &&
+            _latencyMode != LatencyMode.stable)) {
       // Step down ONE level at a time. Jumping straight to Stable makes this
       // receiver lag every other receiver (up to ~150 ms echo between
       // speakers), so diverge as little as the network forces.
       final stepped = _stepLatencyDown(_latencyMode);
       _consecutiveUnderruns = 0;
+      _underrunWindowMicros.clear();
       _healthySinceMicros = 0;
       if (stepped != _latencyMode) {
         _latencyMode = stepped;
@@ -1218,7 +1229,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       _healthySinceMicros = _healthySinceMicros == 0
           ? now
           : _healthySinceMicros;
-      if (now - _healthySinceMicros >= 5 * 1000000) {
+      if (now - _healthySinceMicros >= 10 * 1000000) {
         final stepped = _stepLatencyUp(_latencyMode);
         _healthySinceMicros = 0;
         if (stepped != _latencyMode &&
@@ -1228,6 +1239,14 @@ class UdpAudioService extends GetxService implements AudioStreamService {
         }
       }
     }
+  }
+
+  /// Rolling 3 s window of real underrun moments. Catches stutter that the
+  /// consecutive counter misses because good packets keep resetting it.
+  void _pruneUnderrunWindow(int nowMicros) {
+    if (_underrunWindowMicros.isEmpty) return;
+    final cutoff = nowMicros - 3000000;
+    _underrunWindowMicros.removeWhere((moment) => moment < cutoff);
   }
 
   /// Latency levels ordered low -> high. All receivers on one Host converge
@@ -1264,6 +1283,7 @@ class UdpAudioService extends GetxService implements AudioStreamService {
       if (_jitter.underruns > underrunsBefore) {
         _metrics.packetUnderrun();
         _consecutiveUnderruns++;
+        _underrunWindowMicros.add(now);
         _healthySinceMicros = 0;
         _autoAdjustLatency();
       } else {

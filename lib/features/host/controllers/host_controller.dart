@@ -104,8 +104,10 @@ class HostController extends GetxController with WidgetsBindingObserver {
   final connectionActivity = <ConnectionActivity>[].obs;
   final receiverPairingControllers = <String, TextEditingController>{}.obs;
   final codecPreference = AudioCodecPreference.auto.obs;
-  // Stable is the safer default for Wi-Fi + Bluetooth receiver setups.
-  final latencyMode = LatencyMode.stable.obs;
+  // Balanced is the default: buffering-free on typical Wi-Fi while keeping
+  // delay low. Ultra Low suits clean 5 GHz only; Stable is the fallback for
+  // weak links or Bluetooth receivers.
+  final latencyMode = LatencyMode.balanced.obs;
   final adaptiveJitter = true.obs;
   final driftCorrection = true.obs;
   final maximumDriftCorrectionPpm = 200.obs;
@@ -946,7 +948,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
       );
       latencyMode.value = LatencyMode.values.firstWhere(
         (value) => value.name == snapshot.latencyMode,
-        orElse: () => LatencyMode.stable,
+        orElse: () => LatencyMode.balanced,
       );
       adaptiveJitter.value = snapshot.adaptiveJitter;
       driftCorrection.value = snapshot.driftCorrection;
@@ -1470,6 +1472,15 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _refreshDiagnostics(AudioStreamService audioService) async {
+    // Diagnostics must never crash the 1 s timer that calls this (mostly
+    // unawaited). A throwing native bridge would otherwise surface as an
+    // unhandled async error on every tick.
+    try {
+      await _refreshDiagnosticsUnsafe(audioService);
+    } catch (_) {}
+  }
+
+  Future<void> _refreshDiagnosticsUnsafe(AudioStreamService audioService) async {
     final now = DateTime.now();
     _receiverDiagnosticsUpdatedAt.removeWhere(
       (id, updatedAt) => now.difference(updatedAt) > const Duration(seconds: 5),
@@ -1773,10 +1784,15 @@ class HostController extends GetxController with WidgetsBindingObserver {
     for (final address in addresses) {
       final sessionId = _findControlSession(address);
       if (sessionId == null) continue;
-      await _service.sendControlCommand(
-        receiverId: sessionId,
-        command: ControlCommand(type: type, arguments: arguments),
-      );
+      // One broken receiver must not abort the handshake for the rest.
+      // Without this, a single encrypt/write throw skips STREAM_START for
+      // every later receiver and they stay silent.
+      try {
+        await _service.sendControlCommand(
+          receiverId: sessionId,
+          command: ControlCommand(type: type, arguments: arguments),
+        );
+      } catch (_) {}
     }
   }
 

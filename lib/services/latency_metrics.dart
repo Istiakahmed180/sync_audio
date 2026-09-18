@@ -23,11 +23,12 @@ class LatencyModeConfig {
 
   static LatencyModeConfig forMode(LatencyMode mode) => switch (mode) {
     LatencyMode.ultraLow => const LatencyModeConfig(
-      // Tightest floor: ~1 audio frame. Needs clean 5 GHz Wi-Fi; the
+      // Tight floor proven on real Wi-Fi: ~1.5 audio frames. Lower than this
+      // causes constant underruns ("buffering") on typical home networks; the
       // receiver auto-steps to Balanced/Stable on sustained underruns and
       // steps back when the network recovers (see _autoAdjustLatency).
-      minimumMicros: 10000,
-      normalMicros: 20000,
+      minimumMicros: 15000,
+      normalMicros: 30000,
       maximumMicros: 90000,
     ),
     LatencyMode.balanced => const LatencyModeConfig(
