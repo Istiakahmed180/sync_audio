@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 
@@ -31,6 +32,8 @@ class SharedPrefsPairingStore implements PairingStore {
   static const _trustedDeviceNamesKey = 'sync_audio_trusted_device_names';
   static const _storage = FlutterSecureStorage();
   String? _inMemoryToken;
+  Future<void>? _trustedDevicesWriteQueue;
+  Future<void>? _trustedDeviceNamesWriteQueue;
 
   @override
   Future<String?> readToken() async {
@@ -91,8 +94,16 @@ class SharedPrefsPairingStore implements PairingStore {
   Future<void> addTrustedDevice(String deviceAddress) async {
     final address = deviceAddress.trim();
     if (address.isEmpty) return;
-    final devices = (await readTrustedDevices()).toSet()..add(address);
-    await _writeSecure(_trustedDevicesKey, jsonEncode(devices.toList()));
+    final prev = _trustedDevicesWriteQueue;
+    final completer = Completer<void>();
+    _trustedDevicesWriteQueue = completer.future;
+    try {
+      await prev;
+      final devices = (await readTrustedDevices()).toSet()..add(address);
+      await _writeSecure(_trustedDevicesKey, jsonEncode(devices.toList()));
+    } finally {
+      completer.complete();
+    }
   }
 
   @override
@@ -121,9 +132,17 @@ class SharedPrefsPairingStore implements PairingStore {
     final address = deviceAddress.trim();
     final name = deviceName.trim();
     if (address.isEmpty || name.isEmpty) return;
-    final names = Map<String, String>.from(await readTrustedDeviceNames());
-    names[address] = name;
-    await _writeSecure(_trustedDeviceNamesKey, jsonEncode(names));
+    final prev = _trustedDeviceNamesWriteQueue;
+    final completer = Completer<void>();
+    _trustedDeviceNamesWriteQueue = completer.future;
+    try {
+      await prev;
+      final names = Map<String, String>.from(await readTrustedDeviceNames());
+      names[address] = name;
+      await _writeSecure(_trustedDeviceNamesKey, jsonEncode(names));
+    } finally {
+      completer.complete();
+    }
   }
 
   Future<String?> _readSecureWithLegacyMigration(String key) async {

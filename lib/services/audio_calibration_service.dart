@@ -56,7 +56,11 @@ class AudioCalibrationService {
       Future<void> finish(int? result) async {
         if (finishing) return;
         finishing = true;
-        await _stop();
+        try {
+          await _stop();
+        } catch (_) {
+          // Recorder cleanup must not prevent the completer from resolving.
+        }
         if (!completer.isCompleted) completer.complete(result);
       }
 

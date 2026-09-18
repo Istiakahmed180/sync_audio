@@ -13,6 +13,7 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include <condition_variable>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,7 @@ class AudioPlugin {
   void CaptureLoop();
   void ReleaseWasapiLoopback();
   void InitializePlayback(std::unique_ptr<flutter::MethodResult<>> result);
+  void PlaybackLoop();
   void WritePcm(const flutter::MethodCall<>& call,
                 std::unique_ptr<flutter::MethodResult<>> result);
   void StopPlayback(std::unique_ptr<flutter::MethodResult<>> result);
@@ -68,6 +70,10 @@ class AudioPlugin {
   UINT playback_device_id_ = WAVE_MAPPER;
   std::atomic<bool> playing_{false};
   std::mutex playback_mutex_;
+  std::thread playback_thread_;
+  std::mutex playback_buffer_mutex_;
+  std::condition_variable playback_cv_;
+  std::vector<std::vector<uint8_t>> playback_buffers_;
 };
 
 #endif  // RUNNER_AUDIO_PLUGIN_H_

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -109,6 +110,8 @@ class PairedDeviceStore {
   static const _legacyPairedKey = 'paired_devices';
   static const _legacyGroupsKey = 'device_groups';
   static const _storage = FlutterSecureStorage();
+  Future<void>? _pairedWriteQueue;
+  Future<void>? _groupsWriteQueue;
 
   Future<List<PairedDevice>> loadPaired() async {
     final data = await _readWithMigration(
@@ -132,36 +135,52 @@ class PairedDeviceStore {
     required String name,
     String? deviceId,
   }) async {
-    final devices = await loadPaired();
-    devices.removeWhere(
-      (d) =>
-          d.ipAddress == ip ||
-          (deviceId != null && deviceId.isNotEmpty && d.deviceId == deviceId),
-    );
-    devices.insert(
-      0,
-      PairedDevice(
-        ipAddress: ip,
-        port: port,
-        name: name,
-        deviceId: deviceId,
-        lastConnected: DateTime.now(),
-      ),
-    );
-    if (devices.length > 20) devices.removeRange(20, devices.length);
-    await _write(
-      _pairedKey,
-      jsonEncode(devices.map((d) => d.toJson()).toList()),
-    );
+    final prev = _pairedWriteQueue;
+    final completer = Completer<void>();
+    _pairedWriteQueue = completer.future;
+    try {
+      await prev;
+      final devices = await loadPaired();
+      devices.removeWhere(
+        (d) =>
+            d.ipAddress == ip ||
+            (deviceId != null && deviceId.isNotEmpty && d.deviceId == deviceId),
+      );
+      devices.insert(
+        0,
+        PairedDevice(
+          ipAddress: ip,
+          port: port,
+          name: name,
+          deviceId: deviceId,
+          lastConnected: DateTime.now(),
+        ),
+      );
+      if (devices.length > 20) devices.removeRange(20, devices.length);
+      await _write(
+        _pairedKey,
+        jsonEncode(devices.map((d) => d.toJson()).toList()),
+      );
+    } finally {
+      completer.complete();
+    }
   }
 
   Future<void> removePair(String ip) async {
-    final devices = await loadPaired();
-    devices.removeWhere((d) => d.ipAddress == ip);
-    await _write(
-      _pairedKey,
-      jsonEncode(devices.map((d) => d.toJson()).toList()),
-    );
+    final prev = _pairedWriteQueue;
+    final completer = Completer<void>();
+    _pairedWriteQueue = completer.future;
+    try {
+      await prev;
+      final devices = await loadPaired();
+      devices.removeWhere((d) => d.ipAddress == ip);
+      await _write(
+        _pairedKey,
+        jsonEncode(devices.map((d) => d.toJson()).toList()),
+      );
+    } finally {
+      completer.complete();
+    }
   }
 
   Future<List<DeviceGroup>> loadGroups() async {
@@ -181,34 +200,58 @@ class PairedDeviceStore {
   }
 
   Future<void> saveGroup(DeviceGroup group) async {
-    final groups = await loadGroups();
-    groups.removeWhere((g) => g.name == group.name);
-    groups.add(group);
-    await _write(
-      _groupsKey,
-      jsonEncode(groups.map((g) => g.toJson()).toList()),
-    );
+    final prev = _groupsWriteQueue;
+    final completer = Completer<void>();
+    _groupsWriteQueue = completer.future;
+    try {
+      await prev;
+      final groups = await loadGroups();
+      groups.removeWhere((g) => g.name == group.name);
+      groups.add(group);
+      await _write(
+        _groupsKey,
+        jsonEncode(groups.map((g) => g.toJson()).toList()),
+      );
+    } finally {
+      completer.complete();
+    }
   }
 
   Future<void> removeGroup(String name) async {
-    final groups = await loadGroups();
-    groups.removeWhere((g) => g.name == name);
-    await _write(
-      _groupsKey,
-      jsonEncode(groups.map((g) => g.toJson()).toList()),
-    );
+    final prev = _groupsWriteQueue;
+    final completer = Completer<void>();
+    _groupsWriteQueue = completer.future;
+    try {
+      await prev;
+      final groups = await loadGroups();
+      groups.removeWhere((g) => g.name == name);
+      await _write(
+        _groupsKey,
+        jsonEncode(groups.map((g) => g.toJson()).toList()),
+      );
+    } finally {
+      completer.complete();
+    }
   }
 
   Future<void> importGroups(List<DeviceGroup> imported) async {
-    final groups = await loadGroups();
-    for (final group in imported) {
-      groups.removeWhere((existing) => existing.name == group.name);
-      groups.add(group);
+    final prev = _groupsWriteQueue;
+    final completer = Completer<void>();
+    _groupsWriteQueue = completer.future;
+    try {
+      await prev;
+      final groups = await loadGroups();
+      for (final group in imported) {
+        groups.removeWhere((existing) => existing.name == group.name);
+        groups.add(group);
+      }
+      await _write(
+        _groupsKey,
+        jsonEncode(groups.map((group) => group.toJson()).toList()),
+      );
+    } finally {
+      completer.complete();
     }
-    await _write(
-      _groupsKey,
-      jsonEncode(groups.map((group) => group.toJson()).toList()),
-    );
   }
 
   Future<String?> _readWithMigration({

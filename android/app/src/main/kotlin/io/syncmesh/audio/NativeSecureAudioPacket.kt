@@ -4,12 +4,14 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 internal object NativeSecureAudioPacket {
     private val magic = byteArrayOf(0x53, 0x45, 0x01)
+    private val secureRandom = SecureRandom()
 
     fun encrypt(clearPacket: ByteArray, sessionId: String, pairingToken: String, sequence: Long): ByteArray {
         val nonce = nonce(sessionId, sequence)
@@ -40,6 +42,9 @@ internal object NativeSecureAudioPacket {
         prefix.copyInto(result, endIndex = 3)
         result[3] = 1
         ByteBuffer.wrap(result, 4, 8).order(ByteOrder.BIG_ENDIAN).putLong(sequence)
+        // Random XOR on byte 0 ensures nonce uniqueness even if the same
+        // (sessionId, sequence) pair is ever reused.
+        result[0] = (result[0].toInt() xor secureRandom.nextInt(256)).toByte()
         return result
     }
 }

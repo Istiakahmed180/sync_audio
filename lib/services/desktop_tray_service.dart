@@ -193,9 +193,16 @@ class DesktopTrayService with WindowListener, TrayListener {
   }
 
   Future<void> _quit() async {
+    if (_quitting) return;
     _quitting = true;
-    await trayManager.destroy();
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+    try {
+      await trayManager.destroy();
+    } catch (_) {}
+    try {
+      await windowManager.setPreventClose(false);
+    } catch (_) {}
+    try {
+      await windowManager.destroy();
+    } catch (_) {}
   }
 }

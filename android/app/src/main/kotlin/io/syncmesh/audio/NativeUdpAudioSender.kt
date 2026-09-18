@@ -82,9 +82,12 @@ internal class NativeUdpAudioSender(
                     val timestamp = elapsedMicros() + targetDelayMicros
                     val encoded = if (codec == NativeAudioPacket.CODEC_OPUS) {
                         OpusCodecNative.encode(opusEncoder, frame)
-                            ?: throw IllegalStateException("Native Opus encoding failed")
                     } else {
                         frame
+                    }
+                    if (encoded == null) {
+                        droppedFrames++
+                        continue
                     }
                     val clear = NativeAudioPacket.encode(
                         type = NativeAudioPacket.TYPE_PCM,
@@ -122,6 +125,10 @@ internal class NativeUdpAudioSender(
 
     private fun sendClockRequests(nowMicros: Long) {
         synchronized(destinations) { destinations.toList() }.forEach { destination ->
+            // Cap the map to prevent unbounded growth on lost response packets.
+            if (clockRequests.size >= 256) {
+                clockRequests.clear()
+            }
             val requestSequence = clockSequence++
             clockRequests[requestSequence] = nowMicros
             val request = NativeAudioPacket.encode(

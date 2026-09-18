@@ -100,6 +100,10 @@ internal class NativeUdpAudioReceiver(
                 val packet = NativeAudioPacket.decode(bytes) ?: continue
                 when (packet.type) {
                     NativeAudioPacket.TYPE_CLOCK_REQUEST -> {
+                        // Cap the map to prevent unbounded growth on lost offset packets.
+                        if (clockRequestReceivedAt.size >= 256) {
+                            clockRequestReceivedAt.clear()
+                        }
                         clockRequestReceivedAt[packet.sequence] = nowMicros()
                         sendClockResponse(packet.sequence, datagram.address, datagram.port)
                     }

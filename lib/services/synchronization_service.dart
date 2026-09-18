@@ -81,9 +81,9 @@ class ClockSynchronizationService implements SynchronizationService {
     final elapsed = previous == null
         ? 0
         : receivedAtMicros - previous.lastReceivedAtMicros;
-    final drift = elapsed <= 0
+    final drift = (previous == null || elapsed <= 0)
         ? previous?.driftPpm ?? 0
-        : (((offset - previous!.offsetMicros) * 1000000) / elapsed)
+        : (((offset - previous.offsetMicros) * 1000000) / elapsed)
               .round()
               .clamp(-5000, 5000)
               .toInt();

@@ -89,6 +89,7 @@ class EncryptedAudioPacketCodec {
     nonce[3] = packet.type.index;
     ByteData.sublistView(nonce).setUint64(4, packet.sequence, Endian.big);
     nonce[0] ^= _random.nextInt(256);
+    nonce[1] ^= _random.nextInt(256);
     return nonce;
   }
 }

@@ -492,6 +492,12 @@ void AudioPlugin::InitializePlayback(
   }
 
   playing_ = true;
+  // Drain any stale buffers from a previous playback session.
+  {
+    std::lock_guard<std::mutex> lock(playback_buffer_mutex_);
+    playback_buffers_.clear();
+  }
+  playback_thread_ = std::thread(&AudioPlugin::PlaybackLoop, this);
   result->Success();
 }
 
@@ -508,23 +514,47 @@ void AudioPlugin::WritePcm(const flutter::MethodCall<>& call,
     return;
   }
 
-  std::lock_guard<std::mutex> lock(playback_mutex_);
-
-  WAVEHDR hdr = {};
-  hdr.lpData = const_cast<char*>(reinterpret_cast<const char*>(args->data()));
-  hdr.dwBufferLength = static_cast<DWORD>(args->size());
-  hdr.dwFlags = 0;
-
-  waveOutPrepareHeader(wave_out_, &hdr, sizeof(WAVEHDR));
-  waveOutWrite(wave_out_, &hdr, sizeof(WAVEHDR));
-
-  // Wait for buffer to finish playing
-  while (!(hdr.dwFlags & WHDR_DONE) && playing_) {
-    Sleep(1);
+  // Copy into a dedicated buffer so the Flutter-owned args vector is not
+  // held during waveOutWrite.  The playback thread processes this buffer
+  // asynchronously, freeing the platform thread immediately.
+  {
+    std::lock_guard<std::mutex> lock(playback_buffer_mutex_);
+    playback_buffers_.emplace_back(args->begin(), args->end());
   }
-  waveOutUnprepareHeader(wave_out_, &hdr, sizeof(WAVEHDR));
-
+  playback_cv_.notify_one();
   result->Success();
+}
+
+void AudioPlugin::PlaybackLoop() {
+  while (playing_) {
+    std::vector<uint8_t> buffer;
+    {
+      std::unique_lock<std::mutex> lock(playback_buffer_mutex_);
+      playback_cv_.wait(lock, [this] {
+        return !playback_buffers_.empty() || !playing_;
+      });
+      if (!playing_ && playback_buffers_.empty()) break;
+      if (playback_buffers_.empty()) continue;
+      buffer = std::move(playback_buffers_.front());
+      playback_buffers_.erase(playback_buffers_.begin());
+    }
+
+    std::lock_guard<std::mutex> lock(playback_mutex_);
+    if (!wave_out_) continue;
+
+    WAVEHDR hdr = {};
+    hdr.lpData = reinterpret_cast<char*>(buffer.data());
+    hdr.dwBufferLength = static_cast<DWORD>(buffer.size());
+    hdr.dwFlags = 0;
+
+    waveOutPrepareHeader(wave_out_, &hdr, sizeof(WAVEHDR));
+    waveOutWrite(wave_out_, &hdr, sizeof(WAVEHDR));
+
+    while (!(hdr.dwFlags & WHDR_DONE) && playing_) {
+      Sleep(1);
+    }
+    waveOutUnprepareHeader(wave_out_, &hdr, sizeof(WAVEHDR));
+  }
 }
 
 void AudioPlugin::StopPlayback(
@@ -534,6 +564,13 @@ void AudioPlugin::StopPlayback(
     return;
   }
   playing_ = false;
+  // Wake the playback thread so it can exit.
+  playback_cv_.notify_one();
+  if (playback_thread_.joinable()) playback_thread_.join();
+  {
+    std::lock_guard<std::mutex> lock(playback_buffer_mutex_);
+    playback_buffers_.clear();
+  }
   waveOutReset(wave_out_);
   waveOutClose(wave_out_);
   wave_out_ = nullptr;
