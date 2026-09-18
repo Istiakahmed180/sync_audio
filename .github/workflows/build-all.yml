@@ -95,7 +95,7 @@ jobs:
         env:
           CI_OUTPUT_DIR: dist
           CI_ANDROID_BUILD_MODE: ${{ steps.signing.outputs.mode }}
-        run: ./tool/build_github.sh android
+        run: ./scripts/ci_build.sh android
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
@@ -129,7 +129,7 @@ jobs:
         env:
           CI_OUTPUT_DIR: dist
           CI_CREATE_MACOS_DMG: true
-        run: ./tool/build_github.sh macos
+        run: ./scripts/ci_build.sh macos
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
@@ -169,7 +169,7 @@ jobs:
           CI_OUTPUT_DIR: dist
           CI_CREATE_WINDOWS_INSTALLER: true
           CI_ISCC_PATH: '/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
-        run: ./tool/build_github.sh windows
+        run: ./scripts/ci_build.sh windows
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4

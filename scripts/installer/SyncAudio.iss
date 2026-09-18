@@ -5,7 +5,7 @@
 #define AppVersion "1.0.0"
 #define AppPublisher "SyncMesh Audio"
 #define AppExeName "sync_audio.exe"
-#define ReleaseDir "..\build\windows\x64\runner\Release"
+#define ReleaseDir "..\..\build\windows\x64\runner\Release"
 
 [Setup]
 AppId={{B7F7F8E1-2D7A-4FCE-9A78-7C1AA0E9B1B4}
@@ -14,7 +14,7 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\SyncMesh Audio
 DefaultGroupName={#AppName}
-OutputDir=..\dist
+OutputDir=..\..\dist
 OutputBaseFilename=SyncAudioSetup
 Compression=lzma
 SolidCompression=yes

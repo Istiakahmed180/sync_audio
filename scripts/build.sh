@@ -9,7 +9,7 @@ BUILD_TARGET="${1:-android}" # android | macos | windows
 ANDROID_BUILD_MODE="${ANDROID_BUILD_MODE:-release}" # release | debug
 OUTPUT_DIR="${OUTPUT_DIR:-dist}"
 CREATE_MACOS_DMG=true
-CREATE_WINDOWS_INSTALLER=false
+CREATE_WINDOWS_INSTALLER=true
 WINDOWS_INSTALLER_NAME="SyncAudioSetup"
 ISCC_PATH=""
 
@@ -109,7 +109,6 @@ if [ "$BUILD_APP" = true ]; then
     flutter build macos --release
 
     MACOS_APP_PATH="build/macos/Build/Products/Release/SyncMesh Audio.app"
-    MACOS_DMG_PATH="$PWD/${APP_NAME}.dmg"
     if [ ! -d "$MACOS_APP_PATH" ]; then
       echo "❌ macOS app not found: $MACOS_APP_PATH"
       exit 1
@@ -159,14 +158,14 @@ if [ "$BUILD_APP" = true ]; then
       fi
       if [ -z "$ISCC_PATH" ]; then
         echo "❌ Inno Setup compiler (ISCC.exe) was not found."
+        echo "   Install: choco install innosetup"
         exit 1
       fi
-      # Git Bash/MSYS otherwise rewrites Inno's /O and /F switches as paths,
-      # making ISCC interpret them as additional script filenames.
+      # Git Bash/MSYS otherwise rewrites Inno's /O and /F switches as paths.
       MSYS_NO_PATHCONV=1 "$ISCC_PATH" \
         "/O$OUTPUT_DIR" \
         "/F$WINDOWS_INSTALLER_NAME" \
-        "installer/SyncAudio.iss"
+        "scripts/installer/SyncAudio.iss"
       echo "📦 Windows installer created: $OUTPUT_DIR/$WINDOWS_INSTALLER_NAME.exe"
     fi
   elif [ "$BUILD_TYPE" = "appbundle" ]; then

@@ -1,29 +1,18 @@
 # Build script variables
 
-`build_app.sh` can build Android, macOS, or Windows by changing variables. The
-default output directory is `dist`.
+`scripts/build.sh` can build Android, macOS, or Windows by passing a target
+argument. The default output directory is `dist`.
 
-## One-command multi-platform build
-
-Edit the platform toggles at the top of `build_app.sh`:
+## Quick usage
 
 ```bash
-BUILD_ANDROID=true
-BUILD_MACOS=true
-BUILD_WINDOWS=false
-OUTPUT_DIR=dist
+bash scripts/build.sh android   # APK → dist/SyncMesh Audio.apk
+bash scripts/build.sh windows   # Portable + Installer → dist/
+bash scripts/build.sh mac       # App + DMG → dist/SyncMesh Audio.dmg
+bash scripts/build.sh all       # All platforms
 ```
 
-Then run only:
-
-```bash
-./build_app.sh
-```
-
-The script builds every platform set to `true`. On macOS, Windows desktop
-cannot be built locally; use the GitHub Actions Windows runner for that target.
-
-Output locations:
+## Output locations
 
 - Android: `dist/SyncMesh Audio.apk` or `dist/SyncMesh Audio.aab`
 - macOS: `dist/SyncMesh Audio.dmg`
@@ -32,7 +21,7 @@ Output locations:
 ## Android APK
 
 ```bash
-BUILD_TARGET=android BUILD_TYPE=apk OUTPUT_DIR=dist ./build_app.sh
+bash scripts/build.sh android
 ```
 
 Output: `dist/SyncMesh Audio.apk`
@@ -40,7 +29,7 @@ Output: `dist/SyncMesh Audio.apk`
 For an unsigned CI-friendly debug APK:
 
 ```bash
-BUILD_TARGET=android ANDROID_BUILD_MODE=debug OUTPUT_DIR=dist ./build_app.sh
+ANDROID_BUILD_MODE=debug bash scripts/build.sh android
 ```
 
 Output: `dist/SyncMesh Audio-debug.apk`
@@ -48,7 +37,7 @@ Output: `dist/SyncMesh Audio-debug.apk`
 ## Android App Bundle
 
 ```bash
-BUILD_TARGET=android BUILD_TYPE=appbundle OUTPUT_DIR=dist ./build_app.sh
+BUILD_TYPE=appbundle bash scripts/build.sh android
 ```
 
 Output: `dist/SyncMesh Audio.aab`
@@ -56,7 +45,7 @@ Output: `dist/SyncMesh Audio.aab`
 ## macOS DMG
 
 ```bash
-BUILD_TARGET=macos CREATE_MACOS_DMG=true OUTPUT_DIR=dist ./build_app.sh
+bash scripts/build.sh mac
 ```
 
 Output: `dist/SyncMesh Audio.dmg`
@@ -66,7 +55,7 @@ Output: `dist/SyncMesh Audio.dmg`
 Run on Windows, Git Bash, or a Windows CI runner with Inno Setup installed:
 
 ```bash
-BUILD_TARGET=windows CREATE_WINDOWS_INSTALLER=true OUTPUT_DIR=dist ./build_app.sh
+bash scripts/build.sh windows
 ```
 
 Outputs:
@@ -77,7 +66,24 @@ Outputs:
 To skip the installer and build only the portable release:
 
 ```bash
-BUILD_TARGET=windows CREATE_WINDOWS_INSTALLER=false OUTPUT_DIR=dist ./build_app.sh
+CREATE_WINDOWS_INSTALLER=false bash scripts/build.sh windows
+```
+
+Install Inno Setup if not present:
+
+```bash
+choco install innosetup
 ```
 
 Set `BUILD_APP=false` to run preparation only without producing a build.
+
+## CI builds
+
+GitHub Actions uses `scripts/ci_build.sh` which wraps `scripts/build.sh`
+with CI-specific settings:
+
+```bash
+./scripts/ci_build.sh android
+./scripts/ci_build.sh macos
+./scripts/ci_build.sh windows
+```
