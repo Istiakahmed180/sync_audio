@@ -103,8 +103,10 @@ class ScheduledStreamingService {
           final elapsed = DateTime.now().difference(_lastScheduledStart!);
           if (elapsed < const Duration(minutes: 5)) return;
         }
-        _lastScheduledStart = DateTime.now();
         await host.startSystemAudioStream();
+        // Set cooldown only after start completes (success or failure) so a
+        // failed start does not block the next retry for 5 minutes.
+        _lastScheduledStart = DateTime.now();
         if (host.audioStatus.value == AudioStreamStatus.streaming) {
           _wasStreamingBySchedule = true;
         }

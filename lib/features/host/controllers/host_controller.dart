@@ -293,6 +293,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   bool _startingSystemAudio = false;
   bool _autoStreamInProgress = false;
   bool _disposed = false;
+  int _systemAudioStartGeneration = 0;
   final _receiverDiagnostics = <String, Map<String, Object>>{};
   final _receiverDiagnosticsUpdatedAt = <String, DateTime>{};
   final _batteryOptimizationService = BatteryOptimizationService();
@@ -1239,6 +1240,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _startSystemAudioStream() async {
+    final gen = _systemAudioStartGeneration;
     errorMessage.value = null;
     _nativeHostActive = false;
     final audioService = _audioService;
@@ -1292,6 +1294,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     if (_audioService is UdpAudioService) {
       await _audioService.setMicrophoneMixEnabled(microphoneMixEnabled.value);
     }
+    if (gen != _systemAudioStartGeneration) return;
     final effectiveCodec = _autoOpusActive
         ? AudioCodecPreference.opus
         : codecPreference.value;
@@ -1336,6 +1339,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
         _nativeHostActive = false;
       }
     }
+    if (gen != _systemAudioStartGeneration) return;
     final commandArguments = <String>[
       _streamSessionId,
       '0',
@@ -1346,6 +1350,7 @@ class HostController extends GetxController with WidgetsBindingObserver {
     if (!nativeStarted) {
       await audioService.startStreaming(ipAddresses: addresses, port: port);
     }
+    if (gen != _systemAudioStartGeneration) return;
     if (!nativeStarted && !audioService.isStreaming) {
       await _sendControlCommand(addresses, ControlCommandType.streamStop, [
         _streamSessionId,
@@ -1750,6 +1755,9 @@ class HostController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> stopSystemAudioStream() async {
+    // Signal any in-flight _startSystemAudioStream to abort after its current
+    // await returns so we don't leave a zombie native audio stream.
+    _systemAudioStartGeneration++;
     errorMessage.value = null;
     _stopStats();
     _cleanupDiagnosticTimer();
